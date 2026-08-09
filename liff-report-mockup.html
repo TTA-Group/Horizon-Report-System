@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตัวอย่างหน้าจอ LIFF · ระบบแจ้งเรื่องในออฟฟิศ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#101418;
+  --slate:#606C7A;
+  --line:#DDE3E9;
+  --surface:#FFFFFF;
+  --canvas:#E7ECF0;
+  --green:#06C755;
+  --green-deep:#04A045;
+  --amber:#E39B0C;
+  --alert:#E04A2F;
+  --blue:#2C6BE0;
+  --violet:#6B4FD8;
+  --r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{
+  font-family:'Anuphan',system-ui,sans-serif;
+  background:var(--canvas);
+  color:var(--ink);
+  min-height:100vh;
+  padding:20px 14px 40px;
+  display:flex;flex-direction:column;align-items:center;
+}
+.head{max-width:420px;width:100%;margin-bottom:16px}
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--slate);margin-bottom:6px
+}
+.head h1{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.head p{font-size:13px;color:var(--slate);margin-top:4px;line-height:1.5}
+
+/* tabs */
+.tabs{display:flex;gap:4px;max-width:420px;width:100%;margin:14px 0 10px;
+  background:#DBE2E8;padding:4px;border-radius:12px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;border:0;background:transparent;font-family:inherit;font-size:11.5px;
+  font-weight:500;color:var(--slate);padding:8px 11px;border-radius:9px;cursor:pointer;
+  transition:.18s;white-space:nowrap}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);
+  box-shadow:0 1px 3px rgba(16,20,24,.12)}
+.tab:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+
+/* phone */
+.phone{
+  width:100%;max-width:390px;background:var(--surface);
+  border-radius:26px;overflow:hidden;position:relative;
+  box-shadow:0 18px 40px -18px rgba(16,20,24,.4),0 0 0 1px rgba(16,20,24,.06);
+  display:flex;flex-direction:column;height:720px;
+}
+.statusbar{height:26px;background:var(--surface);display:flex;align-items:center;
+  justify-content:space-between;padding:0 18px;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;color:var(--slate);flex:0 0 auto}
+.liffbar{
+  flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 14px;
+  border-bottom:1px solid var(--line);background:var(--surface)}
+.liffbar .x{font-size:17px;color:var(--slate);line-height:1}
+.liffbar .t{font-size:13px;font-weight:600}
+.liffbar .oa{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:9px;
+  color:var(--slate);border:1px solid var(--line);padding:2px 6px;border-radius:20px}
+
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;display:none;background:#F5F7F9}
+.screen.on{display:block}
+.pad{padding:14px}
+
+/* identity */
+.me{display:flex;align-items:center;gap:10px;background:var(--surface);
+  padding:12px 14px;border-bottom:1px solid var(--line)}
+.av{width:38px;height:38px;border-radius:50%;background:linear-gradient(140deg,#06C755,#0B8F5A);
+  color:#fff;display:grid;place-items:center;font-weight:600;font-size:15px;flex:0 0 auto}
+.me .n{font-size:14px;font-weight:600;line-height:1.3}
+.me .d{font-size:11px;color:var(--slate)}
+.auto{margin-left:auto;font-size:9.5px;color:var(--green-deep);background:#E6F8ED;
+  padding:3px 7px;border-radius:20px;font-weight:500;white-space:nowrap}
+
+label.q{display:block;font-size:12px;font-weight:600;margin:0 0 8px;letter-spacing:.01em}
+label.q span{color:var(--alert)}
+.hint{font-size:11px;color:var(--slate);font-weight:400}
+.block{margin-bottom:18px}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cat{border:1.5px solid var(--line);background:var(--surface);border-radius:var(--r);
+  padding:11px 10px;text-align:left;font-family:inherit;cursor:pointer;transition:.15s;
+  display:flex;flex-direction:column;gap:5px}
+.cat .ic{color:var(--ink);display:flex;align-items:center;height:20px}
+.cat .ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.cat .nm{font-size:12.5px;font-weight:600;color:var(--ink)}
+.cat .to{font-size:10px;color:var(--slate);font-family:'IBM Plex Mono',monospace;letter-spacing:.02em}
+.cat[aria-pressed="true"]{border-color:var(--ink);background:var(--ink)}
+.cat[aria-pressed="true"] .nm{color:#fff}
+.cat[aria-pressed="true"] .ic{color:#fff}
+.cat[aria-pressed="true"] .to{color:#9AA8B5}
+.cat:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+.row{display:flex;gap:8px}
+input[type=text],select,textarea{
+  width:100%;font-family:inherit;font-size:13.5px;color:var(--ink);
+  border:1.5px solid var(--line);background:var(--surface);border-radius:12px;
+  padding:11px 12px;outline:none;transition:.15s}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--slate) 50%),linear-gradient(135deg,var(--slate) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 18px,calc(100% - 11px) 18px;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+textarea{min-height:78px;resize:none;line-height:1.55}
+input:focus,select:focus,textarea:focus{border-color:var(--ink)}
+::placeholder{color:#A6B1BC}
+
+.drop{border:1.5px dashed #C3CDD6;border-radius:var(--r);padding:16px;text-align:center;
+  background:var(--surface);cursor:pointer;font-size:12px;color:var(--slate)}
+.drop b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:2px;font-weight:600}
+.thumbs{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+.thumb{width:56px;height:56px;border-radius:10px;background:linear-gradient(150deg,#C9D5DF,#94A5B4);
+  display:grid;place-items:center;color:#fff;font-size:16px}
+
+.seg{display:flex;gap:6px}
+.seg button{flex:1;font-family:inherit;font-size:12px;font-weight:600;padding:10px 4px;
+  border-radius:11px;border:1.5px solid var(--line);background:var(--surface);
+  color:var(--slate);cursor:pointer;transition:.15s}
+.seg button[aria-pressed="true"]{color:#fff}
+.seg button[data-u="low"][aria-pressed="true"]{background:#5B6672;border-color:#5B6672}
+.seg button[data-u="mid"][aria-pressed="true"]{background:var(--amber);border-color:var(--amber)}
+.seg button[data-u="high"][aria-pressed="true"]{background:var(--alert);border-color:var(--alert)}
+.seg small{display:block;font-weight:400;font-size:9.5px;opacity:.8;margin-top:1px}
+
+.sendwrap{position:sticky;bottom:0;background:linear-gradient(to top,#F5F7F9 68%,rgba(245,247,249,0));
+  padding:14px;margin-top:-8px}
+.send{width:100%;border:0;background:var(--green);color:#fff;font-family:inherit;
+  font-size:15px;font-weight:600;padding:14px;border-radius:14px;cursor:pointer;
+  box-shadow:0 6px 16px -6px rgba(6,199,85,.7);transition:.15s}
+.send:disabled{background:#C7D0D8;box-shadow:none;cursor:not-allowed}
+.send:active:not(:disabled){transform:translateY(1px)}
+
+/* register */
+.welcome .wave{font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}
+.welcome p{font-size:13px;color:var(--slate);line-height:1.65}
+.tip{font-size:11.5px;color:var(--slate);line-height:1.6;margin-top:12px}
+.tip b{font-family:'IBM Plex Mono',monospace;color:var(--ink)}
+.ghost{width:100%;border:0;background:transparent;font-family:inherit;font-size:13px;
+  font-weight:500;color:var(--slate);padding:12px;margin-top:4px;cursor:pointer}
+.foundhead{display:flex;gap:10px;align-items:flex-start;background:#E6F8ED;
+  border-radius:var(--r);padding:13px}
+.foundhead.alert{background:#FDF3DF}
+.foundhead b{display:block;font-size:13.5px;font-weight:600}
+.foundhead span{display:block;font-size:11.5px;color:var(--slate);margin-top:2px;line-height:1.45}
+.kv2{display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.kv2:last-child{border-bottom:0}
+.kv2 b{flex:0 0 108px;font-weight:500;color:var(--slate);font-size:12px;padding-top:1px}
+.kv2 .mono{font-family:'IBM Plex Mono',monospace;letter-spacing:.04em}
+
+/* ticket cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:13px;margin-bottom:10px}
+.tid{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;color:var(--slate)}
+.ttl{font-size:14px;font-weight:600;margin:3px 0 2px;line-height:1.35}
+.meta{font-size:11px;color:var(--slate);line-height:1.5}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;
+  padding:4px 9px;border-radius:20px;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-wait{background:#FDF3DF;color:#9A6A05}
+.p-doing{background:#EEE9FC;color:#5238C0}
+.p-done{background:#E6F8ED;color:#0B7A3E}
+.p-closed{background:#EDF0F3;color:#5B6672}
+.p-suspend{background:#FBE6E1;color:#B0331B}
+.cardtop{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+
+/* status rail */
+.rail{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+.step{display:flex;gap:10px;position:relative;padding-bottom:12px}
+.step:last-child{padding-bottom:0}
+.step .dot{width:11px;height:11px;border-radius:50%;background:#D3DBE2;flex:0 0 auto;margin-top:3px;z-index:1}
+.step::before{content:"";position:absolute;left:5px;top:12px;bottom:0;width:1.5px;background:#E3E9EE}
+.step:last-child::before{display:none}
+.step.ok .dot{background:var(--green)}
+.step.now .dot{background:var(--violet);box-shadow:0 0 0 4px rgba(107,79,216,.16)}
+.step .lbl{font-size:12px;font-weight:600;line-height:1.3}
+.step.todo .lbl{color:#A6B1BC;font-weight:500}
+.step .sub{font-size:10.5px;color:var(--slate);font-family:'IBM Plex Mono',monospace;margin-top:1px}
+
+.actions{display:flex;gap:7px;margin-top:11px}
+.actions button{flex:1;font-family:inherit;font-size:12px;font-weight:600;padding:9px;
+  border-radius:10px;border:1.5px solid var(--ink);background:var(--surface);cursor:pointer}
+.actions button.fill{background:var(--ink);color:#fff}
+
+.filters{display:flex;gap:6px;overflow-x:auto;padding:0 14px 12px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.chip{font-family:inherit;font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:20px;
+  border:1px solid var(--line);background:var(--surface);color:var(--slate);white-space:nowrap;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+.sectiontitle{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--slate);padding:4px 14px 8px}
+
+/* chat mock */
+.chat{background:#8CA3B5;min-height:100%;padding:14px 12px}
+.chatday{text-align:center;margin-bottom:12px}
+.chatday span{background:rgba(16,20,24,.28);color:#fff;font-size:10.5px;padding:3px 11px;border-radius:20px}
+.bubblewrap{display:flex;gap:8px;margin-bottom:14px}
+.bot{width:32px;height:32px;border-radius:50%;background:var(--ink);color:#fff;
+  display:grid;place-items:center;font-size:13px;flex:0 0 auto}
+.flex{background:#fff;border-radius:14px;overflow:hidden;width:250px;
+  box-shadow:0 2px 6px rgba(16,20,24,.18)}
+.flexbar{height:6px;background:var(--alert)}
+.flexbody{padding:12px}
+.flexbody h4{font-size:14px;font-weight:600;line-height:1.35;margin:5px 0 8px}
+.kv{display:flex;gap:8px;font-size:11.5px;margin-bottom:4px;line-height:1.45}
+.kv b{color:var(--slate);font-weight:500;flex:0 0 52px}
+.flexfoot{border-top:1px solid var(--line);display:flex;flex-direction:column}
+.flexfoot button{border:0;background:transparent;font-family:inherit;font-size:13px;
+  font-weight:600;color:var(--green-deep);padding:11px;cursor:pointer;border-bottom:1px solid var(--line)}
+.flexfoot button:last-child{border-bottom:0;color:var(--slate);font-weight:500}
+.sysmsg{background:rgba(255,255,255,.9);border-radius:12px;padding:9px 12px;font-size:11.5px;
+  color:var(--ink);line-height:1.5;margin-left:40px;width:250px}
+
+/* toast */
+.toast{position:absolute;left:14px;right:14px;bottom:16px;background:var(--ink);color:#fff;
+  border-radius:14px;padding:13px 15px;font-size:12.5px;line-height:1.5;
+  box-shadow:0 10px 24px -8px rgba(16,20,24,.6);opacity:0;transform:translateY(14px);
+  pointer-events:none;transition:.25s}
+.toast.on{opacity:1;transform:translateY(0)}
+.toast b{font-family:'IBM Plex Mono',monospace;font-size:12.5px}
+
+.note{max-width:420px;width:100%;margin-top:16px;font-size:12px;color:var(--slate);line-height:1.65}
+.note b{color:var(--ink);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="eyebrow">LIFF Mockup · v1</div>
+  <h1>ระบบแจ้งเรื่องภายในสำนักงาน ผ่าน LINE</h1>
+  <p>ตัวอย่างหน้าจอที่พนักงานจะใช้งานจริง สามารถทดลองกดได้ทุกปุ่ม</p>
+</div>
+
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-s="reg">ลงทะเบียน</button>
+  <button class="tab" role="tab" aria-selected="false" data-s="form">แบบฟอร์ม</button>
+  <button class="tab" role="tab" aria-selected="false" data-s="mine">เรื่องที่แจ้ง</button>
+  <button class="tab" role="tab" aria-selected="false" data-s="queue">รายการงาน</button>
+  <button class="tab" role="tab" aria-selected="false" data-s="chat">แจ้งเตือน</button>
+  <button class="tab" role="tab" aria-selected="false" data-s="admin">ผู้ดูแล HR</button>
+</div>
+
+<div class="phone">
+  <div class="statusbar"><span>09:41</span><span>LINE</span></div>
+  <div class="liffbar">
+    <span class="x">✕</span>
+    <span class="t" id="liffTitle">แจ้งเรื่องในออฟฟิศ</span>
+    <span class="oa">@company</span>
+  </div>
+
+  <!-- ========== 0. REGISTER ========== -->
+  <section class="screen on" id="s-reg">
+    <div class="pad">
+      <div id="reg-input">
+        <div class="welcome">
+          <div class="wave">ยืนยันตัวตน</div>
+          <p>กรุณากรอกรหัสพนักงานเพื่อยืนยันตัวตน กรอกเพียงครั้งเดียว ครั้งต่อไปเข้าใช้งานได้ทันที</p>
+        </div>
+        <div class="block" style="margin-top:20px">
+          <label class="q">รหัสพนักงาน <span>*</span></label>
+          <input type="text" id="empid" placeholder="เช่น A1042" style="text-transform:uppercase;font-family:'IBM Plex Mono',monospace;letter-spacing:.05em">
+        </div>
+        <button class="send" onclick="checkEmp()">ยืนยันตัวตน</button>
+        <div class="tip">ทดลองพิมพ์ <b>A1042</b> เพื่อดูกรณีพบข้อมูล หรือรหัสอื่นเพื่อดูกรณีไม่พบข้อมูล</div>
+      </div>
+
+      <div id="reg-found" style="display:none">
+        <div class="foundhead">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--green-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <div><b>ยืนยันตัวตนสำเร็จ</b><span>กรุณาตรวจสอบความถูกต้องของข้อมูล</span></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <div class="kv2"><b>รหัสพนักงาน</b><span class="mono" id="f-id">A1042</span></div>
+          <div class="kv2"><b>ชื่อ–สกุล</b><span id="f-name">สมชาย ใจดี</span></div>
+          <div class="kv2"><b>ฝ่าย</b><span id="f-dept">ฝ่ายบัญชี</span></div>
+          <div class="kv2"><b>ชั้นที่ปฏิบัติงาน</b><span id="f-floor">ชั้น 8</span></div>
+          <div class="kv2"><b>อีเมล</b><span id="f-mail" style="font-size:12px">somchai.j@company.co.th</span></div>
+        </div>
+        <p class="tip" style="margin-top:12px">หากข้อมูลไม่ถูกต้อง กรุณาติดต่อฝ่ายทรัพยากรบุคคลเพื่อแก้ไขข้อมูลต้นทาง</p>
+        <button class="send" style="margin-top:14px" onclick="confirmReg()">ยืนยัน ข้อมูลถูกต้อง</button>
+        <button class="ghost" onclick="showReg('reg-input')">ไม่ใช่ข้อมูลของฉัน</button>
+      </div>
+
+      <div id="reg-manual" style="display:none">
+        <div class="foundhead alert">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+          <div><b>ไม่พบรหัสพนักงานนี้</b><span>กรุณาระบุข้อมูลเพื่อยืนยันตัวตน</span></div>
+        </div>
+        <p class="tip" style="margin:10px 0 16px">ท่านสามารถเริ่มแจ้งเรื่องได้ทันทีหลังกรอกข้อมูล</p>
+        <div class="block">
+          <label class="q">รหัสพนักงาน</label>
+          <input type="text" id="m-id" style="font-family:'IBM Plex Mono',monospace">
+        </div>
+        <div class="block">
+          <label class="q">ชื่อ–สกุล <span>*</span></label>
+          <input type="text" id="m-name" placeholder="ระบุชื่อและนามสกุลจริง">
+        </div>
+        <div class="block">
+          <label class="q">ฝ่าย/แผนก <span>*</span></label>
+          <select id="m-dept">
+            <option value="">เลือกฝ่าย/แผนก</option>
+            <option>ฝ่ายบัญชีและการเงิน</option><option>ฝ่ายขายและการตลาด</option>
+            <option>ฝ่ายทรัพยากรบุคคล</option><option>ฝ่ายปฏิบัติการ</option>
+            <option>ฝ่าย Admin</option><option>IT Support / Help Desk</option>
+          </select>
+        </div>
+        <div class="block">
+          <label class="q">ชั้นที่ปฏิบัติงาน <span>*</span></label>
+          <select id="m-floor">
+            <option value="">เลือกชั้น</option>
+            <option>ชั้น 15</option><option>ชั้น 9</option><option>ชั้น 8</option>
+            <option>ชั้น 7</option><option>ชั้น 5</option><option>ชั้นลอย</option>
+          </select>
+        </div>
+        <div class="block">
+          <label class="q">อีเมลบริษัท <span>*</span></label>
+          <input type="text" id="m-mail" placeholder="name@company.co.th">
+        </div>
+        <button class="send" onclick="confirmReg(true)">ส่งข้อมูลและเริ่มใช้งาน</button>
+        <button class="ghost" onclick="showReg('reg-input')">ย้อนกลับ</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 1. FORM ========== -->
+  <section class="screen" id="s-form">
+    <div class="me">
+      <div class="av">ส</div>
+      <div>
+        <div class="n">สมชาย ใจดี</div>
+        <div class="d">ฝ่ายบัญชี · ชั้น 8</div>
+      </div>
+      <div class="auto">ดึงจาก LINE</div>
+    </div>
+
+    <div class="pad">
+      <div class="block">
+        <label class="q">ประเภทเรื่องที่แจ้ง <span>*</span></label>
+        <div class="grid" id="cats">
+          <button class="cat" aria-pressed="false" data-to="IT Support / Help Desk"><span class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><span class="nm">IT Support / Help Desk</span><span class="to">→ ฝ่าย IT</span></button>
+          <button class="cat" aria-pressed="false" data-to="ฝ่าย Admin"><span class="ic"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg></span><span class="nm">ระบบปรับอากาศ ประปา ไฟฟ้า</span><span class="to">→ ฝ่าย Admin</span></button>
+          <button class="cat" aria-pressed="false" data-to="ฝ่ายแม่บ้าน"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 21h6l11-11a2.8 2.8 0 0 0-4-4L5 17z"/><path d="M14 4l6 6M6 15l3 3"/></svg></span><span class="nm">งานแม่บ้านและความสะอาด</span><span class="to">→ ฝ่ายแม่บ้าน</span></button>
+          <button class="cat" aria-pressed="false" data-to="ฝ่ายธุรการ"><span class="ic"><svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg></span><span class="nm">เรื่องอื่น ๆ</span><span class="to">→ ฝ่ายธุรการ</span></button>
+        </div>
+      </div>
+
+      <div class="block">
+        <label class="q">สถานที่เกิดเหตุ <span>*</span></label>
+        <div class="row">
+          <select id="floor" style="flex:0 0 116px">
+            <option value="">เลือกชั้น</option>
+            <option>ชั้น 15</option><option>ชั้น 9</option>
+            <option selected>ชั้น 8</option><option>ชั้น 7</option>
+            <option>ชั้น 5</option><option>ชั้นลอย</option>
+          </select>
+          <input type="text" id="room" placeholder="ระบุห้องหรือจุดที่พบ">
+        </div>
+      </div>
+
+      <div class="block">
+        <label class="q">รายละเอียดของปัญหา <span>*</span></label>
+        <textarea id="detail" placeholder="โปรดระบุอาการหรือปัญหาที่พบ พร้อมช่วงเวลาที่เริ่มเกิดเหตุ"></textarea>
+      </div>
+
+      <div class="block">
+        <label class="q">ภาพประกอบ <span class="hint">(หากมี)</span></label>
+        <div class="drop" id="drop"><b>แนบภาพถ่ายหรือเลือกจากคลังภาพ</b>แนบได้สูงสุด 3 ภาพ</div>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="block">
+        <label class="q">ระดับความเร่งด่วน</label>
+        <div class="seg" id="urg">
+          <button data-u="low" aria-pressed="false">ปกติ<small>ภายใน 3 วันทำการ</small></button>
+          <button data-u="mid" aria-pressed="true">เร่งด่วน<small>ภายในวันนี้</small></button>
+          <button data-u="high" aria-pressed="false">เร่งด่วนมาก<small>กระทบการทำงาน</small></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sendwrap">
+      <button class="send" id="sendBtn" disabled>กรุณาเลือกประเภทเรื่องที่แจ้ง</button>
+    </div>
+  </section>
+
+  <!-- ========== 2. MINE ========== -->
+  <section class="screen" id="s-mine">
+    <div class="sectiontitle" style="padding-top:14px">อยู่ระหว่างดำเนินการ</div>
+    <div class="pad" style="padding-top:0" id="mineList">
+      <div class="card">
+        <div class="cardtop">
+          <div>
+            <div class="tid">IT-2608-014</div>
+            <div class="ttl">เครื่องพิมพ์เอกสารกระดาษติดขัดต่อเนื่อง</div>
+            <div class="meta">ชั้น 8 · จุดถ่ายเอกสาร · แจ้งเมื่อ 07 ส.ค. 09:12</div>
+          </div>
+          <span class="pill p-doing">กำลังดำเนินการ</span>
+        </div>
+        <div class="rail">
+          <div class="step ok"><span class="dot"></span><div><div class="lbl">ส่งเรื่องเรียบร้อย</div><div class="sub">09:12</div></div></div>
+          <div class="step ok"><span class="dot"></span><div><div class="lbl">IT Support / Help Desk รับเรื่อง · คุณเอกพงษ์</div><div class="sub">09:20</div></div></div>
+          <div class="step now"><span class="dot"></span><div><div class="lbl">อยู่ระหว่างดำเนินการ · รอเบิกอะไหล่ลูกกลิ้ง</div><div class="sub">10:05</div></div></div>
+          <div class="step todo"><span class="dot"></span><div><div class="lbl">ดำเนินการแล้วเสร็จ</div></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardtop">
+          <div>
+            <div class="tid">FAC-2608-031</div>
+            <div class="ttl">เครื่องปรับอากาศห้องประชุม A ไม่ทำความเย็น</div>
+            <div class="meta">ชั้น 15 · ห้องประชุม A · แจ้งเมื่อ 06 ส.ค. 16:40</div>
+          </div>
+          <span class="pill p-wait">รอรับเรื่อง</span>
+        </div>
+        <div class="rail">
+          <div class="step ok"><span class="dot"></span><div><div class="lbl">ส่งเรื่องเรียบร้อย</div><div class="sub">16:40</div></div></div>
+          <div class="step todo"><span class="dot"></span><div><div class="lbl">รอฝ่าย Admin รับเรื่อง</div><div class="sub">ระบบจะแจ้งเตือนซ้ำภายใน 2 ชั่วโมง</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sectiontitle">ดำเนินการแล้วเสร็จ</div>
+    <div class="pad" style="padding-top:0">
+      <div class="card" style="opacity:.72">
+        <div class="cardtop">
+          <div>
+            <div class="tid">CLN-2608-008</div>
+            <div class="ttl">ห้องน้ำชาย ชั้น 7 น้ำไม่ไหล</div>
+            <div class="meta">ปิดเรื่อง 05 ส.ค. 14:22 · ระยะเวลาดำเนินการ 1 ชั่วโมง 12 นาที</div>
+          </div>
+          <span class="pill p-closed">ปิดเรื่อง</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 3. QUEUE ========== -->
+  <section class="screen" id="s-queue">
+    <div class="me" style="border-bottom:1px solid var(--line)">
+      <div class="av" style="background:linear-gradient(140deg,#2C6BE0,#1B3F8F)">อ</div>
+      <div>
+        <div class="n">เอกพงษ์ · IT Support / Help Desk</div>
+        <div class="d">รายการงานวันนี้ 4 เรื่อง · คงค้าง 1 เรื่อง</div>
+      </div>
+    </div>
+    <div class="filters" style="padding-top:12px">
+      <button class="chip" aria-pressed="true">ทั้งหมด 4</button>
+      <button class="chip" aria-pressed="false">รอรับเรื่อง 1</button>
+      <button class="chip" aria-pressed="false">ผู้รับผิดชอบ: ฉัน 2</button>
+      <button class="chip" aria-pressed="false">เร่งด่วนมาก 1</button>
+    </div>
+    <div class="pad" style="padding-top:0">
+      <div class="card" style="border-color:var(--alert);border-width:1.5px">
+        <div class="cardtop">
+          <div>
+            <div class="tid">IT-2608-016 · เร่งด่วนมาก</div>
+            <div class="ttl">ระบบเครือข่ายห้องประชุมใหญ่ไม่สามารถใช้งานได้</div>
+            <div class="meta">คุณมานี · ฝ่ายขาย · ชั้น 9 · แจ้งเมื่อ 3 นาทีที่ผ่านมา</div>
+          </div>
+          <span class="pill p-wait">รอรับเรื่อง</span>
+        </div>
+        <div class="actions">
+          <button class="fill" onclick="claim(this)">รับเรื่อง</button>
+          <button onclick="toast('ส่งต่อเรื่องถึงฝ่าย Admin เรียบร้อย · ระบบแจ้งผู้แจ้งโดยอัตโนมัติ')">ส่งต่อฝ่ายอื่น</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardtop">
+          <div>
+            <div class="tid">IT-2608-014</div>
+            <div class="ttl">เครื่องพิมพ์เอกสารกระดาษติดขัดต่อเนื่อง</div>
+            <div class="meta">คุณสมชาย · ฝ่ายบัญชี · รับเรื่องเมื่อ 09:20</div>
+          </div>
+          <span class="pill p-doing">กำลังดำเนินการ</span>
+        </div>
+        <div class="actions">
+          <button class="fill" onclick="toast('ปรับสถานะเป็น ดำเนินการแล้วเสร็จ · ระบบแจ้งผู้แจ้งเรียบร้อย')">แล้วเสร็จ</button>
+          <button onclick="toast('บันทึกความคืบหน้าและแจ้งผู้แจ้งเรียบร้อย')">แจ้งความคืบหน้า</button>
+        </div>
+      </div>
+
+      <div class="card" style="opacity:.72">
+        <div class="cardtop">
+          <div>
+            <div class="tid">IT-2608-011</div>
+            <div class="ttl">ขอสิทธิ์เข้าถึงโฟลเดอร์ฝ่ายการตลาด</div>
+            <div class="meta">ปิดเรื่อง 06 ส.ค. 11:03</div>
+          </div>
+          <span class="pill p-done">แล้วเสร็จ</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 4. CHAT ========== -->
+  <section class="screen" id="s-chat">
+    <div class="chat">
+      <div class="chatday"><span>กลุ่ม IT Support / Help Desk · 5 คน</span></div>
+      <div class="bubblewrap">
+        <div class="bot"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+        <div class="flex">
+          <div class="flexbar"></div>
+          <div class="flexbody">
+            <div class="tid">IT-2608-016 · เร่งด่วนมาก</div>
+            <h4>ระบบเครือข่ายห้องประชุมใหญ่ไม่สามารถใช้งานได้</h4>
+            <div class="kv"><b>ผู้แจ้ง</b><span>คุณมานี รักงาน · ฝ่ายขาย</span></div>
+            <div class="kv"><b>สถานที่</b><span>ชั้น 9 · ห้องประชุมใหญ่</span></div>
+            <div class="kv"><b>รายละเอียด</b><span>เชื่อมต่อสัญญาณได้แต่ไม่สามารถใช้งานอินเทอร์เน็ต มีประชุมลูกค้าในอีก 15 นาที</span></div>
+            <div class="kv"><b>วันเวลา</b><span>07 ส.ค. 2569 · 09:38</span></div>
+          </div>
+          <div class="flexfoot">
+            <button onclick="toast('รับเรื่องเรียบร้อย · ระบบแจ้งผู้แจ้งโดยอัตโนมัติแล้ว')">รับเรื่อง</button>
+            <button onclick="go('queue')">ดูรายละเอียด</button>
+          </div>
+        </div>
+      </div>
+      <div class="sysmsg"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>หากไม่มีผู้รับเรื่องภายใน 15 นาที ระบบจะแจ้งเตือนซ้ำและส่งเรื่องถึงหัวหน้าฝ่ายโดยอัตโนมัติ</div>
+    </div>
+  </section>
+
+  <!-- ========== 5. ADMIN ========== -->
+  <section class="screen" id="s-admin">
+    <div class="me" style="border-bottom:1px solid var(--line)">
+      <div class="av" style="background:linear-gradient(140deg,#6B4FD8,#3D2A96)">HR</div>
+      <div>
+        <div class="n">ผู้ดูแลระบบ · ฝ่ายทรัพยากรบุคคล</div>
+        <div class="d">ผู้ใช้งานทั้งหมด 128 คน · ระงับสิทธิ์ 1 คน</div>
+      </div>
+    </div>
+    <div class="pad" style="padding-bottom:8px">
+      <input type="text" placeholder="ค้นหาจากรหัสพนักงาน ชื่อ หรือฝ่าย">
+    </div>
+    <div class="filters">
+      <button class="chip" aria-pressed="true">ทั้งหมด</button>
+      <button class="chip" aria-pressed="false">ใช้งานปกติ</button>
+      <button class="chip" aria-pressed="false">ระงับสิทธิ์ 1</button>
+    </div>
+    <div class="pad" style="padding-top:0">
+
+      <div class="card">
+        <div class="cardtop">
+          <div>
+            <div class="tid">A1042</div>
+            <div class="ttl">สมชาย ใจดี</div>
+            <div class="meta">ฝ่ายบัญชี · ชั้น 8 · แจ้งเรื่องสะสม 14 รายการ</div>
+          </div>
+          <span class="pill p-done">ใช้งานปกติ</span>
+        </div>
+        <div class="actions">
+          <button onclick="suspend(this)">ระงับสิทธิ์</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardtop">
+          <div>
+            <div class="tid">C0455</div>
+            <div class="ttl">ปิยะ วัฒนกุล</div>
+            <div class="meta">ฝ่ายปฏิบัติการ · ชั้น 5 · แจ้งเรื่องสะสม 2 รายการ</div>
+          </div>
+          <span class="pill p-done">ใช้งานปกติ</span>
+        </div>
+        <div class="actions">
+          <button onclick="suspend(this)">ระงับสิทธิ์</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardtop">
+          <div>
+            <div class="tid">A0993 · ระงับเมื่อ 01 ส.ค. 2569</div>
+            <div class="ttl">วิไล ทองดี</div>
+            <div class="meta">เหตุผล: พ้นสภาพการเป็นพนักงาน · ระงับโดยระบบอัตโนมัติ</div>
+          </div>
+          <span class="pill p-suspend">ระงับสิทธิ์</span>
+        </div>
+        <div class="actions">
+          <button class="fill" onclick="restore(this)">คืนสิทธิ์การใช้งาน</button>
+        </div>
+      </div>
+
+      <div class="sectiontitle" style="padding:14px 0 8px">หน้าจอที่พนักงานถูกระงับสิทธิ์จะเห็น</div>
+      <div class="card" style="text-align:center;padding:22px 16px;background:#F8F9FA">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="var(--slate)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <div style="font-size:14px;font-weight:600;margin:10px 0 5px">บัญชีนี้ถูกระงับสิทธิ์การใช้งาน</div>
+        <div style="font-size:12px;color:var(--slate);line-height:1.6">ไม่สามารถแจ้งเรื่องใหม่ได้<br>กรุณาติดต่อฝ่ายทรัพยากรบุคคล โทร. 1502</div>
+      </div>
+      <p class="tip">เรื่องที่แจ้งไว้ก่อนหน้ายังคงอยู่ในระบบและดำเนินการต่อจนแล้วเสร็จ ระบบเพียงปิดการแจ้งเรื่องใหม่เท่านั้น</p>
+    </div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<div class="note">
+  <b>หลักการออกแบบ</b><br>
+  ระบบดึงชื่อและสังกัดจากบัญชี LINE โดยอัตโนมัติ พนักงานกรอกเพียง 4 ช่อง · ระบุปลายทางของแต่ละประเภทเรื่องไว้ชัดเจน เพื่อลดการส่งเรื่องผิดฝ่าย · กำหนดเลขที่เรื่องสำหรับใช้อ้างอิง · เมื่อสถานะเปลี่ยนแปลง ระบบแจ้งผู้แจ้งโดยอัตโนมัติทุกครั้ง
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const titles={admin:'จัดการสิทธิ์ผู้ใช้งาน',reg:'ยืนยันตัวตนพนักงาน',form:'แบบฟอร์มแจ้งเรื่อง',mine:'เรื่องที่แจ้งไว้',queue:'รายการงานของฝ่าย',chat:'กลุ่ม IT Support / Help Desk'};
+
+const DIR={
+  'A1042':{name:'สมชาย ใจดี',dept:'ฝ่ายบัญชี',floor:'ชั้น 8',mail:'somchai.j@company.co.th'},
+  'A0871':{name:'มานี รักงาน',dept:'ฝ่ายขายและการตลาด',floor:'ชั้น 9',mail:'manee.r@company.co.th'},
+  'B2210':{name:'เอกพงษ์ ศรีสุข',dept:'IT Support / Help Desk',floor:'ชั้น 5',mail:'ekapong.s@company.co.th'}
+};
+function showReg(id){
+  ['reg-input','reg-found','reg-manual'].forEach(x=>$('#'+x).style.display=x===id?'block':'none');
+  $('.screen.on').scrollTop=0;
+}
+function checkEmp(){
+  const code=$('#empid').value.trim().toUpperCase();
+  if(!code) return toast('กรุณากรอกรหัสพนักงาน');
+  const e=DIR[code];
+  if(e){
+    $('#f-id').textContent=code; $('#f-name').textContent=e.name;
+    $('#f-dept').textContent=e.dept;
+    $('#f-floor').textContent=e.floor; $('#f-mail').textContent=e.mail;
+    showReg('reg-found');
+  }else{
+    $('#m-id').value=code;
+    showReg('reg-manual');
+  }
+}
+function confirmReg(manual){
+  if(manual&&(!$('#m-name').value.trim()||!$('#m-dept').value)) return toast('กรุณากรอกชื่อ–สกุล และเลือกฝ่าย/แผนก');
+  go('form');
+  toast(manual?'ยืนยันตัวตนเรียบร้อย · เริ่มแจ้งเรื่องได้ทันที':'ยืนยันตัวตนเรียบร้อย · ครั้งต่อไปเข้าใช้งานได้ทันที');
+}
+function go(id){
+  $$('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.s===id));
+  $$('.screen').forEach(s=>s.classList.toggle('on',s.id==='s-'+id));
+  $('#liffTitle').textContent=titles[id];
+  $('.screen.on').scrollTop=0;
+}
+$$('.tab').forEach(t=>t.onclick=()=>go(t.dataset.s));
+
+let picked=null;
+$$('#cats .cat').forEach(c=>c.onclick=()=>{
+  $$('#cats .cat').forEach(x=>x.setAttribute('aria-pressed','false'));
+  c.setAttribute('aria-pressed','true');
+  picked=c;
+  const b=$('#sendBtn'); b.disabled=false;
+  b.textContent='ส่งเรื่องถึง '+c.dataset.to;
+});
+$$('#urg button').forEach(b=>b.onclick=()=>{
+  $$('#urg button').forEach(x=>x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true');
+});
+$('#drop').onclick=()=>{
+  const t=$('#thumbs');
+  if(t.children.length>=3) return toast('แนบภาพได้สูงสุด 3 ภาพ');
+  const d=document.createElement('div'); d.className='thumb';
+  d.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.6"/><path d="M21 15l-4.5-4.5L6 21"/></svg>';
+  t.appendChild(d);
+};
+$$('.chip').forEach(c=>c.onclick=()=>{
+  $$('.chip').forEach(x=>x.setAttribute('aria-pressed','false'));
+  c.setAttribute('aria-pressed','true');
+});
+
+let tt;
+function toast(msg){
+  const el=$('#toast'); el.innerHTML=msg; el.classList.add('on');
+  clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('on'),3600);
+}
+function suspend(btn){
+  const c=btn.closest('.card'), p=c.querySelector('.pill');
+  p.className='pill p-suspend'; p.textContent='ระงับสิทธิ์';
+  c.style.borderColor='var(--line)'; c.style.borderWidth='1px';
+  btn.closest('.actions').innerHTML='<button class="fill" onclick="restore(this)">คืนสิทธิ์การใช้งาน</button>';
+  toast('ระงับสิทธิ์เรียบร้อย · บัญชีนี้ไม่สามารถแจ้งเรื่องใหม่ได้ตั้งแต่บัดนี้');
+}
+function restore(btn){
+  const c=btn.closest('.card'), p=c.querySelector('.pill');
+  p.className='pill p-done'; p.textContent='ใช้งานปกติ';
+  btn.closest('.actions').innerHTML='<button onclick="suspend(this)">ระงับสิทธิ์</button>';
+  toast('คืนสิทธิ์การใช้งานเรียบร้อย · ระบบแจ้งพนักงานทาง LINE แล้ว');
+}
+function claim(btn){
+  const card=btn.closest('.card');
+  card.querySelector('.pill').className='pill p-doing';
+  card.querySelector('.pill').textContent='กำลังดำเนินการ';
+  card.style.borderColor='var(--line)'; card.style.borderWidth='1px';
+  btn.closest('.actions').innerHTML='<button class="fill" onclick="toast(\'ปรับสถานะเป็น ดำเนินการแล้วเสร็จ · ระบบแจ้งผู้แจ้งเรียบร้อย\')">แล้วเสร็จ</button><button onclick="toast(\'บันทึกความคืบหน้าและแจ้งผู้แจ้งเรียบร้อย\')">แจ้งความคืบหน้า</button>';
+  toast('รับเรื่องเรียบร้อย · ระบบแจ้งผู้แจ้งโดยอัตโนมัติแล้ว');
+}
+
+$('#sendBtn').onclick=()=>{
+  if(!picked) return;
+  const n=String(Math.floor(Math.random()*90)+10);
+  const codes={'IT Support / Help Desk':'IT','ฝ่าย Admin':'FAC','ฝ่ายแม่บ้าน':'CLN','ฝ่ายธุรการ':'GEN'};
+  const id=codes[picked.dataset.to]+'-2608-0'+n;
+  const detail=$('#detail').value.trim()||'ไม่ได้ระบุรายละเอียด';
+  const room=$('#room').value.trim()||'ไม่ได้ระบุสถานที่';
+  const card=document.createElement('div');
+  card.className='card';
+  card.innerHTML=`<div class="cardtop"><div>
+      <div class="tid">${id}</div>
+      <div class="ttl">${detail.slice(0,60)}</div>
+      <div class="meta">${$('#floor').value||'ไม่ระบุชั้น'} · ${room} · แจ้งเมื่อสักครู่</div>
+    </div><span class="pill p-wait">รอรับเรื่อง</span></div>
+    <div class="rail">
+      <div class="step ok"><span class="dot"></span><div><div class="lbl">ส่งเรื่องเรียบร้อย</div><div class="sub">09:41</div></div></div>
+      <div class="step todo"><span class="dot"></span><div><div class="lbl">รอ ${picked.dataset.to} รับเรื่อง</div><div class="sub">ส่งถึงฝ่ายแล้ว · แจ้งเตือนซ้ำภายใน 2 ชั่วโมง</div></div></div>
+    </div>`;
+  $('#mineList').prepend(card);
+  go('mine');
+  toast('ส่งเรื่องเรียบร้อย เลขที่ <b>'+id+'</b><br>ระบบส่งเรื่องถึง '+picked.dataset.to+' แล้ว สามารถติดตามสถานะได้จากหน้านี้');
+};
+</script>
+</body>
+</html>
