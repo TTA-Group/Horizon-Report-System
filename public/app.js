@@ -11,6 +11,12 @@ let masters = null;
 let session = null;
 let picked = null; // ปุ่มหมวดที่เลือก
 let pendingFiles = []; // ไฟล์แนบที่บีบอัดแล้ว { base64, type }
+let queueDept = null; // ฝ่ายที่กำลังดูในหน้าคิวงาน (รหัสฝ่าย)
+let queueFilter = ""; // ตัวกรองคิวงาน: "" | "pending" | "me"
+let adminQ = ""; // คำค้นหน้าผู้ดูแล
+let adminStatus = ""; // ตัวกรองสถานะหน้าผู้ดูแล
+let detailReturnTab = "mine"; // แท็บที่จะกลับไปหลังปิดหน้ารายละเอียด
+let sheetPick = null; // ตัวรับค่าเมื่อเลือกจาก bottom sheet
 
 /* ---------- helpers ---------- */
 async function api(path, { method = "GET", body } = {}) {
@@ -158,6 +164,15 @@ async function enterApp() {
     } catch (e) {
       toast(e.message);
     }
+  }
+  // เผยแท็บตามสิทธิ์: เจ้าหน้าที่เห็น "คิวงาน", ผู้ดูแลเห็น "ผู้ดูแล"
+  if (session.dept_roles && session.dept_roles.length) {
+    $('.tabbar button[data-tab="queue"]').style.display = "";
+    queueDept = session.dept_roles[0].code;
+    renderQueueDepts();
+  }
+  if (session.is_admin) {
+    $('.tabbar button[data-tab="admin"]').style.display = "";
   }
   goForm();
 }
@@ -311,7 +326,7 @@ function renderTicketCard(t) {
           <div><div class="lbl">${esc(e.status_label)}${e.note ? " · " + esc(e.note) : ""}</div></div></div>`,
     )
     .join("");
-  return `<div class="card">
+  return `<div class="card clickable" data-id="${t.id}">
     <div class="cardtop">
       <div>
         <div class="tid">${esc(t.ticket_no)}</div>
@@ -322,6 +337,215 @@ function renderTicketCard(t) {
     </div>
     <div class="rail">${steps}</div>
   </div>`;
+}
+
+/* ---------- routing ---------- */
+function routeTab(tab) {
+  $("#backbtn").style.display = "none";
+  if (tab === "form") goForm();
+  else if (tab === "mine") goMine();
+  else if (tab === "queue") goQueue();
+  else if (tab === "admin") goAdmin();
+}
+
+/* ---------- queue (เจ้าหน้าที่) ---------- */
+function renderQueueDepts() {
+  const wrap = $("#queue-depts");
+  const roles = session.dept_roles || [];
+  if (roles.length <= 1) {
+    wrap.style.display = "none";
+    return;
+  }
+  const dm = new Map((masters.departments || []).map((d) => [d.code, d.name]));
+  wrap.style.display = "flex";
+  wrap.innerHTML = roles
+    .map((r) => `<button class="chip" data-dept="${esc(r.code)}" aria-pressed="${r.code === queueDept}">${esc(dm.get(r.code) || r.code)}</button>`)
+    .join("");
+}
+
+async function goQueue() {
+  setTab("queue");
+  show("s-queue");
+  const list = $("#queueList");
+  list.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  const params = new URLSearchParams();
+  if (queueDept) params.set("dept", queueDept);
+  if (queueFilter === "pending") params.set("status", "pending");
+  if (queueFilter === "me") params.set("assignee", "me");
+  try {
+    const r = await api("/api/tickets/department?" + params.toString());
+    if (!r.tickets.length) {
+      list.innerHTML = '<div class="empty">ไม่มีรายการ</div>';
+      return;
+    }
+    list.innerHTML = r.tickets.map((t) => renderQueueCard(t, queueDept)).join("");
+  } catch (e) {
+    list.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function renderQueueCard(t, deptCode) {
+  let actions = "";
+  if (t.status === "pending") {
+    actions = '<button class="fill" data-act="claim">รับเรื่อง</button><button data-act="transfer">ส่งต่อฝ่าย</button>';
+  } else if (t.status === "in_progress") {
+    actions = '<button class="fill" data-act="complete">แล้วเสร็จ</button><button data-act="transfer">ส่งต่อฝ่าย</button>';
+  } else if (t.status === "completed") {
+    actions = '<button class="fill" data-act="closed">ปิดเรื่อง</button>';
+  }
+  const tag = t.urgency === "critical" ? " · เร่งด่วนมาก" : t.urgency === "urgent" ? " · เร่งด่วน" : "";
+  return `<div class="card clickable" data-id="${t.id}" data-dept="${esc(deptCode || "")}">
+    <div class="cardtop">
+      <div>
+        <div class="tid">${esc(t.ticket_no)}${tag}</div>
+        <div class="ttl">${esc(t.detail)}</div>
+        <div class="meta">${esc(t.reporter_name)}${t.reporter_dept ? " · " + esc(t.reporter_dept) : ""} · ${esc(t.floor)}${t.location_note ? " · " + esc(t.location_note) : ""}</div>
+      </div>
+      <span class="pill ${PILL[t.status] || "p-closed"}">${esc(t.status_label)}</span>
+    </div>
+    ${actions ? `<div class="actions">${actions}</div>` : ""}
+  </div>`;
+}
+
+async function doStatus(id, to, okMsg) {
+  try {
+    await api(`/api/tickets/${id}/status`, { method: "PATCH", body: { to_status: to } });
+    toast(okMsg || "อัปเดตสถานะเรียบร้อย");
+    goQueue();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function openTransferSheet(id, currentDeptCode) {
+  const opts = (masters.departments || [])
+    .filter((d) => d.code !== currentDeptCode)
+    .map((d) => ({ label: d.name, value: d.code }));
+  if (!opts.length) return toast("ไม่มีฝ่ายให้ส่งต่อ");
+  const to = await openSheet("ส่งต่อไปยังฝ่าย", opts);
+  if (!to) return;
+  try {
+    await api(`/api/tickets/${id}/transfer`, { method: "PATCH", body: { to_dept: to } });
+    toast("ส่งต่อเรียบร้อย");
+    goQueue();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+/* ---------- admin (ผู้ดูแล) ---------- */
+async function goAdmin() {
+  setTab("admin");
+  show("s-admin");
+  const list = $("#adminList");
+  list.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  const params = new URLSearchParams();
+  if (adminQ) params.set("q", adminQ);
+  if (adminStatus) params.set("status", adminStatus);
+  try {
+    const r = await api("/api/admin/employees?" + params.toString());
+    if (!r.employees.length) {
+      list.innerHTML = '<div class="empty">ไม่พบผู้ใช้งาน</div>';
+      return;
+    }
+    list.innerHTML = r.employees.map(renderEmployee).join("");
+  } catch (e) {
+    list.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function renderEmployee(e) {
+  const suspended = e.status === "suspended";
+  const btn = suspended
+    ? '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>'
+    : '<button data-act="suspend">ระงับสิทธิ์</button>';
+  return `<div class="card" data-id="${e.id}">
+    <div class="cardtop">
+      <div>
+        <div class="tid">${esc(e.employee_code)}</div>
+        <div class="ttl">${esc(e.full_name)}</div>
+        <div class="meta">${esc(e.department_name || "-")}${e.floor ? " · " + esc(e.floor) : ""} · แจ้งเรื่องสะสม ${e.reported_count} รายการ${suspended && e.suspend_reason ? "<br>เหตุผล: " + esc(e.suspend_reason) : ""}</div>
+      </div>
+      <span class="pill ${suspended ? "p-suspend" : "p-done"}">${suspended ? "ระงับสิทธิ์" : "ใช้งานปกติ"}</span>
+    </div>
+    <div class="actions">${btn}</div>
+  </div>`;
+}
+
+/* ---------- detail ---------- */
+async function openDetail(id, fromTab) {
+  detailReturnTab = fromTab || "mine";
+  show("s-detail");
+  $("#backbtn").style.display = "block";
+  const body = $("#detailBody");
+  body.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  try {
+    const t = await api(`/api/tickets/${id}`);
+    body.innerHTML = renderDetail(t);
+  } catch (e) {
+    body.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function renderDetail(t) {
+  const steps = (t.timeline || [])
+    .map(
+      (e, i) =>
+        `<div class="step ${i === t.timeline.length - 1 ? "now" : "ok"}"><span class="dot"></span><div><div class="lbl">${esc(e.status_label)}${e.note ? " · " + esc(e.note) : ""}</div></div></div>`,
+    )
+    .join("");
+  const shots = (t.attachments || [])
+    .filter((a) => a.file_url)
+    .map((a) => `<img class="shot" src="${esc(a.file_url)}" alt="ภาพประกอบ" />`)
+    .join("");
+  return `<div class="card">
+    <div class="cardtop"><div>
+      <div class="tid">${esc(t.ticket_no)}</div>
+      <div class="ttl">${esc(t.category_label)}</div>
+    </div><span class="pill ${PILL[t.status] || "p-closed"}">${esc(t.status_label)}</span></div>
+    <div style="margin-top:10px">
+      <div class="dkv"><b>ผู้แจ้ง</b><span>${esc(t.reporter_name)}</span></div>
+      <div class="dkv"><b>สถานที่</b><span>${esc(t.floor)}${t.location_note ? " · " + esc(t.location_note) : ""}</span></div>
+      <div class="dkv"><b>รายละเอียด</b><span>${esc(t.detail)}</span></div>
+      ${t.assignee_name ? `<div class="dkv"><b>ผู้รับผิดชอบ</b><span>${esc(t.assignee_name)}</span></div>` : ""}
+    </div>
+    ${shots ? `<div style="margin-top:10px">${shots}</div>` : ""}
+    <div class="rail">${steps}</div>
+  </div>`;
+}
+
+/* ---------- bottom sheet ---------- */
+function openSheet(title, options) {
+  return new Promise((resolve) => {
+    sheetPick = resolve;
+    $("#sheet-title").textContent = title;
+    const c = $("#sheet-opts");
+    c.innerHTML = "";
+    options.forEach((o) => {
+      const b = document.createElement("button");
+      b.className = "opt";
+      b.textContent = o.label;
+      b.onclick = () => finishSheet(o.value);
+      c.appendChild(b);
+    });
+    $("#sheet").classList.add("on");
+    $("#backdrop").classList.add("on");
+  });
+}
+function finishSheet(v) {
+  $("#sheet").classList.remove("on");
+  $("#backdrop").classList.remove("on");
+  const r = sheetPick;
+  sheetPick = null;
+  if (r) r(v);
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...a) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...a), ms);
+  };
 }
 
 /* ---------- attachments (client-side compress) ---------- */
@@ -378,6 +602,87 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#btn-manual-back").onclick = () => showRegPart("reg-input");
   $("#sendBtn").onclick = submitTicket;
   $("#file").onchange = (e) => onPickFiles(e.target);
-  $$(".tabbar button").forEach((b) => (b.onclick = () => (b.dataset.tab === "form" ? goForm() : goMine())));
+  $$(".tabbar button").forEach((b) => (b.onclick = () => routeTab(b.dataset.tab)));
+
+  // ปุ่มย้อนกลับจากหน้ารายละเอียด
+  $("#backbtn").onclick = () => routeTab(detailReturnTab);
+
+  // แตะการ์ดในหน้า "เรื่องที่แจ้ง" เพื่อดูรายละเอียด
+  $("#mineList").addEventListener("click", (e) => {
+    const card = e.target.closest(".card[data-id]");
+    if (card) openDetail(card.dataset.id, "mine");
+  });
+
+  // คิวงาน: ปุ่มดำเนินการ + แตะการ์ดดูรายละเอียด
+  $("#queueList").addEventListener("click", (e) => {
+    const card = e.target.closest(".card[data-id]");
+    if (!card) return;
+    const btn = e.target.closest("button[data-act]");
+    if (btn) {
+      e.stopPropagation();
+      const id = card.dataset.id;
+      const act = btn.dataset.act;
+      if (act === "claim") doStatus(id, "in_progress", "รับเรื่องเรียบร้อย");
+      else if (act === "complete") doStatus(id, "completed", "ปรับเป็นแล้วเสร็จเรียบร้อย");
+      else if (act === "closed") doStatus(id, "closed", "ปิดเรื่องเรียบร้อย");
+      else if (act === "transfer") openTransferSheet(id, card.dataset.dept);
+      return;
+    }
+    openDetail(card.dataset.id, "queue");
+  });
+  $("#queue-depts").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-dept]");
+    if (!b) return;
+    queueDept = b.dataset.dept;
+    $$("#queue-depts .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    goQueue();
+  });
+  $("#queue-filters").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-f]");
+    if (!b) return;
+    queueFilter = b.dataset.f;
+    $$("#queue-filters .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    goQueue();
+  });
+
+  // ผู้ดูแล: ระงับ/คืนสิทธิ์ + ค้นหา + กรองสถานะ
+  $("#adminList").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const card = e.target.closest(".card[data-id]");
+    const id = card.dataset.id;
+    try {
+      if (btn.dataset.act === "suspend") {
+        const reason = window.prompt("เหตุผลการระงับสิทธิ์ (ไม่บังคับ)") || "";
+        await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
+        toast("ระงับสิทธิ์เรียบร้อย");
+      } else {
+        await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "restore" } });
+        toast("คืนสิทธิ์เรียบร้อย");
+      }
+      goAdmin();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  $("#admin-q").addEventListener(
+    "input",
+    debounce(() => {
+      adminQ = $("#admin-q").value.trim();
+      goAdmin();
+    }, 350),
+  );
+  $("#admin-filters").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-s]");
+    if (!b) return;
+    adminStatus = b.dataset.s;
+    $$("#admin-filters .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    goAdmin();
+  });
+
+  // bottom sheet ยกเลิก
+  $("#sheet-cancel").onclick = () => finishSheet(null);
+  $("#backdrop").onclick = () => finishSheet(null);
+
   boot();
 });
