@@ -7,6 +7,9 @@
   functions = "netlify/functions"
   publish = "public"
 
+[build.environment]
+  NODE_VERSION = "20"
+
 [functions]
   # ให้ esbuild รวม dependency (เช่น postgres) เข้าไปในบันเดิลของแต่ละฟังก์ชัน
   node_bundler = "esbuild"
