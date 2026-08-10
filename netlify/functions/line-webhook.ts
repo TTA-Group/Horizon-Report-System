@@ -29,9 +29,14 @@ export default async (req: Request): Promise<Response> =>
   run(async () => {
     methodGuard(req, "POST");
     const raw = await req.text();
-    if (!verifyLineSignature(raw, req.headers.get("x-line-signature"))) {
+    const signature = req.headers.get("x-line-signature");
+    if (!verifyLineSignature(raw, signature)) {
       throw new HttpError(401, "invalid signature");
     }
+
+    // ใช้ OA ร่วมกับระบบอื่น (เช่น ระบบจองนวด): ส่งต่อ event ต้นฉบับให้ระบบเดิมก่อนเสมอ
+    // ระบบเดิมจะได้รับ webhook เหมือนที่ LINE เคยส่งให้ทุกอย่าง จึงทำงานต่อได้ตามปกติ
+    await forwardToCoexisting(raw, signature);
 
     let payload: { events?: LineEvent[] };
     try {
@@ -51,6 +56,27 @@ export default async (req: Request): Promise<Response> =>
     // ต้องตอบ 200 เสมอเพื่อไม่ให้ LINE ส่งซ้ำ
     return json({ ok: true });
   });
+
+/**
+ * ส่งต่อ webhook ต้นฉบับให้ระบบอื่นที่ใช้ OA เดียวกัน (ตั้งค่า MASSAGE_WEBHOOK_URL)
+ * ส่ง body และ X-Line-Signature เดิมไปตรง ๆ ระบบเดิมจึงตรวจ signature ผ่านและทำงานต่อได้
+ */
+async function forwardToCoexisting(rawBody: string, signature: string | null): Promise<void> {
+  const url = process.env.MASSAGE_WEBHOOK_URL;
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(signature ? { "x-line-signature": signature } : {}),
+      },
+      body: rawBody,
+    });
+  } catch (e) {
+    console.error("[forward coexisting]", e);
+  }
+}
 
 async function handleJoin(ev: LineEvent): Promise<void> {
   const groupId = ev.source?.groupId ?? ev.source?.roomId;
