@@ -60,10 +60,16 @@ export default async (req: Request): Promise<Response> =>
 /**
  * ส่งต่อ webhook ต้นฉบับให้ระบบอื่นที่ใช้ OA เดียวกัน (ตั้งค่า MASSAGE_WEBHOOK_URL)
  * ส่ง body และ X-Line-Signature เดิมไปตรง ๆ ระบบเดิมจึงตรวจ signature ผ่านและทำงานต่อได้
+ *
+ * จำกัดเวลารอไว้ไม่เกิน 4 วินาที — ถ้าระบบปลายทางตอบช้า (เช่น Power Automate ที่มักตอบช้า
+ * กว่าระบบทั่วไป) จะไม่ทำให้ระบบเราตอบ LINE ช้าตามไปด้วยจนหมดเวลา (LINE รอ response ของเรา
+ * อยู่ ไม่ได้รอของระบบปลายทาง) ปล่อยให้คำขอที่ส่งไปแล้วทำงานต่อเองในเบื้องหลัง
  */
 async function forwardToCoexisting(rawBody: string, signature: string | null): Promise<void> {
   const url = process.env.MASSAGE_WEBHOOK_URL;
   if (!url) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
   try {
     await fetch(url, {
       method: "POST",
@@ -72,9 +78,12 @@ async function forwardToCoexisting(rawBody: string, signature: string | null): P
         ...(signature ? { "x-line-signature": signature } : {}),
       },
       body: rawBody,
+      signal: controller.signal,
     });
   } catch (e) {
     console.error("[forward coexisting]", e);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
