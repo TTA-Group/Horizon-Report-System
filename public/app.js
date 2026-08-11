@@ -184,16 +184,16 @@ async function enterApp() {
   goForm();
 }
 
-// ไอคอนของแต่ละหมวด — ทรงเรขาคณิตเรียบง่าย อ่านง่ายแม้ขนาดเล็ก (แทนชุดจาก mockup เดิม)
+// ไอคอนของแต่ละหมวด (ตามที่ระบุ: จอคอม / หลอดไฟ / ไม้กวาด / เครื่องหมายข้อมูล)
 const CATEGORY_ICONS = {
-  // หูฟังศูนย์ช่วยเหลือ
-  IT: '<svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="14" width="5" height="7" rx="2.5"/><rect x="17" y="14" width="5" height="7" rx="2.5"/></svg>',
-  // เฟือง (ระบบ/งานช่าง)
-  FAC: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg>',
-  // ประกายทำความสะอาด
-  CLN: '<svg viewBox="0 0 24 24"><path d="M12 3c.6 3 2.4 4.8 5.4 5.4-3 .6-4.8 2.4-5.4 5.4-.6-3-2.4-4.8-5.4-5.4C9.6 7.8 11.4 6 12 3Z"/><path d="M19 14c.3 1.6 1.2 2.5 2.8 2.8-1.6.3-2.5 1.2-2.8 2.8-.3-1.6-1.2-2.5-2.8-2.8 1.6-.3 2.5-1.2 2.8-2.8Z"/></svg>',
-  // ชั้นซ้อน (เรื่องอื่น ๆ)
-  GEN: '<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>',
+  // จอคอมพิวเตอร์
+  IT: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  // หลอดไฟ
+  FAC: '<svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.5.4.8 1 .8 1.6V16h5.4v-.5c0-.6.3-1.2.8-1.6A6 6 0 0 0 12 3Z"/></svg>',
+  // ไม้กวาด
+  CLN: '<svg viewBox="0 0 24 24"><path d="M19 3 11 11"/><path d="M11 11 5 20h10l.8-4.8a3 3 0 0 0-1-2.8L11 11Z"/><path d="M8 20l1-3M11 20l.5-3M14 20l-.5-3"/></svg>',
+  // เครื่องหมายข้อมูล (i)
+  GEN: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>',
 };
 const CATEGORY_CLASS = { IT: "c-it", FAC: "c-fac", CLN: "c-cln", GEN: "c-gen" };
 
@@ -468,15 +468,20 @@ async function goAdmin() {
       list.innerHTML = '<div class="empty">ไม่พบผู้ใช้งาน</div>';
       return;
     }
-    // แยกกลุ่ม "ใช้งานปกติ" กับ "ระงับสิทธิ์" ไม่ให้ปนกัน (แสดงพร้อมกันเฉพาะมุมมอง "ทั้งหมด")
+    // แยกกลุ่ม "พนักงานปัจจุบัน" กับ "ระงับสิทธิ์" ให้ชัดเจน ไม่ปนกัน (แต่ละการ์ดไม่มี pill ซ้ำซ้อนแล้ว)
     const active = r.employees.filter((e) => e.status !== "suspended");
     const suspended = r.employees.filter((e) => e.status === "suspended");
     const parts = [];
-    if (adminStatus !== "suspended") parts.push(`<div id="admin-active">${active.map(renderEmployee).join("")}</div>`);
+    if (adminStatus !== "suspended") {
+      parts.push(`<div class="section">พนักงานปัจจุบัน</div>`);
+      parts.push(`<div id="admin-active">${active.length ? active.map(renderEmployee).join("") : '<div class="empty">ไม่มีรายการ</div>'}</div>`);
+    }
     if (adminStatus === "") {
       parts.push(
         `<div class="section" id="admin-suspended-title" style="margin-top:16px${suspended.length ? "" : ";display:none"}">ระงับสิทธิ์</div>`,
       );
+    } else if (adminStatus === "suspended") {
+      parts.push(`<div class="section">ระงับสิทธิ์</div>`);
     }
     if (adminStatus !== "active") parts.push(`<div id="admin-suspended">${suspended.map(renderEmployee).join("")}</div>`);
     list.innerHTML = parts.join("");
@@ -487,17 +492,10 @@ async function goAdmin() {
 
 // ย้ายการ์ดไปกลุ่มที่ตรงสถานะใหม่ทันทีหลังกดระงับ/คืนสิทธิ์ ไม่ต้องรอโหลดรายการใหม่ทั้งหน้า
 function moveEmployeeCard(card, toSuspended) {
-  const pill = card.querySelector(".pill");
   const actions = card.querySelector(".actions");
-  if (toSuspended) {
-    pill.className = "pill p-suspend";
-    pill.textContent = "ระงับสิทธิ์";
-    actions.innerHTML = '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>';
-  } else {
-    pill.className = "pill p-done";
-    pill.textContent = "ใช้งานปกติ";
-    actions.innerHTML = '<button data-act="suspend">ระงับสิทธิ์</button>';
-  }
+  actions.innerHTML = toSuspended
+    ? '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>'
+    : '<button data-act="suspend">ระงับสิทธิ์</button>';
 
   if (!adminStatus) {
     // มุมมอง "ทั้งหมด" — ย้ายการ์ดไปกลุ่มที่ตรงสถานะใหม่
@@ -523,7 +521,6 @@ function renderEmployee(e) {
         <div class="ttl">${esc(e.full_name)}</div>
         <div class="meta">${esc(e.department_name || "-")}${e.floor ? " · " + esc(e.floor) : ""} · แจ้งเรื่องสะสม ${e.reported_count} รายการ${suspended && e.suspend_reason ? "<br>เหตุผล: " + esc(e.suspend_reason) : ""}</div>
       </div>
-      <span class="pill ${suspended ? "p-suspend" : "p-done"}">${suspended ? "ระงับสิทธิ์" : "ใช้งานปกติ"}</span>
     </div>
     <div class="actions">${btn}</div>
   </div>`;
