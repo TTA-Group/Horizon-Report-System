@@ -5,7 +5,7 @@
 //  - self: ไม่พบรหัส / ไม่ได้ระบุ -> สร้างพนักงานใหม่ source='self' แล้วผูกทันที (ไม่ต้องรออนุมัติ)
 
 import type { Config } from "@netlify/functions";
-import { getSession } from "./_lib/auth";
+import { getSession, invalidateSessionByLineUserId } from "./_lib/auth";
 import { CHANNEL_KEY } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
@@ -70,6 +70,7 @@ export default async (req: Request): Promise<Response> =>
         return id;
       })) as string;
 
+      invalidateSessionByLineUserId(s.lineUserId);
       return json({ ok: true, employee_id: employeeId });
     } catch (e) {
       // จับ unique violation (เช่น line_user_id ถูกผูกไว้แล้ว หรือ employee_code ซ้ำ)

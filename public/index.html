@@ -14,30 +14,26 @@
   --ink:#101418;--slate:#606C7A;--line:#DDE3E9;--surface:#FFFFFF;--canvas:#F5F7F9;
   --green:#06C755;--green-deep:#04A045;--amber:#E39B0C;--alert:#E04A2F;--blue:#2C6BE0;--violet:#6B4FD8;--r:14px;
   --blue-soft:#E4ECFC;--amber-soft:#FBF0DA;--green-soft:#E1F8EA;--violet-soft:#EAE5FA;
-  /* สีแบรนด์บริษัท (เขียวมะนาว ตามโทนของ Rich Menu เดิม) — ใช้กับ header/ปุ่มหลัก แยกจาก --green
-     ที่ยังใช้เป็นสีของหมวด "งานแม่บ้าน" และสถานะ "เสร็จแล้ว" อยู่ */
-  --brand:#7ED321;--brand-deep:#569110;--brand-soft:#EEFAE0;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:'Anuphan',system-ui,sans-serif;background:var(--canvas);color:var(--ink);min-height:100vh}
 .app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--canvas);display:flex;flex-direction:column;position:relative}
 
 /* appbar */
-.appbar{display:none;align-items:center;gap:10px;padding:12px 16px;background:var(--brand);
-  border-bottom:1px solid var(--brand-deep);position:sticky;top:0;z-index:5}
-.av{width:38px;height:38px;border-radius:50%;background:#fff;
-  color:var(--brand-deep);display:grid;place-items:center;font-weight:700;font-size:15px;flex:0 0 auto}
-.appbar .n{font-size:14px;font-weight:600;line-height:1.3;color:#fff}
-.appbar .d{font-size:11px;color:rgba(255,255,255,.82)}
+.appbar{display:none;align-items:center;gap:10px;padding:12px 16px;background:var(--surface);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.av{width:38px;height:38px;border-radius:50%;background:linear-gradient(140deg,#06C755,#0B8F5A);
+  color:#fff;display:grid;place-items:center;font-weight:600;font-size:15px;flex:0 0 auto}
+.appbar .n{font-size:14px;font-weight:600;line-height:1.3}
+.appbar .d{font-size:11px;color:var(--slate)}
 
 /* screens */
 .screen{display:none;flex:1;padding:18px 16px 90px}
 .screen.on{display:block}
 .pad{padding:0}
 
-.welcome{background:linear-gradient(135deg,var(--brand),var(--brand-deep));border-radius:18px;padding:22px 20px}
-.welcome .wave{font-size:20px;font-weight:700;letter-spacing:-.01em;margin-bottom:6px;color:#fff}
-.welcome p{font-size:13px;color:rgba(255,255,255,.9);line-height:1.65}
+.welcome .wave{font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}
+.welcome p{font-size:13px;color:var(--slate);line-height:1.65}
 .tip{font-size:11.5px;color:var(--slate);line-height:1.6;margin-top:12px}
 .tip b{font-family:'IBM Plex Mono',monospace;color:var(--ink)}
 
@@ -65,15 +61,23 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .cat.c-fac .ic{background:var(--amber-soft)} .cat.c-fac svg{stroke:var(--amber)}
 .cat.c-cln .ic{background:var(--green-soft)} .cat.c-cln svg{stroke:var(--green)}
 .cat.c-gen .ic{background:var(--violet-soft)} .cat.c-gen svg{stroke:var(--violet)}
-.cat[aria-pressed="true"]{border-color:var(--ink);background:var(--ink)}
-.cat[aria-pressed="true"] .nm{color:#fff}
-.cat[aria-pressed="true"] .ic{background:rgba(255,255,255,.16)}
-.cat[aria-pressed="true"] svg{stroke:#fff}
+/* เลือกแล้ว: fill จางเบา ๆ ตามสีของหมวดนั้น (ไม่ใช้พื้นดำ) พร้อมไอคอนตัดสีเข้มขึ้นให้เด่น */
+.cat.c-it[aria-pressed="true"]{background:var(--blue-soft);border-color:var(--blue)}
+.cat.c-it[aria-pressed="true"] .ic{background:var(--blue)} .cat.c-it[aria-pressed="true"] svg{stroke:#fff}
+.cat.c-fac[aria-pressed="true"]{background:var(--amber-soft);border-color:var(--amber)}
+.cat.c-fac[aria-pressed="true"] .ic{background:var(--amber)} .cat.c-fac[aria-pressed="true"] svg{stroke:#fff}
+.cat.c-cln[aria-pressed="true"]{background:var(--green-soft);border-color:var(--green)}
+.cat.c-cln[aria-pressed="true"] .ic{background:var(--green)} .cat.c-cln[aria-pressed="true"] svg{stroke:#fff}
+.cat.c-gen[aria-pressed="true"]{background:var(--violet-soft);border-color:var(--violet)}
+.cat.c-gen[aria-pressed="true"] .ic{background:var(--violet)} .cat.c-gen[aria-pressed="true"] svg{stroke:#fff}
 
 .seg{display:flex;gap:6px}
 .seg button{flex:1;font-family:inherit;font-size:12px;font-weight:600;padding:10px 4px;border-radius:11px;
   border:1.5px solid var(--line);background:var(--surface);color:var(--slate);cursor:pointer;transition:.15s}
-.seg button[aria-pressed="true"]{color:#fff;background:var(--amber);border-color:var(--amber)}
+/* สีเข้มขึ้นตามระดับความเร่งด่วน: ปกติ = เทา, เร่งด่วน = เหลือง, เร่งด่วนมาก = แดง */
+.seg button[data-u="normal"][aria-pressed="true"]{color:#fff;background:#8A94A0;border-color:#8A94A0}
+.seg button[data-u="urgent"][aria-pressed="true"]{color:#fff;background:var(--amber);border-color:var(--amber)}
+.seg button[data-u="critical"][aria-pressed="true"]{color:#fff;background:var(--alert);border-color:var(--alert)}
 .seg small{display:block;font-weight:400;font-size:9.5px;opacity:.8;margin-top:1px}
 
 .drop{border:1.5px dashed #C3CDD6;border-radius:var(--r);padding:16px;text-align:center;background:var(--surface);
@@ -83,8 +87,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .thumb{width:56px;height:56px;border-radius:10px;background:linear-gradient(150deg,#C9D5DF,#94A5B4);
   display:grid;place-items:center;color:#fff;font-size:20px}
 
-.send{width:100%;border:0;background:var(--brand);color:#fff;font-family:inherit;font-size:15px;font-weight:600;
-  padding:14px;border-radius:14px;cursor:pointer;box-shadow:0 6px 16px -6px rgba(86,145,16,.6);transition:.15s}
+.send{width:100%;border:0;background:var(--green);color:#fff;font-family:inherit;font-size:15px;font-weight:600;
+  padding:14px;border-radius:14px;cursor:pointer;box-shadow:0 6px 16px -6px rgba(6,199,85,.7);transition:.15s}
 .send:disabled{background:#C7D0D8;box-shadow:none;cursor:not-allowed}
 .send:active:not(:disabled){transform:translateY(1px)}
 .ghost{width:100%;border:0;background:transparent;font-family:inherit;font-size:13px;font-weight:500;
@@ -129,7 +133,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   background:var(--surface);border-top:1px solid var(--line);z-index:5}
 .tabbar button{flex:1;border:0;background:transparent;font-family:inherit;font-size:12px;font-weight:600;
   color:var(--slate);padding:12px 0 16px;cursor:pointer}
-.tabbar button[aria-current="true"]{color:var(--brand-deep)}
+.tabbar button[aria-current="true"]{color:var(--green-deep)}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%) translateY(14px);bottom:78px;width:calc(100% - 32px);max-width:448px;
   background:var(--ink);color:#fff;border-radius:14px;padding:13px 15px;font-size:12.5px;line-height:1.5;
@@ -162,7 +166,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .sheet .cancel{width:100%;border:0;background:transparent;color:var(--slate);font-family:inherit;font-size:13px;padding:10px;cursor:pointer}
 
 /* detail */
-.backbtn{border:0;background:transparent;font-family:inherit;font-size:22px;color:#fff;cursor:pointer;padding:0 6px 0 0;line-height:1}
+.backbtn{border:0;background:transparent;font-family:inherit;font-size:22px;color:var(--ink);cursor:pointer;padding:0 6px 0 0;line-height:1}
 .dkv{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13px}
 .dkv:last-child{border-bottom:0}
 .dkv b{flex:0 0 92px;font-weight:500;color:var(--slate);font-size:12px}

@@ -2,7 +2,7 @@
 // body: { action: "suspend" | "restore", reason?: string }
 
 import type { Config } from "@netlify/functions";
-import { getSession, requireAdmin } from "./_lib/auth";
+import { getSession, invalidateSessionByEmployeeId, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
@@ -43,6 +43,7 @@ export default async (req: Request): Promise<Response> =>
         WHERE id = ${id} RETURNING id
       `;
       if (upd.length === 0) throw new HttpError(404, "ไม่พบพนักงานนี้");
+      invalidateSessionByEmployeeId(id);
       return json({ ok: true, id, status: "suspended" });
     }
 
@@ -66,6 +67,7 @@ export default async (req: Request): Promise<Response> =>
       });
     }
 
+    invalidateSessionByEmployeeId(id);
     return json({ ok: true, id, status: "active" });
   });
 
