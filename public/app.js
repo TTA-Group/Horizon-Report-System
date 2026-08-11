@@ -14,7 +14,6 @@ let pendingFiles = []; // ไฟล์แนบที่บีบอัดแล
 let queueDept = null; // ฝ่ายที่กำลังดูในหน้าคิวงาน (รหัสฝ่าย)
 let queueFilter = ""; // ตัวกรองคิวงาน: "" | "pending" | "me"
 let adminQ = ""; // คำค้นหน้าผู้ดูแล
-let adminStatus = ""; // ตัวกรองสถานะหน้าผู้ดูแล
 let detailReturnTab = "mine"; // แท็บที่จะกลับไปหลังปิดหน้ารายละเอียด
 let sheetPick = null; // ตัวรับค่าเมื่อเลือกจาก bottom sheet
 let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น ไม่ต้องรอ session ก่อน
@@ -461,30 +460,21 @@ async function goAdmin() {
   list.innerHTML = '<div class="empty">กำลังโหลด…</div>';
   const params = new URLSearchParams();
   if (adminQ) params.set("q", adminQ);
-  if (adminStatus) params.set("status", adminStatus);
   try {
     const r = await api("/api/admin/employees?" + params.toString());
     if (!r.employees.length) {
       list.innerHTML = '<div class="empty">ไม่พบผู้ใช้งาน</div>';
       return;
     }
-    // แยกกลุ่ม "พนักงานปัจจุบัน" กับ "ระงับสิทธิ์" ให้ชัดเจน ไม่ปนกัน (แต่ละการ์ดไม่มี pill ซ้ำซ้อนแล้ว)
+    // แยกกลุ่ม "พนักงานปัจจุบัน" กับ "ระงับสิทธิ์" ให้ชัดเจนเสมอ ไม่มีตัวกรองซ้ำซ้อนด้านบนแล้ว
     const active = r.employees.filter((e) => e.status !== "suspended");
     const suspended = r.employees.filter((e) => e.status === "suspended");
-    const parts = [];
-    if (adminStatus !== "suspended") {
-      parts.push(`<div class="section">พนักงานปัจจุบัน</div>`);
-      parts.push(`<div id="admin-active">${active.length ? active.map(renderEmployee).join("") : '<div class="empty">ไม่มีรายการ</div>'}</div>`);
-    }
-    if (adminStatus === "") {
-      parts.push(
-        `<div class="section" id="admin-suspended-title" style="margin-top:16px${suspended.length ? "" : ";display:none"}">ระงับสิทธิ์</div>`,
-      );
-    } else if (adminStatus === "suspended") {
-      parts.push(`<div class="section">ระงับสิทธิ์</div>`);
-    }
-    if (adminStatus !== "active") parts.push(`<div id="admin-suspended">${suspended.map(renderEmployee).join("")}</div>`);
-    list.innerHTML = parts.join("");
+    list.innerHTML = `
+      <div class="section">พนักงานปัจจุบัน</div>
+      <div id="admin-active">${active.length ? active.map(renderEmployee).join("") : '<div class="empty">ไม่มีรายการ</div>'}</div>
+      <div class="section" id="admin-suspended-title" style="margin-top:16px${suspended.length ? "" : ";display:none"}">ระงับสิทธิ์</div>
+      <div id="admin-suspended">${suspended.map(renderEmployee).join("")}</div>
+    `;
   } catch (e) {
     list.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
@@ -497,16 +487,10 @@ function moveEmployeeCard(card, toSuspended) {
     ? '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>'
     : '<button data-act="suspend">ระงับสิทธิ์</button>';
 
-  if (!adminStatus) {
-    // มุมมอง "ทั้งหมด" — ย้ายการ์ดไปกลุ่มที่ตรงสถานะใหม่
-    const target = $(toSuspended ? "#admin-suspended" : "#admin-active");
-    if (target) target.prepend(card);
-    const title = $("#admin-suspended-title");
-    if (title) title.style.display = $("#admin-suspended")?.children.length ? "" : "none";
-  } else if ((adminStatus === "active" && toSuspended) || (adminStatus === "suspended" && !toSuspended)) {
-    // กำลังกรองเฉพาะสถานะเดียวอยู่ แล้วรายการนี้ไม่ตรงสถานะใหม่ -> ออกจากรายการนี้
-    card.remove();
-  }
+  const target = $(toSuspended ? "#admin-suspended" : "#admin-active");
+  if (target) target.prepend(card);
+  const title = $("#admin-suspended-title");
+  if (title) title.style.display = $("#admin-suspended")?.children.length ? "" : "none";
 }
 
 function renderEmployee(e) {
@@ -727,14 +711,6 @@ window.addEventListener("DOMContentLoaded", () => {
       goAdmin();
     }, 350),
   );
-  $("#admin-filters").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-s]");
-    if (!b) return;
-    adminStatus = b.dataset.s;
-    $$("#admin-filters .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    goAdmin();
-  });
-
   // bottom sheet ยกเลิก
   $("#sheet-cancel").onclick = () => finishSheet(null);
   $("#backdrop").onclick = () => finishSheet(null);
