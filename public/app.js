@@ -258,8 +258,10 @@ async function submitTicket() {
   btn.disabled = true;
   btn.textContent = "กำลังส่ง…";
   try {
-    // อัปโหลดไฟล์แนบ (best-effort — ถ้ายังไม่ตั้งค่าที่เก็บไฟล์จะข้ามไป)
+    // อัปโหลดไฟล์แนบ — ถ้าพลาด ยังส่งเรื่องต่อ (ไม่ทิ้งเรื่องที่พิมพ์มาแล้ว) แต่ต้องบอกผู้ใช้ให้รู้
+    // ห้ามเงียบ ไม่งั้นผู้ใช้จะเข้าใจว่าแนบรูปสำเร็จทั้งที่รูปหายไป
     const attachments = [];
+    let uploadError = null;
     for (const f of pendingFiles) {
       try {
         const up = await api("/api/uploads", {
@@ -267,10 +269,11 @@ async function submitTicket() {
           body: { content_type: f.type, content_base64: f.base64, filename: "photo" },
         });
         if (up.url) attachments.push(up.url);
-      } catch {
-        /* ข้ามไฟล์ที่อัปโหลดไม่สำเร็จ */
+      } catch (err) {
+        uploadError = err.message || "อัปโหลดภาพไม่สำเร็จ";
       }
     }
+    const failedCount = pendingFiles.length - attachments.length;
 
     const r = await api("/api/tickets", {
       method: "POST",
@@ -284,7 +287,14 @@ async function submitTicket() {
       },
     });
     resetForm();
-    toast(`ส่งเรื่องเรียบร้อย เลขที่ <b>${r.ticket_no}</b>`);
+    if (failedCount > 0) {
+      toast(
+        `ส่งเรื่องเรียบร้อย เลขที่ <b>${r.ticket_no}</b><br>` +
+          `แต่แนบภาพไม่สำเร็จ ${failedCount} ภาพ${uploadError ? " (" + esc(uploadError) + ")" : ""}`,
+      );
+    } else {
+      toast(`ส่งเรื่องเรียบร้อย เลขที่ <b>${r.ticket_no}</b>`);
+    }
     goMine();
   } catch (e) {
     toast(e.message);
