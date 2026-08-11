@@ -95,8 +95,9 @@ function showRegPart(id) {
 }
 
 async function checkEmp() {
-  const code = $("#empid").value.trim().toUpperCase();
+  const code = $("#empid").value.trim();
   if (!code) return toast("กรุณากรอกรหัสพนักงาน");
+  if (!/^\d{5}$/.test(code)) return toast("รหัสพนักงานต้องเป็นตัวเลข 5 หลัก");
   try {
     const r = await api("/api/auth/verify-employee", { method: "POST", body: { employee_code: code } });
     if (!r.found) {
@@ -177,6 +178,14 @@ async function enterApp() {
   goForm();
 }
 
+// ไอคอนของแต่ละหมวด (svg path เดียวกับต้นแบบ mockup) — ธีมสีคุมด้วย CSS (.cat .ic)
+const CATEGORY_ICONS = {
+  IT: '<svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+  FAC: '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg>',
+  CLN: '<svg viewBox="0 0 24 24"><path d="M3 21h6l11-11a2.8 2.8 0 0 0-4-4L5 17z"/><path d="M14 4l6 6M6 15l3 3"/></svg>',
+  GEN: '<svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg>',
+};
+
 function renderMasters() {
   // หมวด
   const cats = $("#cats");
@@ -187,7 +196,7 @@ function renderMasters() {
     b.type = "button";
     b.setAttribute("aria-pressed", "false");
     b.dataset.code = c.code;
-    b.innerHTML = `<span class="nm">${c.label}</span>`;
+    b.innerHTML = `<span class="ic">${CATEGORY_ICONS[c.code] || ""}</span><span class="nm">${c.label}</span>`;
     b.onclick = () => {
       $$("#cats .cat").forEach((x) => x.setAttribute("aria-pressed", "false"));
       b.setAttribute("aria-pressed", "true");

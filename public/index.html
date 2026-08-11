@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>แจ้งเรื่องในออฟฟิศ · Horizon Report System</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -50,10 +50,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .cat{border:1.5px solid var(--line);background:var(--surface);border-radius:var(--r);padding:13px 12px;text-align:left;
-  font-family:inherit;cursor:pointer;transition:.15s;min-height:58px;display:flex;align-items:center}
+  font-family:inherit;cursor:pointer;transition:.15s;min-height:58px;display:flex;align-items:center;gap:9px}
+.cat .ic{color:var(--ink);display:flex;align-items:center;flex:0 0 auto}
+.cat .ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .cat .nm{font-size:12.5px;font-weight:600;color:var(--ink)}
 .cat[aria-pressed="true"]{border-color:var(--ink);background:var(--ink)}
 .cat[aria-pressed="true"] .nm{color:#fff}
+.cat[aria-pressed="true"] .ic{color:#fff}
 
 .seg{display:flex;gap:6px}
 .seg button{flex:1;font-family:inherit;font-size:12px;font-weight:600;padding:10px 4px;border-radius:11px;
@@ -192,7 +195,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
         <p>กรุณากรอกรหัสพนักงานเพื่อยืนยันตัวตน กรอกเพียงครั้งเดียว ครั้งต่อไปเข้าใช้งานได้ทันที</p></div>
       <div class="block" style="margin-top:20px">
         <label class="q">รหัสพนักงาน <span>*</span></label>
-        <input type="text" id="empid" placeholder="เช่น A1042" style="text-transform:uppercase;font-family:'IBM Plex Mono',monospace;letter-spacing:.05em" />
+        <input type="text" id="empid" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="เช่น 10234" style="font-family:'IBM Plex Mono',monospace;letter-spacing:.05em" />
       </div>
       <button class="send" id="btn-check">ยืนยันตัวตน</button>
     </div>
@@ -214,7 +217,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <div id="reg-manual" style="display:none">
       <div class="foundhead alert"><div>⚠️</div><div><b>ไม่พบรหัสพนักงานนี้</b><span>กรุณาระบุข้อมูลเพื่อยืนยันตัวตน</span></div></div>
       <p class="tip" style="margin:10px 0 16px">ท่านสามารถเริ่มแจ้งเรื่องได้ทันทีหลังกรอกข้อมูล</p>
-      <div class="block"><label class="q">รหัสพนักงาน</label><input type="text" id="m-id" style="font-family:'IBM Plex Mono',monospace" /></div>
+      <div class="block"><label class="q">รหัสพนักงาน</label><input type="text" id="m-id" inputmode="numeric" maxlength="5" style="font-family:'IBM Plex Mono',monospace" /></div>
       <div class="block"><label class="q">ชื่อ–สกุล <span>*</span></label><input type="text" id="m-name" placeholder="ระบุชื่อและนามสกุลจริง" /></div>
       <div class="block"><label class="q">ฝ่าย/แผนก <span>*</span></label>
         <select id="m-dept"><option value="">เลือกฝ่าย/แผนก</option>

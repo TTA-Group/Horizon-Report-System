@@ -92,46 +92,53 @@ export default async (req: Request): Promise<Response> =>
     })) as { id: string; ticket_no: string; status: string };
 
     // แจ้งเตือนเข้ากลุ่มฝ่าย + กรณี critical แจ้งสมาชิกรายบุคคลเพิ่ม (spec หัวข้อ 5.2)
-    const flex = buildTicketFlex({
-      ticketId: created.id,
-      ticketNo: created.ticket_no,
-      categoryLabel: category.label,
-      reporterName: s.employee.full_name,
-      reporterDept: s.employee.department_name,
-      floor,
-      locationNote,
-      detail,
-      urgency: urgency as UrgencyCode,
-      createdAtLabel: thaiDateTime(),
-    });
+    // ticket ถูกบันทึกสำเร็จแล้วที่บรรทัดบน ๆ (ผ่าน sql.begin) — ครอบการแจ้งเตือนด้วย try/catch
+    // เพื่อไม่ให้ปัญหาการส่งข้อความ LINE (เช่น token ผิด, LINE API ล่ม) ทำให้ผู้ใช้เห็นว่าแจ้งเรื่องไม่สำเร็จ
+    // ทั้งที่จริงบันทึกเข้าระบบแล้ว
+    try {
+      const flex = buildTicketFlex({
+        ticketId: created.id,
+        ticketNo: created.ticket_no,
+        categoryLabel: category.label,
+        reporterName: s.employee.full_name,
+        reporterDept: s.employee.department_name,
+        floor,
+        locationNote,
+        detail,
+        urgency: urgency as UrgencyCode,
+        createdAtLabel: thaiDateTime(),
+      });
 
-    if (lineGroupId) {
-      await pushTo(lineGroupId, [flex], { ticketId: created.id, channel: "group" });
-    }
-    if (urgency === "critical") {
-      const members = await sql<{ line_user_id: string }[]>`
-        SELECT la.line_user_id
-        FROM department_members dm
-        JOIN line_accounts la ON la.employee_id = dm.employee_id AND la.channel_key = ${CHANNEL_KEY}
-        WHERE dm.department_id = ${departmentId}
-      `;
-      await multicastTo(
-        members.map((m) => m.line_user_id),
-        [flex],
-        { ticketId: created.id },
+      if (lineGroupId) {
+        await pushTo(lineGroupId, [flex], { ticketId: created.id, channel: "group" });
+      }
+      if (urgency === "critical") {
+        const members = await sql<{ line_user_id: string }[]>`
+          SELECT la.line_user_id
+          FROM department_members dm
+          JOIN line_accounts la ON la.employee_id = dm.employee_id AND la.channel_key = ${CHANNEL_KEY}
+          WHERE dm.department_id = ${departmentId}
+        `;
+        await multicastTo(
+          members.map((m) => m.line_user_id),
+          [flex],
+          { ticketId: created.id },
+        );
+      }
+
+      // แจ้งกลับผู้แจ้งพร้อมเลขที่เรื่อง
+      await pushTo(
+        s.lineUserId,
+        [
+          textMessage(
+            `รับเรื่องของคุณแล้ว เลขที่ ${created.ticket_no}\nระบบส่งเรื่องถึง ${category.label} เรียบร้อย ติดตามสถานะได้ในเมนู “เรื่องที่แจ้ง”`,
+          ),
+        ],
+        { ticketId: created.id, channel: "user" },
       );
+    } catch (e) {
+      console.error("[tickets-create] notify failed", e);
     }
-
-    // แจ้งกลับผู้แจ้งพร้อมเลขที่เรื่อง
-    await pushTo(
-      s.lineUserId,
-      [
-        textMessage(
-          `รับเรื่องของคุณแล้ว เลขที่ ${created.ticket_no}\nระบบส่งเรื่องถึง ${category.label} เรียบร้อย ติดตามสถานะได้ในเมนู “เรื่องที่แจ้ง”`,
-        ),
-      ],
-      { ticketId: created.id, channel: "user" },
-    );
 
     return json({ ok: true, id: created.id, ticket_no: created.ticket_no, status: created.status });
   });
