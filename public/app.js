@@ -17,6 +17,7 @@ let adminQ = ""; // คำค้นหน้าผู้ดูแล
 let adminStatus = ""; // ตัวกรองสถานะหน้าผู้ดูแล
 let detailReturnTab = "mine"; // แท็บที่จะกลับไปหลังปิดหน้ารายละเอียด
 let sheetPick = null; // ตัวรับค่าเมื่อเลือกจาก bottom sheet
+let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น ไม่ต้องรอ session ก่อน
 
 /* ---------- helpers ---------- */
 async function api(path, { method = "GET", body } = {}) {
@@ -63,6 +64,10 @@ async function boot() {
       show("s-config");
       return;
     }
+    // ข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น) เป็น endpoint สาธารณะ ไม่ต้องรอ token ก่อน
+    // ยิงคู่ขนานไปพร้อมกับขั้นตอนล็อกอินเลย ลดเวลาที่ผู้ใช้ต้องรอกว่าจะเข้าแอปได้
+    mastersPromise = api("/api/masters").catch(() => null);
+
     await liff.init({ liffId: CFG.liffId });
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -160,7 +165,8 @@ async function enterApp() {
   $("#me-av").textContent = (emp.full_name || "?").trim().charAt(0);
   if (!masters) {
     try {
-      masters = await api("/api/masters");
+      // ใช้ผลจากคำขอที่ยิงคู่ขนานไว้ตอน boot() ถ้ามันพลาดไป (คืน null) ค่อยลองใหม่อีกครั้ง
+      masters = (await mastersPromise) || (await api("/api/masters"));
       renderMasters();
     } catch (e) {
       toast(e.message);
@@ -457,9 +463,46 @@ async function goAdmin() {
       list.innerHTML = '<div class="empty">ไม่พบผู้ใช้งาน</div>';
       return;
     }
-    list.innerHTML = r.employees.map(renderEmployee).join("");
+    // แยกกลุ่ม "ใช้งานปกติ" กับ "ระงับสิทธิ์" ไม่ให้ปนกัน (แสดงพร้อมกันเฉพาะมุมมอง "ทั้งหมด")
+    const active = r.employees.filter((e) => e.status !== "suspended");
+    const suspended = r.employees.filter((e) => e.status === "suspended");
+    const parts = [];
+    if (adminStatus !== "suspended") parts.push(`<div id="admin-active">${active.map(renderEmployee).join("")}</div>`);
+    if (adminStatus === "") {
+      parts.push(
+        `<div class="section" id="admin-suspended-title" style="margin-top:16px${suspended.length ? "" : ";display:none"}">ระงับสิทธิ์</div>`,
+      );
+    }
+    if (adminStatus !== "active") parts.push(`<div id="admin-suspended">${suspended.map(renderEmployee).join("")}</div>`);
+    list.innerHTML = parts.join("");
   } catch (e) {
     list.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+// ย้ายการ์ดไปกลุ่มที่ตรงสถานะใหม่ทันทีหลังกดระงับ/คืนสิทธิ์ ไม่ต้องรอโหลดรายการใหม่ทั้งหน้า
+function moveEmployeeCard(card, toSuspended) {
+  const pill = card.querySelector(".pill");
+  const actions = card.querySelector(".actions");
+  if (toSuspended) {
+    pill.className = "pill p-suspend";
+    pill.textContent = "ระงับสิทธิ์";
+    actions.innerHTML = '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>';
+  } else {
+    pill.className = "pill p-done";
+    pill.textContent = "ใช้งานปกติ";
+    actions.innerHTML = '<button data-act="suspend">ระงับสิทธิ์</button>';
+  }
+
+  if (!adminStatus) {
+    // มุมมอง "ทั้งหมด" — ย้ายการ์ดไปกลุ่มที่ตรงสถานะใหม่
+    const target = $(toSuspended ? "#admin-suspended" : "#admin-active");
+    if (target) target.prepend(card);
+    const title = $("#admin-suspended-title");
+    if (title) title.style.display = $("#admin-suspended")?.children.length ? "" : "none";
+  } else if ((adminStatus === "active" && toSuspended) || (adminStatus === "suspended" && !toSuspended)) {
+    // กำลังกรองเฉพาะสถานะเดียวอยู่ แล้วรายการนี้ไม่ตรงสถานะใหม่ -> ออกจากรายการนี้
+    card.remove();
   }
 }
 
@@ -665,11 +708,12 @@ window.addEventListener("DOMContentLoaded", () => {
         const reason = window.prompt("เหตุผลการระงับสิทธิ์ (ไม่บังคับ)") || "";
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
         toast("ระงับสิทธิ์เรียบร้อย");
+        moveEmployeeCard(card, true);
       } else {
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "restore" } });
         toast("คืนสิทธิ์เรียบร้อย");
+        moveEmployeeCard(card, false);
       }
-      goAdmin();
     } catch (err) {
       toast(err.message);
     }
