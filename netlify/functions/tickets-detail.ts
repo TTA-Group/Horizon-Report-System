@@ -1,22 +1,31 @@
 // GET /api/tickets/:id — รายละเอียดพร้อมไทม์ไลน์และไฟล์แนบ (spec หัวข้อ 6)
+//
+// เป็นจุดเดียวที่ประกาศ route ของ "/api/tickets/<segment>" ทั้งหมด แล้ว dispatch เอง
+// (แทนที่จะให้ tickets-mine.ts / tickets-department.ts ประกาศ path static ของตัวเอง)
+// เพราะ Netlify Functions v2 อาจจับคู่ path แบบ static ("/api/tickets/mine") ปะทะกับ
+// path แบบมีตัวแปร ("/api/tickets/:id") ผิดตัว ทำให้ request ไปหลุดเข้า handler คนละตัว
+// การรวมมาที่จุดเดียวตัดปัญหานี้ทิ้งไปเลย ไม่ต้องพึ่งลำดับความสำคัญของเส้นทางฝั่ง Netlify
 
 import type { Config } from "@netlify/functions";
 import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { CATEGORY_BY_CODE, STATUS_LABELS, type StatusCode } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
+import { handleTicketsDepartment, handleTicketsMine } from "./_lib/ticket-lists";
 
 function ticketIdFromPath(req: Request): string {
   const seg = new URL(req.url).pathname.split("/").filter(Boolean); // ['api','tickets','<id>']
   return seg[2] ?? "";
 }
 
-export default async (req: Request): Promise<Response> =>
-  run(async () => {
+export default async (req: Request): Promise<Response> => {
+  const id = ticketIdFromPath(req);
+  if (id === "mine") return handleTicketsMine(req);
+  if (id === "department") return handleTicketsDepartment(req);
+
+  return run(async () => {
     methodGuard(req, "GET");
-    const id = ticketIdFromPath(req);
-    // กันการชนกับ /api/tickets/mine และ /api/tickets/department
-    if (!id || id === "mine" || id === "department") throw new HttpError(404, "ไม่พบเรื่องนี้");
+    if (!id) throw new HttpError(404, "ไม่พบเรื่องนี้");
 
     const s = await getSession(req);
     requireActive(s);
@@ -101,5 +110,6 @@ export default async (req: Request): Promise<Response> =>
       attachments: [...attachments],
     });
   });
+};
 
 export const config: Config = { path: "/api/tickets/:id" };
