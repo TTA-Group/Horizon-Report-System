@@ -1,6 +1,7 @@
 // ตัวช่วยเชื่อมต่อ LINE: ตรวจ ID token, ตรวจ signature ของ webhook, push/reply/multicast + บันทึก message_logs
 
 import crypto from "node:crypto";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { db } from "./db";
 import { HttpError } from "./http";
 
@@ -13,6 +14,13 @@ export interface LineProfile {
   email?: string;
 }
 
+// ตรวจลายเซ็นของ ID token ด้วยกุญแจสาธารณะของ LINE เอง (JWKS) แทนการเรียก endpoint
+// /oauth2/v2.1/verify ทุกครั้ง — ทุก request ที่ต้องยืนยันตัวตนก่อนหน้านี้ต้องออกไปคุยกับ
+// เซิร์ฟเวอร์ LINE ก่อนเสมอ ทำให้ทุกหน้าในแอปช้าลงเท่ากันหมด (ไม่ใช่แค่ตอนล็อกอินครั้งแรก)
+// วิธีนี้เป็นวิธีที่ LINE แนะนำสำหรับ backend ที่ต้องตรวจ token บ่อย ๆ — กุญแจสาธารณะถูกแคช
+// ไว้ในหน่วยความจำของฟังก์ชัน (รีเฟรชเป็นครั้งคราวเท่านั้น) จึงไม่ต้องออกเน็ตซ้ำทุกครั้ง
+const JWKS = createRemoteJWKSet(new URL(`${LINE_API}/oauth2/v2.1/certs`));
+
 /**
  * ตรวจสอบ LINE ID token ฝั่ง server แล้วคืน payload ที่เชื่อถือได้
  * ห้ามเชื่อ userId ที่ client ส่งมาตรง ๆ (spec หัวข้อ 5.1 / 10)
@@ -21,21 +29,23 @@ export async function verifyIdToken(idToken: string): Promise<LineProfile> {
   const clientId = process.env.LINE_LOGIN_CHANNEL_ID;
   if (!clientId) throw new Error("LINE_LOGIN_CHANNEL_ID is not set");
 
-  const res = await fetch(`${LINE_API}/oauth2/v2.1/verify`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ id_token: idToken, client_id: clientId }),
-  });
-  if (!res.ok) throw new HttpError(401, "invalid LINE id token");
+  let payload;
+  try {
+    ({ payload } = await jwtVerify(idToken, JWKS, {
+      issuer: "https://access.line.me",
+      audience: clientId,
+    }));
+  } catch {
+    throw new HttpError(401, "invalid LINE id token");
+  }
 
-  const p = (await res.json()) as {
-    sub: string;
-    name?: string;
-    picture?: string;
-    email?: string;
+  if (typeof payload.sub !== "string") throw new HttpError(401, "invalid LINE id token payload");
+  return {
+    sub: payload.sub,
+    name: typeof payload.name === "string" ? payload.name : undefined,
+    picture: typeof payload.picture === "string" ? payload.picture : undefined,
+    email: typeof payload.email === "string" ? payload.email : undefined,
   };
-  if (!p.sub) throw new HttpError(401, "invalid LINE id token payload");
-  return { sub: p.sub, name: p.name, picture: p.picture, email: p.email };
 }
 
 /** ตรวจ signature ของ webhook ด้วย X-Line-Signature (spec หัวข้อ 7) */

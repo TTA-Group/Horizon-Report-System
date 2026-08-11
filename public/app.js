@@ -184,13 +184,18 @@ async function enterApp() {
   goForm();
 }
 
-// ไอคอนของแต่ละหมวด (svg path เดียวกับต้นแบบ mockup) — ธีมสีคุมด้วย CSS (.cat .ic)
+// ไอคอนของแต่ละหมวด — ทรงเรขาคณิตเรียบง่าย อ่านง่ายแม้ขนาดเล็ก (แทนชุดจาก mockup เดิม)
 const CATEGORY_ICONS = {
-  IT: '<svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
-  FAC: '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg>',
-  CLN: '<svg viewBox="0 0 24 24"><path d="M3 21h6l11-11a2.8 2.8 0 0 0-4-4L5 17z"/><path d="M14 4l6 6M6 15l3 3"/></svg>',
-  GEN: '<svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg>',
+  // หูฟังศูนย์ช่วยเหลือ
+  IT: '<svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="14" width="5" height="7" rx="2.5"/><rect x="17" y="14" width="5" height="7" rx="2.5"/></svg>',
+  // เฟือง (ระบบ/งานช่าง)
+  FAC: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg>',
+  // ประกายทำความสะอาด
+  CLN: '<svg viewBox="0 0 24 24"><path d="M12 3c.6 3 2.4 4.8 5.4 5.4-3 .6-4.8 2.4-5.4 5.4-.6-3-2.4-4.8-5.4-5.4C9.6 7.8 11.4 6 12 3Z"/><path d="M19 14c.3 1.6 1.2 2.5 2.8 2.8-1.6.3-2.5 1.2-2.8 2.8-.3-1.6-1.2-2.5-2.8-2.8 1.6-.3 2.5-1.2 2.8-2.8Z"/></svg>',
+  // ชั้นซ้อน (เรื่องอื่น ๆ)
+  GEN: '<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>',
 };
+const CATEGORY_CLASS = { IT: "c-it", FAC: "c-fac", CLN: "c-cln", GEN: "c-gen" };
 
 function renderMasters() {
   // หมวด
@@ -198,7 +203,7 @@ function renderMasters() {
   cats.innerHTML = "";
   masters.categories.forEach((c) => {
     const b = document.createElement("button");
-    b.className = "cat";
+    b.className = "cat " + (CATEGORY_CLASS[c.code] || "");
     b.type = "button";
     b.setAttribute("aria-pressed", "false");
     b.dataset.code = c.code;
