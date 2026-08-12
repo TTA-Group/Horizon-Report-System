@@ -40,7 +40,12 @@ export default async (req: Request): Promise<Response> =>
     if (rows.length === 0) throw new HttpError(404, "ไม่พบเรื่องนี้");
     const t = rows[0];
 
-    if (!isMemberOf(s, t.department_id)) throw new HttpError(403, "ไม่มีสิทธิ์ดำเนินการเรื่องของฝ่ายนี้");
+    // เจ้าหน้าที่ของฝ่ายทำได้ทุกอย่าง ส่วนผู้แจ้งเองยกเลิกเรื่องของตัวเองได้ เฉพาะตอนที่ยังไม่มีคนรับ
+    // (แจ้งผิด/แจ้งซ้ำแล้วอยากถอน — ถ้ามีคนรับไปแล้วต้องให้เจ้าหน้าที่จัดการ)
+    const isOwnerCancelling = t.reporter_id === s.employee.id && to === "cancelled" && t.status === "pending";
+    if (!isMemberOf(s, t.department_id) && !isOwnerCancelling) {
+      throw new HttpError(403, "ไม่มีสิทธิ์ดำเนินการเรื่องนี้");
+    }
 
     const from = t.status;
     assertTransition(from, to);
@@ -71,18 +76,21 @@ export default async (req: Request): Promise<Response> =>
       VALUES (${id}, ${from}, ${to}, ${me}, ${note})
     `;
 
-    // แจ้งผู้แจ้งทุกครั้งที่สถานะเปลี่ยน (spec หัวข้อ 5.3)
-    const reporter = await sql<{ line_user_id: string }[]>`
-      SELECT line_user_id FROM line_accounts
-      WHERE employee_id = ${t.reporter_id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
-    `;
-    if (reporter.length > 0) {
-      const label = STATUS_LABELS[to] ?? to;
-      await pushTo(
-        reporter[0].line_user_id,
-        [textMessage(`อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${label}${note ? "\nหมายเหตุ: " + note : ""}`)],
-        { ticketId: id, channel: "user" },
-      );
+    // แจ้งผู้แจ้งเมื่อสถานะเปลี่ยน (spec หัวข้อ 5.3)
+    // ข้ามกรณีผู้แจ้งเป็นคนกดเอง — เขาเห็นผลบนหน้าจออยู่แล้ว การส่งซ้ำเปลืองโควตาข้อความเปล่า ๆ
+    if (!isOwnerCancelling) {
+      const reporter = await sql<{ line_user_id: string }[]>`
+        SELECT line_user_id FROM line_accounts
+        WHERE employee_id = ${t.reporter_id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
+      `;
+      if (reporter.length > 0) {
+        const label = STATUS_LABELS[to] ?? to;
+        await pushTo(
+          reporter[0].line_user_id,
+          [textMessage(`อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${label}${note ? "\nหมายเหตุ: " + note : ""}`)],
+          { ticketId: id, channel: "user" },
+        );
+      }
     }
 
     return json({ ok: true, id, status: to, status_label: STATUS_LABELS[to] ?? to });

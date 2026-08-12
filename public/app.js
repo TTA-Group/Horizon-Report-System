@@ -355,6 +355,9 @@ function renderTicketCard(t) {
           <div><div class="lbl">${esc(e.status_label)}${e.note ? " · " + esc(e.note) : ""}</div></div></div>`,
     )
     .join("");
+  // ยกเลิกได้เฉพาะตอนที่ยังไม่มีเจ้าหน้าที่รับเรื่อง (แจ้งผิด/แจ้งซ้ำแล้วอยากถอน)
+  const cancelBtn =
+    t.status === "pending" ? '<div class="actions"><button data-act="cancel">ยกเลิกเรื่องนี้</button></div>' : "";
   return `<div class="card clickable" data-id="${t.id}">
     <div class="cardtop">
       <div>
@@ -365,6 +368,7 @@ function renderTicketCard(t) {
       <span class="pill ${PILL[t.status] || "p-closed"}">${esc(t.status_label)}</span>
     </div>
     <div class="rail">${steps}</div>
+    ${cancelBtn}
   </div>`;
 }
 
@@ -416,7 +420,8 @@ async function goQueue() {
 function renderQueueCard(t, deptCode) {
   let actions = "";
   if (t.status === "pending") {
-    actions = '<button class="fill" data-act="claim">รับเรื่อง</button><button data-act="transfer">ส่งต่อฝ่าย</button>';
+    actions =
+      '<button class="fill" data-act="claim">รับเรื่อง</button><button data-act="transfer">ส่งต่อฝ่าย</button><button data-act="cancel">ยกเลิก</button>';
   } else if (t.status === "in_progress") {
     actions = '<button class="fill" data-act="complete">แล้วเสร็จ</button><button data-act="transfer">ส่งต่อฝ่าย</button>';
   } else if (t.status === "completed") {
@@ -505,15 +510,17 @@ function renderEmployee(e) {
   const btn = suspended
     ? '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>'
     : '<button data-act="suspend">ระงับสิทธิ์</button>';
+  // ปุ่มปลดการผูกบัญชีไลน์ แสดงเฉพาะคนที่ผูกไว้แล้ว (ใช้ตอนพนักงานเปลี่ยนมือถือ/บัญชีไลน์)
+  const unlinkBtn = e.linked ? '<button data-act="unlink">ปลดบัญชีไลน์</button>' : "";
   return `<div class="card" data-id="${e.id}">
     <div class="cardtop">
       <div>
-        <div class="tid">${esc(e.employee_code)}</div>
+        <div class="tid">${esc(e.employee_code)}${e.linked ? "" : " · ยังไม่ได้ผูกบัญชีไลน์"}</div>
         <div class="ttl">${esc(e.full_name)}</div>
         <div class="meta">${esc(e.department_name || "-")}${e.floor ? " · " + esc(e.floor) : ""} · แจ้งเรื่องสะสม ${e.reported_count} รายการ${suspended && e.suspend_reason ? "<br>เหตุผล: " + esc(e.suspend_reason) : ""}</div>
       </div>
     </div>
-    <div class="actions">${btn}</div>
+    <div class="actions">${btn}${unlinkBtn}</div>
   </div>`;
 }
 
@@ -652,10 +659,24 @@ window.addEventListener("DOMContentLoaded", () => {
   // ปุ่มย้อนกลับจากหน้ารายละเอียด
   $("#backbtn").onclick = () => routeTab(detailReturnTab);
 
-  // แตะการ์ดในหน้า "เรื่องที่แจ้ง" เพื่อดูรายละเอียด
-  $("#mineList").addEventListener("click", (e) => {
+  // หน้า "เรื่องที่แจ้ง": ปุ่มยกเลิก + แตะการ์ดเพื่อดูรายละเอียด
+  $("#mineList").addEventListener("click", async (e) => {
     const card = e.target.closest(".card[data-id]");
-    if (card) openDetail(card.dataset.id, "mine");
+    if (!card) return;
+    const btn = e.target.closest("button[data-act]");
+    if (btn && btn.dataset.act === "cancel") {
+      e.stopPropagation();
+      if (!window.confirm("ยกเลิกเรื่องนี้?\n\nยกเลิกแล้วจะไม่มีเจ้าหน้าที่มาดำเนินการต่อ")) return;
+      try {
+        await api(`/api/tickets/${card.dataset.id}/status`, { method: "PATCH", body: { to_status: "cancelled" } });
+        toast("ยกเลิกเรื่องเรียบร้อย");
+        goMine();
+      } catch (err) {
+        toast(err.message);
+      }
+      return;
+    }
+    openDetail(card.dataset.id, "mine");
   });
 
   // คิวงาน: ปุ่มดำเนินการ + แตะการ์ดดูรายละเอียด
@@ -671,6 +692,11 @@ window.addEventListener("DOMContentLoaded", () => {
       else if (act === "complete") doStatus(id, "completed", "ปรับเป็นแล้วเสร็จเรียบร้อย");
       else if (act === "closed") doStatus(id, "closed", "ปิดเรื่องเรียบร้อย");
       else if (act === "transfer") openTransferSheet(id, card.dataset.dept);
+      else if (act === "cancel") {
+        if (window.confirm("ยกเลิกเรื่องนี้?\n\nระบบจะแจ้งผู้แจ้งให้ทราบ")) {
+          doStatus(id, "cancelled", "ยกเลิกเรื่องเรียบร้อย");
+        }
+      }
       return;
     }
     openDetail(card.dataset.id, "queue");
@@ -703,8 +729,17 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!btn) return;
     const card = e.target.closest(".card[data-id]");
     const id = card.dataset.id;
+    const act = btn.dataset.act;
     try {
-      if (btn.dataset.act === "suspend") {
+      if (act === "unlink") {
+        const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
+        if (!window.confirm(`ปลดการผูกบัญชีไลน์ของ ${name}?\n\nหลังจากนี้ต้องยืนยันตัวตนด้วยรหัสพนักงานใหม่อีกครั้ง\n(เรื่องที่เคยแจ้งไว้ยังอยู่ครบ)`)) return;
+        await api(`/api/admin/employees/${id}/unlink`, { method: "PATCH" });
+        toast("ปลดการผูกบัญชีไลน์เรียบร้อย");
+        goAdmin();
+        return;
+      }
+      if (act === "suspend") {
         const reason = window.prompt("เหตุผลการระงับสิทธิ์ (ไม่บังคับ)") || "";
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
         toast("ระงับสิทธิ์เรียบร้อย · ย้ายไปหน้ารายชื่อที่ถูกระงับแล้ว");

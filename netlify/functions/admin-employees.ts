@@ -3,6 +3,7 @@
 
 import type { Config } from "@netlify/functions";
 import { getSession, requireAdmin } from "./_lib/auth";
+import { CHANNEL_KEY } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 
@@ -34,11 +35,16 @@ export default async (req: Request): Promise<Response> =>
         suspended_at: string | null;
         suspend_reason: string | null;
         reported_count: number;
+        linked: boolean;
       }[]
     >`
       SELECT e.id, e.employee_code, e.full_name, e.department_name, e.floor, e.status,
              e.suspended_at, e.suspend_reason,
-             (SELECT count(*)::int FROM tickets t WHERE t.reporter_id = e.id) AS reported_count
+             (SELECT count(*)::int FROM tickets t WHERE t.reporter_id = e.id) AS reported_count,
+             EXISTS (
+               SELECT 1 FROM line_accounts la
+               WHERE la.employee_id = e.id AND la.channel_key = ${CHANNEL_KEY}
+             ) AS linked
       FROM employees e
       WHERE 1=1 ${qFilter} ${statusFilter}
       ORDER BY e.status DESC, e.employee_code ASC
