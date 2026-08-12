@@ -63,16 +63,15 @@ async function boot() {
       show("s-config");
       return;
     }
-    // ข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น) เป็น endpoint สาธารณะ ไม่ต้องรอ token ก่อน
-    // ยิงคู่ขนานไปพร้อมกับขั้นตอนล็อกอินเลย ลดเวลาที่ผู้ใช้ต้องรอกว่าจะเข้าแอปได้
-    mastersPromise = api("/api/masters").catch(() => null);
-
     await liff.init({ liffId: CFG.liffId });
     if (!liff.isLoggedIn()) {
       liff.login();
       return;
     }
     idToken = liff.getIDToken();
+    // ยิงข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น) คู่ขนานไปกับการขอ session — ทั้งคู่ต้องใช้ token
+    // จึงเริ่มได้ทันทีที่ได้ token ไม่ต้องรอให้ session เสร็จก่อน
+    mastersPromise = api("/api/masters").catch(() => null);
     session = await api("/api/auth/session", { method: "POST" });
     routeBySession();
   } catch (e) {

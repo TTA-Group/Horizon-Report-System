@@ -1,6 +1,12 @@
 // งานตามเวลา: สำรองข้อมูลรายสัปดาห์ (spec หัวข้อ 9.2 / 9.3)
 //
-// ส่งออกตารางหลักเป็น JSON แล้วเก็บไว้ที่ storage (โฟลเดอร์ backups/)
+// ⚠️ ไฟล์สำรองมีข้อมูลส่วนบุคคลของพนักงานทุกคน (ชื่อ อีเมล line_user_id) จึงต้องเก็บใน
+// bucket ปิดที่แยกจาก bucket ของภาพแนบเสมอ — ภาพแนบต้องเป็น public เพื่อให้แสดงในแอปได้
+// ถ้าเขียนไฟล์สำรองลงที่เดียวกัน ข้อมูลพนักงานทั้งองค์กรจะโหลดได้จาก URL ที่เดาง่าย (ชื่อไฟล์เป็นวันที่)
+//
+// กำหนดปลายทางด้วย BACKUP_BUCKET_URL (ต้องเป็น bucket แบบ private เท่านั้น)
+// ถ้าไม่ได้ตั้งค่าไว้ จะ "ไม่เขียนไฟล์" โดยเด็ดขาด (ไม่ fallback ไปใช้ STORAGE_BUCKET_URL)
+//
 // TODO: ตามสเปกควรนำไปเก็บ "นอกผู้ให้บริการเดิม" (เช่น SharePoint/OneDrive)
 //       เมื่อมี credential ปลายทางแล้วให้เปลี่ยนปลายทางการอัปโหลดในฟังก์ชันนี้
 
@@ -42,11 +48,12 @@ export default async (req: Request): Promise<Response> =>
       ticket_events: ticketEvents.length,
     };
 
-    const base = process.env.STORAGE_BUCKET_URL;
+    // ใช้เฉพาะ bucket สำรองที่กำหนดไว้ต่างหากเท่านั้น ห้าม fallback ไป STORAGE_BUCKET_URL (public)
+    const base = process.env.BACKUP_BUCKET_URL;
     const key = process.env.STORAGE_SERVICE_KEY;
     if (base && key) {
       const date = new Date().toISOString().slice(0, 10);
-      const url = `${base.replace(/\/$/, "")}/backups/backup-${date}.json`;
+      const url = `${base.replace(/\/$/, "")}/backup-${date}.json`;
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -61,9 +68,9 @@ export default async (req: Request): Promise<Response> =>
       return json({ ok: res.ok, stored: res.ok, bytes: payload.byteLength, counts });
     }
 
-    // ยังไม่ได้ตั้งค่าที่เก็บ — บันทึก log ปริมาณไว้ก่อน
-    console.log("[backup] storage not configured; counts=", counts, "bytes=", payload.byteLength);
-    return json({ ok: true, stored: false, bytes: payload.byteLength, counts });
+    // ยังไม่ได้ตั้งค่า bucket สำรอง — ไม่เขียนไฟล์ (ยอมไม่มีสำรอง ดีกว่าเขียนลงที่ที่คนนอกอ่านได้)
+    console.warn("[backup] BACKUP_BUCKET_URL not set — skipped writing backup file; counts=", counts);
+    return json({ ok: true, stored: false, reason: "BACKUP_BUCKET_URL not set", bytes: payload.byteLength, counts });
   });
 
 export const config: Config = {
