@@ -1,0 +1,24 @@
+{
+  "name": "horizon-report-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ระบบแจ้งเรื่องภายในสำนักงานผ่าน LINE LIFF (Horizon Report System)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "netlify dev",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "jose": "^5.9.6",
+    "postgres": "^3.4.4"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.2",
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>แจ้งเรื่องในออฟฟิศ · Horizon Report System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- โหลดฟอนต์แบบไม่บล็อกการแสดงผลหน้าแรก (media=print แล้วสลับเป็น all หลังโหลดเสร็จ) -->
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" /></noscript>
+<style>
+:root{
+  --ink:#101418;--slate:#606C7A;--line:#DDE3E9;--surface:#FFFFFF;--canvas:#F5F7F9;
+  --green:#06C755;--green-deep:#04A045;--amber:#E39B0C;--alert:#E04A2F;--blue:#2C6BE0;--violet:#6B4FD8;--r:14px;
+  --blue-soft:#E4ECFC;--amber-soft:#FBF0DA;--green-soft:#E1F8EA;--violet-soft:#EAE5FA;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Anuphan',system-ui,sans-serif;background:var(--canvas);color:var(--ink);min-height:100vh}
+.app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--canvas);display:flex;flex-direction:column;position:relative}
+
+/* appbar */
+.appbar{display:none;align-items:center;gap:10px;padding:12px 16px;background:var(--surface);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.av{width:38px;height:38px;border-radius:50%;background:linear-gradient(140deg,#06C755,#0B8F5A);
+  color:#fff;display:grid;place-items:center;font-weight:600;font-size:15px;flex:0 0 auto}
+.appbar .n{font-size:14px;font-weight:600;line-height:1.3}
+.appbar .d{font-size:11px;color:var(--slate)}
+
+/* screens */
+.screen{display:none;flex:1;padding:18px 16px 90px}
+.screen.on{display:block}
+.pad{padding:0}
+
+.welcome .wave{font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}
+.welcome p{font-size:13px;color:var(--slate);line-height:1.65}
+.tip{font-size:11.5px;color:var(--slate);line-height:1.6;margin-top:12px}
+.tip b{font-family:'IBM Plex Mono',monospace;color:var(--ink)}
+
+label.q{display:block;font-size:12px;font-weight:600;margin:0 0 8px;letter-spacing:.01em}
+label.q span{color:var(--alert)}
+.hint{font-size:11px;color:var(--slate);font-weight:400}
+.block{margin-bottom:18px}
+.row{display:flex;gap:8px}
+
+input[type=text],select,textarea{width:100%;font-family:inherit;font-size:13.5px;color:var(--ink);
+  border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 12px;outline:none;transition:.15s}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--slate) 50%),linear-gradient(135deg,var(--slate) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 18px,calc(100% - 11px) 18px;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+textarea{min-height:88px;resize:none;line-height:1.55}
+input:focus,select:focus,textarea:focus{border-color:var(--ink)}
+::placeholder{color:#A6B1BC}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cat{border:1.5px solid var(--line);background:var(--surface);border-radius:var(--r);padding:14px 12px 15px;text-align:left;
+  font-family:inherit;cursor:pointer;transition:.15s;min-height:58px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.cat .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;background:var(--canvas)}
+.cat .ic svg{width:20px;height:20px;fill:none;stroke:var(--ink);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.cat .nm{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.35}
+.cat.c-it .ic{background:var(--blue-soft)} .cat.c-it svg{stroke:var(--blue)}
+.cat.c-fac .ic{background:var(--amber-soft)} .cat.c-fac svg{stroke:var(--amber)}
+.cat.c-cln .ic{background:var(--green-soft)} .cat.c-cln svg{stroke:var(--green)}
+.cat.c-gen .ic{background:var(--violet-soft)} .cat.c-gen svg{stroke:var(--violet)}
+/* เลือกแล้ว: fill จางเบา ๆ ตามสีของหมวดนั้น (ไม่ใช้พื้นดำ) พร้อมไอคอนตัดสีเข้มขึ้นให้เด่น */
+.cat.c-it[aria-pressed="true"]{background:var(--blue-soft);border-color:var(--blue)}
+.cat.c-it[aria-pressed="true"] .ic{background:var(--blue)} .cat.c-it[aria-pressed="true"] svg{stroke:#fff}
+.cat.c-fac[aria-pressed="true"]{background:var(--amber-soft);border-color:var(--amber)}
+.cat.c-fac[aria-pressed="true"] .ic{background:var(--amber)} .cat.c-fac[aria-pressed="true"] svg{stroke:#fff}
+.cat.c-cln[aria-pressed="true"]{background:var(--green-soft);border-color:var(--green)}
+.cat.c-cln[aria-pressed="true"] .ic{background:var(--green)} .cat.c-cln[aria-pressed="true"] svg{stroke:#fff}
+.cat.c-gen[aria-pressed="true"]{background:var(--violet-soft);border-color:var(--violet)}
+.cat.c-gen[aria-pressed="true"] .ic{background:var(--violet)} .cat.c-gen[aria-pressed="true"] svg{stroke:#fff}
+
+.seg{display:flex;gap:6px}
+.seg button{flex:1;font-family:inherit;font-size:12px;font-weight:600;padding:10px 4px;border-radius:11px;
+  border:1.5px solid var(--line);background:var(--surface);color:var(--slate);cursor:pointer;transition:.15s}
+/* สีเข้มขึ้นตามระดับความเร่งด่วน: ปกติ = เทา, เร่งด่วน = เหลือง, เร่งด่วนมาก = แดง */
+.seg button[data-u="normal"][aria-pressed="true"]{color:#fff;background:#8A94A0;border-color:#8A94A0}
+.seg button[data-u="urgent"][aria-pressed="true"]{color:#fff;background:var(--amber);border-color:var(--amber)}
+.seg button[data-u="critical"][aria-pressed="true"]{color:#fff;background:var(--alert);border-color:var(--alert)}
+.seg small{display:block;font-weight:400;font-size:9.5px;opacity:.8;margin-top:1px}
+
+.drop{border:1.5px dashed #C3CDD6;border-radius:var(--r);padding:16px;text-align:center;background:var(--surface);
+  cursor:pointer;font-size:12px;color:var(--slate);display:block}
+.drop b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:2px;font-weight:600}
+.thumbs{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+.thumb{width:56px;height:56px;border-radius:10px;background:linear-gradient(150deg,#C9D5DF,#94A5B4);
+  display:grid;place-items:center;color:#fff;font-size:20px}
+
+.send{width:100%;border:0;background:var(--green);color:#fff;font-family:inherit;font-size:15px;font-weight:600;
+  padding:14px;border-radius:14px;cursor:pointer;box-shadow:0 6px 16px -6px rgba(6,199,85,.7);transition:.15s}
+.send:disabled{background:#C7D0D8;box-shadow:none;cursor:not-allowed}
+.send:active:not(:disabled){transform:translateY(1px)}
+.ghost{width:100%;border:0;background:transparent;font-family:inherit;font-size:13px;font-weight:500;
+  color:var(--slate);padding:12px;margin-top:4px;cursor:pointer}
+
+.foundhead{display:flex;gap:10px;align-items:flex-start;background:#E6F8ED;border-radius:var(--r);padding:13px}
+.foundhead.alert{background:#FDF3DF}
+.foundhead b{display:block;font-size:13.5px;font-weight:600}
+.foundhead span{display:block;font-size:11.5px;color:var(--slate);margin-top:2px;line-height:1.45}
+.kv2{display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.kv2:last-child{border-bottom:0}
+.kv2 b{flex:0 0 116px;font-weight:500;color:var(--slate);font-size:12px;padding-top:1px}
+
+/* cards + rail (mine) */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;margin-bottom:10px}
+.cardtop{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.tid{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;color:var(--slate)}
+.ttl{font-size:14px;font-weight:600;margin:3px 0 2px;line-height:1.35}
+.meta{font-size:11px;color:var(--slate);line-height:1.5}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;padding:4px 9px;border-radius:20px;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-wait{background:#FDF3DF;color:#9A6A05}.p-doing{background:#EEE9FC;color:#5238C0}
+.p-done{background:#E6F8ED;color:#0B7A3E}.p-closed{background:#EDF0F3;color:#5B6672}.p-suspend{background:#FBE6E1;color:#B0331B}
+.rail{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+.step{display:flex;gap:10px;position:relative;padding-bottom:12px}
+.step:last-child{padding-bottom:0}
+.step .dot{width:11px;height:11px;border-radius:50%;background:#D3DBE2;flex:0 0 auto;margin-top:3px;z-index:1}
+.step::before{content:"";position:absolute;left:5px;top:12px;bottom:0;width:1.5px;background:#E3E9EE}
+.step:last-child::before{display:none}
+.step.ok .dot{background:var(--green)}
+.step.now .dot{background:var(--violet);box-shadow:0 0 0 4px rgba(107,79,216,.16)}
+.step .lbl{font-size:12px;font-weight:600;line-height:1.3}
+.empty{text-align:center;color:var(--slate);font-size:13px;padding:40px 0}
+
+.section{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);margin:4px 0 10px}
+.center{text-align:center;padding:40px 20px}
+.center h2{font-size:17px;font-weight:600;margin:14px 0 6px}
+.center p{font-size:13px;color:var(--slate);line-height:1.6}
+
+/* tabbar */
+.tabbar{display:none;position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
+  background:var(--surface);border-top:1px solid var(--line);z-index:5}
+.tabbar button{flex:1;border:0;background:transparent;font-family:inherit;font-size:12px;font-weight:600;
+  color:var(--slate);padding:12px 0 16px;cursor:pointer}
+.tabbar button[aria-current="true"]{color:var(--green-deep)}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%) translateY(14px);bottom:78px;width:calc(100% - 32px);max-width:448px;
+  background:var(--ink);color:#fff;border-radius:14px;padding:13px 15px;font-size:12.5px;line-height:1.5;
+  box-shadow:0 10px 24px -8px rgba(16,20,24,.6);opacity:0;pointer-events:none;transition:.25s;z-index:20}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast b{font-family:'IBM Plex Mono',monospace}
+
+/* staff queue + admin */
+.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.chip{font-family:inherit;font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:20px;border:1px solid var(--line);
+  background:var(--surface);color:var(--slate);white-space:nowrap;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.actions{display:flex;gap:7px;margin-top:11px}
+.actions button{flex:1;font-family:inherit;font-size:12px;font-weight:600;padding:9px;border-radius:10px;
+  border:1.5px solid var(--ink);background:var(--surface);color:var(--ink);cursor:pointer}
+.actions button.fill{background:var(--ink);color:#fff}
+.searchbox{width:100%;margin-bottom:10px}
+.card.clickable{cursor:pointer}
+/* ลิงก์สลับไปหน้ารายชื่อที่ถูกระงับสิทธิ์ — ตั้งใจให้เงียบ ไม่เด่น */
+.linkbtn{display:block;width:100%;border:0;background:transparent;font-family:inherit;font-size:12.5px;
+  font-weight:500;color:var(--slate);padding:16px 0 8px;cursor:pointer;text-align:center}
+.linkbtn:hover{color:var(--ink)}
+
+/* bottom sheet (ตัวเลือกส่งต่อฝ่าย) */
+.backdrop{position:fixed;inset:0;background:rgba(16,20,24,.4);z-index:29;opacity:0;pointer-events:none;transition:.25s}
+.backdrop.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:50%;transform:translateX(-50%) translateY(120%);bottom:0;width:100%;max-width:480px;z-index:30;
+  background:var(--surface);border-radius:18px 18px 0 0;padding:16px 16px 26px;box-shadow:0 -8px 30px -10px rgba(16,20,24,.4);transition:.25s}
+.sheet.on{transform:translateX(-50%) translateY(0)}
+.sheet h3{font-size:14px;font-weight:600;margin-bottom:12px}
+.sheet .opt{width:100%;text-align:left;border:1.5px solid var(--line);background:var(--surface);border-radius:12px;
+  padding:12px;margin-bottom:8px;font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.sheet .cancel{width:100%;border:0;background:transparent;color:var(--slate);font-family:inherit;font-size:13px;padding:10px;cursor:pointer}
+
+/* detail */
+.backbtn{border:0;background:transparent;font-family:inherit;font-size:22px;color:var(--ink);cursor:pointer;padding:0 6px 0 0;line-height:1}
+.dkv{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.dkv:last-child{border-bottom:0}
+.dkv b{flex:0 0 92px;font-weight:500;color:var(--slate);font-size:12px}
+.shot{width:100%;border-radius:12px;margin-top:8px;display:block}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- appbar -->
+  <div class="appbar" id="appbar">
+    <button class="backbtn" id="backbtn" style="display:none" aria-label="ย้อนกลับ">‹</button>
+    <div class="av" id="me-av">?</div>
+    <div><div class="n" id="me-name">—</div><div class="d" id="me-dept"></div></div>
+  </div>
+
+  <!-- loading -->
+  <section class="screen on" id="s-loading"><div class="center"><h2>กำลังเชื่อมต่อ…</h2><p>โปรดรอสักครู่</p></div></section>
+
+  <!-- config error -->
+  <section class="screen" id="s-config"><div class="center">
+    <h2>ยังไม่ได้ตั้งค่า LIFF</h2>
+    <p>กรุณาระบุ <b>liffId</b> ในไฟล์ <code>public/config.js</code> ก่อนใช้งาน</p>
+  </div></section>
+
+  <!-- generic error -->
+  <section class="screen" id="s-error"><div class="center">
+    <h2>เกิดข้อผิดพลาด</h2><p id="err-msg"></p>
+  </div></section>
+
+  <!-- suspended -->
+  <section class="screen" id="s-suspended"><div class="center">
+    <h2>บัญชีนี้ถูกระงับสิทธิ์การใช้งาน</h2>
+    <p>ไม่สามารถแจ้งเรื่องใหม่ได้<br>กรุณาติดต่อฝ่ายทรัพยากรบุคคล</p>
+  </div></section>
+
+  <!-- register -->
+  <section class="screen" id="s-register">
+    <div id="reg-input">
+      <div class="welcome"><div class="wave">ยืนยันตัวตน</div>
+        <p>กรุณากรอกรหัสพนักงานเพื่อยืนยันตัวตน กรอกเพียงครั้งเดียว ครั้งต่อไปเข้าใช้งานได้ทันที</p></div>
+      <div class="block" style="margin-top:20px">
+        <label class="q">รหัสพนักงาน <span>*</span></label>
+        <input type="text" id="empid" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="เช่น 10234" style="font-family:'IBM Plex Mono',monospace;letter-spacing:.05em" />
+      </div>
+      <button class="send" id="btn-check">ยืนยันตัวตน</button>
+    </div>
+
+    <div id="reg-found" style="display:none">
+      <div class="foundhead"><div>✅</div><div><b>พบข้อมูลของคุณ</b><span>กรุณาตรวจสอบความถูกต้องของข้อมูล</span></div></div>
+      <div class="card" style="margin-top:14px">
+        <div class="kv2"><b>รหัสพนักงาน</b><span id="f-id"></span></div>
+        <div class="kv2"><b>ชื่อ–สกุล</b><span id="f-name"></span></div>
+        <div class="kv2"><b>ฝ่าย</b><span id="f-dept"></span></div>
+        <div class="kv2"><b>ชั้นที่ปฏิบัติงาน</b><span id="f-floor"></span></div>
+        <div class="kv2"><b>อีเมล</b><span id="f-mail" style="font-size:12px"></span></div>
+      </div>
+      <p class="tip">หากข้อมูลไม่ถูกต้อง กรุณาติดต่อฝ่ายทรัพยากรบุคคลเพื่อแก้ไขข้อมูลต้นทาง</p>
+      <button class="send" style="margin-top:14px" id="btn-confirm-found">ยืนยัน ข้อมูลถูกต้อง</button>
+      <button class="ghost" id="btn-not-me">ไม่ใช่ข้อมูลของฉัน</button>
+    </div>
+
+    <div id="reg-manual" style="display:none">
+      <div class="foundhead alert"><div>⚠️</div><div><b>ไม่พบรหัสพนักงานนี้</b><span>กรุณาระบุข้อมูลเพื่อยืนยันตัวตน</span></div></div>
+      <p class="tip" style="margin:10px 0 16px">ท่านสามารถเริ่มแจ้งเรื่องได้ทันทีหลังกรอกข้อมูล</p>
+      <div class="block"><label class="q">รหัสพนักงาน</label><input type="text" id="m-id" inputmode="numeric" maxlength="5" style="font-family:'IBM Plex Mono',monospace" /></div>
+      <div class="block"><label class="q">ชื่อ–สกุล <span>*</span></label><input type="text" id="m-name" placeholder="ระบุชื่อและนามสกุลจริง" /></div>
+      <div class="block"><label class="q">ฝ่าย/แผนก <span>*</span></label>
+        <select id="m-dept"><option value="">เลือกฝ่าย/แผนก</option>
+          <option>ฝ่ายบัญชีและการเงิน</option><option>ฝ่ายขายและการตลาด</option><option>ฝ่ายทรัพยากรบุคคล</option>
+          <option>ฝ่ายปฏิบัติการ</option><option>ฝ่าย Admin</option><option>IT Support / Help Desk</option></select></div>
+      <div class="block"><label class="q">ชั้นที่ปฏิบัติงาน</label>
+        <select id="m-floor"><option value="">เลือกชั้น</option>
+          <option>ชั้น 15</option><option>ชั้น 9</option><option>ชั้น 8</option><option>ชั้น 7</option><option>ชั้น 5</option><option>ชั้นลอย</option></select></div>
+      <div class="block"><label class="q">อีเมลบริษัท</label><input type="text" id="m-mail" placeholder="name@company.co.th" /></div>
+      <button class="send" id="btn-manual">ส่งข้อมูลและเริ่มใช้งาน</button>
+      <button class="ghost" id="btn-manual-back">ย้อนกลับ</button>
+    </div>
+  </section>
+
+  <!-- form -->
+  <section class="screen" id="s-form">
+    <div class="block">
+      <label class="q">ประเภทเรื่องที่แจ้ง <span>*</span></label>
+      <div class="grid" id="cats"></div>
+    </div>
+    <div class="block">
+      <label class="q">สถานที่เกิดเหตุ <span>*</span></label>
+      <div class="row">
+        <select id="floor" style="flex:0 0 120px"><option value="">เลือกชั้น</option></select>
+        <input type="text" id="room" placeholder="ระบุห้องหรือจุดที่พบ" />
+      </div>
+    </div>
+    <div class="block">
+      <label class="q">รายละเอียดของปัญหา <span>*</span></label>
+      <textarea id="detail" placeholder="โปรดระบุอาการหรือปัญหาที่พบ พร้อมช่วงเวลาที่เริ่มเกิดเหตุ"></textarea>
+    </div>
+    <div class="block">
+      <label class="q">ภาพประกอบ <span class="hint">(หากมี · สูงสุด 3 ภาพ)</span></label>
+      <label class="drop" for="file"><b>แนบภาพถ่ายหรือเลือกจากคลังภาพ</b>ระบบจะย่อขนาดภาพให้อัตโนมัติ</label>
+      <input type="file" id="file" accept="image/*" multiple hidden />
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+    <div class="block">
+      <label class="q">ระดับความเร่งด่วน</label>
+      <div class="seg" id="urg"></div>
+    </div>
+    <button class="send" id="sendBtn" disabled>กรุณาเลือกประเภทเรื่องที่แจ้ง</button>
+  </section>
+
+  <!-- mine -->
+  <section class="screen" id="s-mine">
+    <div class="section">เรื่องที่แจ้ง</div>
+    <div id="mineList"></div>
+  </section>
+
+  <!-- queue (เจ้าหน้าที่) -->
+  <section class="screen" id="s-queue">
+    <div class="filters" id="queue-depts"></div>
+    <div class="filters" id="queue-filters">
+      <button class="chip" data-f="" aria-pressed="true">ทั้งหมด</button>
+      <button class="chip" data-f="pending" aria-pressed="false">รอรับเรื่อง</button>
+      <button class="chip" data-f="me" aria-pressed="false">ผู้รับผิดชอบ: ฉัน</button>
+    </div>
+    <div id="queueList"></div>
+  </section>
+
+  <!-- admin (ผู้ดูแล) -->
+  <section class="screen" id="s-admin">
+    <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาจากรหัส ชื่อ หรือฝ่าย" />
+    <div id="adminList"></div>
+  </section>
+
+  <!-- detail -->
+  <section class="screen" id="s-detail">
+    <div id="detailBody"></div>
+  </section>
+
+  <!-- tabbar -->
+  <nav class="tabbar" id="tabbar">
+    <button data-tab="form" aria-current="true">แจ้งเรื่อง</button>
+    <button data-tab="mine" aria-current="false">เรื่องที่แจ้ง</button>
+    <button data-tab="queue" aria-current="false" style="display:none">คิวงาน</button>
+    <button data-tab="admin" aria-current="false" style="display:none">ผู้ดูแล</button>
+  </nav>
+
+  <div class="backdrop" id="backdrop"></div>
+  <div class="sheet" id="sheet">
+    <h3 id="sheet-title">เลือก</h3>
+    <div id="sheet-opts"></div>
+    <button class="cancel" id="sheet-cancel">ยกเลิก</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
