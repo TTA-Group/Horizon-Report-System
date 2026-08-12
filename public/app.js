@@ -14,6 +14,7 @@ let pendingFiles = []; // ไฟล์แนบที่บีบอัดแล
 let queueDept = null; // ฝ่ายที่กำลังดูในหน้าคิวงาน (รหัสฝ่าย)
 let queueFilter = ""; // ตัวกรองคิวงาน: "" | "pending" | "me"
 let adminQ = ""; // คำค้นหน้าผู้ดูแล
+let adminView = "active"; // หน้าที่กำลังดูในผู้ดูแล: "active" (พนักงานปัจจุบัน) | "suspended" (ถูกระงับสิทธิ์)
 let detailReturnTab = "mine"; // แท็บที่จะกลับไปหลังปิดหน้ารายละเอียด
 let sheetPick = null; // ตัวรับค่าเมื่อเลือกจาก bottom sheet
 let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น ไม่ต้องรอ session ก่อน
@@ -470,36 +471,33 @@ async function goAdmin() {
   const params = new URLSearchParams();
   if (adminQ) params.set("q", adminQ);
   try {
+    params.set("status", adminView);
     const r = await api("/api/admin/employees?" + params.toString());
-    if (!r.employees.length) {
-      list.innerHTML = '<div class="empty">ไม่พบผู้ใช้งาน</div>';
-      return;
-    }
-    // แยกกลุ่ม "พนักงานปัจจุบัน" กับ "ระงับสิทธิ์" ให้ชัดเจนเสมอ ไม่มีตัวกรองซ้ำซ้อนด้านบนแล้ว
-    const active = r.employees.filter((e) => e.status !== "suspended");
-    const suspended = r.employees.filter((e) => e.status === "suspended");
-    list.innerHTML = `
-      <div class="section">พนักงานปัจจุบัน</div>
-      <div id="admin-active">${active.length ? active.map(renderEmployee).join("") : '<div class="empty">ไม่มีรายการ</div>'}</div>
-      <div class="section" id="admin-suspended-title" style="margin-top:16px${suspended.length ? "" : ";display:none"}">ระงับสิทธิ์</div>
-      <div id="admin-suspended">${suspended.map(renderEmployee).join("")}</div>
-    `;
+    const rows = r.employees.length
+      ? r.employees.map(renderEmployee).join("")
+      : `<div class="empty">${adminView === "active" ? "ไม่พบพนักงาน" : "ไม่มีรายชื่อที่ถูกระงับสิทธิ์"}</div>`;
+
+    // แยกเป็นคนละหน้า: หน้าหลักคือพนักงานปัจจุบันเท่านั้น ส่วนคนที่ถูกระงับ (เช่น ลาออกแล้ว)
+    // อยู่อีกหน้า เข้าถึงผ่านลิงก์เล็ก ๆ ด้านล่าง ไม่ปนกันและไม่เด่นในหน้าหลัก
+    list.innerHTML =
+      adminView === "active"
+        ? `<div id="admin-rows">${rows}</div>
+           <button class="linkbtn" id="admin-toggle">ดูรายชื่อที่ถูกระงับสิทธิ์ →</button>`
+        : `<button class="linkbtn" id="admin-toggle">← กลับไปพนักงานปัจจุบัน</button>
+           <div class="section">ระงับสิทธิ์</div>
+           <div id="admin-rows">${rows}</div>`;
   } catch (e) {
     list.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
 }
 
-// ย้ายการ์ดไปกลุ่มที่ตรงสถานะใหม่ทันทีหลังกดระงับ/คืนสิทธิ์ ไม่ต้องรอโหลดรายการใหม่ทั้งหน้า
-function moveEmployeeCard(card, toSuspended) {
-  const actions = card.querySelector(".actions");
-  actions.innerHTML = toSuspended
-    ? '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>'
-    : '<button data-act="suspend">ระงับสิทธิ์</button>';
-
-  const target = $(toSuspended ? "#admin-suspended" : "#admin-active");
-  if (target) target.prepend(card);
-  const title = $("#admin-suspended-title");
-  if (title) title.style.display = $("#admin-suspended")?.children.length ? "" : "none";
+// หลังระงับ/คืนสิทธิ์ พนักงานคนนั้นจะไปอยู่อีกหน้าหนึ่ง จึงเอาการ์ดออกจากหน้าปัจจุบันทันที
+function removeEmployeeCard(card) {
+  const rows = $("#admin-rows");
+  card.remove();
+  if (rows && !rows.children.length) {
+    rows.innerHTML = `<div class="empty">${adminView === "active" ? "ไม่พบพนักงาน" : "ไม่มีรายชื่อที่ถูกระงับสิทธิ์"}</div>`;
+  }
 }
 
 function renderEmployee(e) {
@@ -692,8 +690,15 @@ window.addEventListener("DOMContentLoaded", () => {
     goQueue();
   });
 
-  // ผู้ดูแล: ระงับ/คืนสิทธิ์ + ค้นหา + กรองสถานะ
+  // ผู้ดูแล: สลับหน้า + ระงับ/คืนสิทธิ์
   $("#adminList").addEventListener("click", async (e) => {
+    // สลับระหว่างหน้า "พนักงานปัจจุบัน" กับ "ถูกระงับสิทธิ์"
+    if (e.target.closest("#admin-toggle")) {
+      adminView = adminView === "active" ? "suspended" : "active";
+      goAdmin();
+      return;
+    }
+
     const btn = e.target.closest("button[data-act]");
     if (!btn) return;
     const card = e.target.closest(".card[data-id]");
@@ -702,13 +707,12 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btn.dataset.act === "suspend") {
         const reason = window.prompt("เหตุผลการระงับสิทธิ์ (ไม่บังคับ)") || "";
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
-        toast("ระงับสิทธิ์เรียบร้อย");
-        moveEmployeeCard(card, true);
+        toast("ระงับสิทธิ์เรียบร้อย · ย้ายไปหน้ารายชื่อที่ถูกระงับแล้ว");
       } else {
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "restore" } });
-        toast("คืนสิทธิ์เรียบร้อย");
-        moveEmployeeCard(card, false);
+        toast("คืนสิทธิ์เรียบร้อย · ย้ายไปหน้าพนักงานปัจจุบันแล้ว");
       }
+      removeEmployeeCard(card);
     } catch (err) {
       toast(err.message);
     }
