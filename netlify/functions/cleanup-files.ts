@@ -8,6 +8,7 @@ import type { Config } from "@netlify/functions";
 import { assertCron } from "./_lib/cron";
 import { db } from "./_lib/db";
 import { json, run } from "./_lib/http";
+import { envVar } from "./_lib/env";
 
 export default async (req: Request): Promise<Response> =>
   run(async () => {
@@ -24,8 +25,8 @@ export default async (req: Request): Promise<Response> =>
       LIMIT 500
     `;
 
-    const base = process.env.STORAGE_BUCKET_URL;
-    const key = process.env.STORAGE_SERVICE_KEY;
+    const base = envVar("STORAGE_BUCKET_URL");
+    const key = envVar("STORAGE_SERVICE_KEY");
 
     let deleted = 0;
     for (const a of rows) {

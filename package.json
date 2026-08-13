@@ -8,17 +8,21 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "netlify dev",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "dev:netlify": "netlify dev"
   },
   "dependencies": {
     "jose": "^5.9.6",
     "postgres": "^3.4.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260813.1",
     "@netlify/functions": "^2.8.2",
     "@types/node": "^20.14.10",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "wrangler": "^4.122.0"
   }
 }

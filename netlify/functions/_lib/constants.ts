@@ -1,5 +1,7 @@
 // ค่าคงที่ของระบบ (อ้างอิง spec.md หัวข้อ 4)
 
+import { envVar } from "./env";
+
 export const CHANNEL_KEY = "report";
 
 export type UrgencyCode = "normal" | "urgent" | "critical";
@@ -52,7 +54,7 @@ export const STATUS_TRANSITIONS: Record<StatusCode, StatusCode[]> = {
  * ใช้เป็นด่านกรองตอนผู้ใช้กรอกข้อมูลเอง — ถ้าไม่ตั้งค่าไว้ ระบบจะไม่ตรวจสอบโดเมน
  */
 export function companyEmailDomains(): string[] {
-  return (process.env.COMPANY_EMAIL_DOMAIN ?? "")
+  return (envVar("COMPANY_EMAIL_DOMAIN") ?? "")
     .split(",")
     .map((s) => s.trim().toLowerCase().replace(/^@/, ""))
     .filter(Boolean);
@@ -70,7 +72,7 @@ export function isCompanyEmail(email: string): boolean {
 /** รหัสพนักงานที่มีสิทธิ์ผู้ดูแลระบบ อ่านจาก env */
 export function adminCodes(): Set<string> {
   return new Set(
-    (process.env.ADMIN_EMPLOYEE_CODES ?? "")
+    (envVar("ADMIN_EMPLOYEE_CODES") ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
