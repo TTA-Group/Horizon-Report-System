@@ -5,7 +5,9 @@
 # ค่าลับทั้งหมด (DATABASE_URL, LINE_*, STORAGE_*, ฯลฯ) ตั้งผ่านหน้าเว็บ Cloudflare
 # ที่ Settings → Variables and Secrets — ห้ามใส่ลงไฟล์นี้เพราะไฟล์นี้อยู่ใน repo
 
-name = "ttareport"
+# ต้องตรงกับชื่อ Worker ที่สร้างไว้ใน Cloudflare (ดูที่ Workers & Pages)
+# ถ้าไม่ตรง คำสั่ง deploy จะล้มเหลว
+name = "horizon-report-system"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
