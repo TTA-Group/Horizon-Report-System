@@ -43,7 +43,7 @@ function maskName(full: string): string {
     .join(" ");
 }
 
-/** ปิดบังอีเมล: "somchai.j@company.co.th" -> "som***@company.co.th" */
+/** ปิดบังอีเมล: "somchai.j@thoresen.com" -> "som***@thoresen.com" */
 function maskEmail(email: string | null): string | null {
   if (!email) return null;
   const at = email.indexOf("@");
