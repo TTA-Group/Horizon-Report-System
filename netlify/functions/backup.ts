@@ -14,6 +14,7 @@ import type { Config } from "@netlify/functions";
 import { assertCron } from "./_lib/cron";
 import { db } from "./_lib/db";
 import { json, run } from "./_lib/http";
+import { envVar } from "./_lib/env";
 
 export default async (req: Request): Promise<Response> =>
   run(async () => {
@@ -49,8 +50,8 @@ export default async (req: Request): Promise<Response> =>
     };
 
     // ใช้เฉพาะ bucket สำรองที่กำหนดไว้ต่างหากเท่านั้น ห้าม fallback ไป STORAGE_BUCKET_URL (public)
-    const base = process.env.BACKUP_BUCKET_URL;
-    const key = process.env.STORAGE_SERVICE_KEY;
+    const base = envVar("BACKUP_BUCKET_URL");
+    const key = envVar("STORAGE_SERVICE_KEY");
     if (base && key) {
       const date = new Date().toISOString().slice(0, 10);
       const url = `${base.replace(/\/$/, "")}/backup-${date}.json`;

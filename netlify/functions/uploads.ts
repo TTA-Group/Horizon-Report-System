@@ -9,6 +9,7 @@
 import type { Config } from "@netlify/functions";
 import { getSession, requireActive } from "./_lib/auth";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
+import { envVar } from "./_lib/env";
 
 interface Body {
   filename?: string;
@@ -34,8 +35,8 @@ export default async (req: Request): Promise<Response> =>
     if (bytes.byteLength === 0) throw new HttpError(400, "ไฟล์ไม่ถูกต้อง");
     if (bytes.byteLength > MAX_BYTES) throw new HttpError(413, "ไฟล์ใหญ่เกิน 1 MB กรุณาบีบอัดก่อนอัปโหลด");
 
-    const base = process.env.STORAGE_BUCKET_URL;
-    const key = process.env.STORAGE_SERVICE_KEY;
+    const base = envVar("STORAGE_BUCKET_URL");
+    const key = envVar("STORAGE_SERVICE_KEY");
     if (!base || !key) {
       throw new HttpError(501, "ยังไม่ได้ตั้งค่าที่เก็บไฟล์ (STORAGE_BUCKET_URL / STORAGE_SERVICE_KEY)");
     }

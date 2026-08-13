@@ -1,0 +1,31 @@
+# การตั้งค่า Cloudflare Workers สำหรับ Horizon Report System
+#
+# Worker ตัวเดียวทำครบ: เสิร์ฟหน้าเว็บ LIFF (public/), รับ /api/*, และรันงานตามเวลา
+#
+# ค่าลับทั้งหมด (DATABASE_URL, LINE_*, STORAGE_*, ฯลฯ) ตั้งผ่านหน้าเว็บ Cloudflare
+# ที่ Settings → Variables and Secrets — ห้ามใส่ลงไฟล์นี้เพราะไฟล์นี้อยู่ใน repo
+
+name = "ttareport"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# nodejs_compat จำเป็นสำหรับ:
+#   - postgres (ต่อฐานข้อมูลผ่าน TCP)
+#   - node:crypto (ตรวจลายเซ็น webhook ของ LINE)
+#   - Buffer (อ่าน/เขียนไฟล์แนบและไฟล์สำรอง)
+compatibility_flags = ["nodejs_compat"]
+
+# หน้าเว็บ LIFF — เสิร์ฟไฟล์ใน public/ โดยตรง
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# งานตามเวลา (เวลาเป็น UTC) — ต้องตรงกับที่จับคู่ไว้ใน src/index.ts (CRON_JOBS)
+[triggers]
+crons = [
+  "*/15 * * * *",  # reminders     — เตือนซ้ำเรื่องที่เกิน SLA
+  "0 3 * * *",     # db-keepalive  — กันฐานข้อมูลถูกพักการทำงาน
+  "0 4 * * 0",     # backup        — สำรองข้อมูลรายสัปดาห์
+  "0 5 1 * *",     # cleanup-files — ลบไฟล์แนบที่หมดอายุ
+  "0 6 1 * *",     # usage-report  — สรุปปริมาณข้อความให้ผู้ดูแล
+]

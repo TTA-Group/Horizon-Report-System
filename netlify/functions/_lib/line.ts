@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { db } from "./db";
 import { HttpError } from "./http";
+import { envVar } from "./env";
 
 const LINE_API = "https://api.line.me";
 
@@ -26,7 +27,7 @@ const JWKS = createRemoteJWKSet(new URL(`${LINE_API}/oauth2/v2.1/certs`));
  * ห้ามเชื่อ userId ที่ client ส่งมาตรง ๆ (spec หัวข้อ 5.1 / 10)
  */
 export async function verifyIdToken(idToken: string): Promise<LineProfile> {
-  const clientId = process.env.LINE_LOGIN_CHANNEL_ID;
+  const clientId = envVar("LINE_LOGIN_CHANNEL_ID");
   if (!clientId) throw new Error("LINE_LOGIN_CHANNEL_ID is not set");
 
   let payload;
@@ -50,7 +51,7 @@ export async function verifyIdToken(idToken: string): Promise<LineProfile> {
 
 /** ตรวจ signature ของ webhook ด้วย X-Line-Signature (spec หัวข้อ 7) */
 export function verifyLineSignature(rawBody: string, signature: string | null): boolean {
-  const secret = process.env.LINE_CHANNEL_SECRET;
+  const secret = envVar("LINE_CHANNEL_SECRET");
   if (!secret || !signature) return false;
   const mac = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
   try {
@@ -63,7 +64,7 @@ export function verifyLineSignature(rawBody: string, signature: string | null): 
 export type LineMessage = Record<string, unknown>;
 
 async function callMessaging(path: string, body: unknown): Promise<boolean> {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = envVar("LINE_CHANNEL_ACCESS_TOKEN");
   if (!token) throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not set");
   const res = await fetch(`${LINE_API}/v2/bot/${path}`, {
     method: "POST",

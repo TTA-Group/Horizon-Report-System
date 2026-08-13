@@ -11,6 +11,7 @@ import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature } from "./_lib/line";
 import { assertTransition, thaiDateTime } from "./_lib/tickets";
+import { envVar } from "./_lib/env";
 
 interface LineSource {
   type: string;
@@ -66,7 +67,7 @@ export default async (req: Request): Promise<Response> =>
  * อยู่ ไม่ได้รอของระบบปลายทาง) ปล่อยให้คำขอที่ส่งไปแล้วทำงานต่อเองในเบื้องหลัง
  */
 async function forwardToCoexisting(rawBody: string, signature: string | null): Promise<void> {
-  const url = process.env.MASSAGE_WEBHOOK_URL;
+  const url = envVar("MASSAGE_WEBHOOK_URL");
   if (!url) return;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4000);

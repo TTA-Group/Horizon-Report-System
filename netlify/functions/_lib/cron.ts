@@ -4,10 +4,11 @@
 // การตรวจ secret นี้เป็นการป้องกันเพิ่มกรณีมีการเรียกผ่าน HTTP พร้อม header x-cron-secret
 
 import { HttpError } from "./http";
+import { envVar } from "./env";
 
 export function assertCron(req: Request): void {
   const provided = req.headers.get("x-cron-secret");
-  const expected = process.env.CRON_SECRET;
+  const expected = envVar("CRON_SECRET");
   // ถ้ามีการส่ง secret มา ต้องตรงกับที่ตั้งไว้
   if (provided !== null && expected && provided !== expected) {
     throw new HttpError(401, "unauthorized cron call");
@@ -17,7 +18,7 @@ export function assertCron(req: Request): void {
 /** สำหรับ endpoint /api/cron/* ที่เปิดเป็น public URL — ต้องมี CRON_SECRET และตรงกันเสมอ */
 export function requireCron(req: Request): void {
   const provided = req.headers.get("x-cron-secret");
-  const expected = process.env.CRON_SECRET;
+  const expected = envVar("CRON_SECRET");
   if (!expected || provided !== expected) {
     throw new HttpError(401, "unauthorized cron call");
   }

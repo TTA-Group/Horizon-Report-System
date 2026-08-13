@@ -1,13 +1,14 @@
 // การเชื่อมต่อฐานข้อมูล PostgreSQL (ใช้ไลบรารี postgres — query แบบ tagged template กัน SQL injection)
 
 import postgres from "postgres";
+import { envVar } from "./env";
 
 let _sql: ReturnType<typeof postgres> | null = null;
 
 /** คืน client ฐานข้อมูลแบบ singleton (reuse ข้าม invocation ที่ container ยังอุ่นอยู่) */
 export function db(): ReturnType<typeof postgres> {
   if (!_sql) {
-    const url = process.env.DATABASE_URL;
+    const url = envVar("DATABASE_URL");
     if (!url) throw new Error("DATABASE_URL is not set");
     _sql = postgres(url, {
       max: 1, // serverless: จำกัดจำนวน connection ต่อ instance
