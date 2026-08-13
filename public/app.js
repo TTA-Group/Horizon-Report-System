@@ -109,7 +109,7 @@ async function checkEmp() {
       showRegPart("reg-manual");
       return;
     }
-    if (r.already_linked) return toast("รหัสนี้ถูกผูกกับบัญชี LINE อื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล");
+    if (r.already_linked) return toast("รหัสพนักงานนี้ผูกกับบัญชี LINE อื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล");
     const e = r.employee;
     $("#f-id").textContent = e.employee_code;
     $("#f-name").textContent = e.full_name;
@@ -128,7 +128,7 @@ async function confirmFound() {
   try {
     await api("/api/auth/link", { method: "POST", body: { employee_code: code } });
     session = await api("/api/auth/session", { method: "POST" });
-    toast("ยืนยันตัวตนเรียบร้อย");
+    toast("ยืนยันตัวตนเรียบร้อยแล้ว");
     enterApp();
   } catch (e) {
     toast(e.message);
@@ -143,11 +143,11 @@ async function submitManual() {
     floor: $("#m-floor").value,
     email: $("#m-mail").value.trim(),
   };
-  if (!body.full_name || !body.department_name) return toast("กรุณากรอกชื่อ–สกุล และเลือกฝ่าย/แผนก");
+  if (!body.full_name || !body.department_name) return toast("กรุณากรอกชื่อ–นามสกุล และเลือกฝ่าย/แผนก");
   try {
     await api("/api/auth/link", { method: "POST", body });
     session = await api("/api/auth/session", { method: "POST" });
-    toast("ยืนยันตัวตนเรียบร้อย เริ่มแจ้งเรื่องได้ทันที");
+    toast("บันทึกข้อมูลเรียบร้อยแล้ว สามารถเริ่มใช้งานได้ทันที");
     enterApp();
   } catch (e) {
     toast(e.message);
@@ -291,11 +291,11 @@ async function submitTicket() {
     resetForm();
     if (failedCount > 0) {
       toast(
-        `ส่งเรื่องเรียบร้อย เลขที่ <b>${r.ticket_no}</b><br>` +
-          `แต่แนบภาพไม่สำเร็จ ${failedCount} ภาพ${uploadError ? " (" + esc(uploadError) + ")" : ""}`,
+        `ส่งเรื่องเรียบร้อยแล้ว เลขที่ <b>${r.ticket_no}</b><br>` +
+          `แต่ไม่สามารถแนบภาพได้ ${failedCount} ภาพ${uploadError ? " (" + esc(uploadError) + ")" : ""}`,
       );
     } else {
-      toast(`ส่งเรื่องเรียบร้อย เลขที่ <b>${r.ticket_no}</b>`);
+      toast(`ส่งเรื่องเรียบร้อยแล้ว เลขที่ <b>${r.ticket_no}</b>`);
     }
     goMine();
   } catch (e) {
@@ -324,11 +324,11 @@ async function goMine() {
   setTab("mine");
   show("s-mine");
   const list = $("#mineList");
-  list.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  list.innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   try {
     const r = await api("/api/tickets/mine");
     if (!r.tickets.length) {
-      list.innerHTML = '<div class="empty">ยังไม่มีเรื่องที่แจ้ง</div>';
+      list.innerHTML = '<div class="empty">ยังไม่มีรายการเรื่องที่แจ้ง</div>';
       return;
     }
     list.innerHTML = r.tickets.map(renderTicketCard).join("");
@@ -359,7 +359,7 @@ function renderTicketCard(t) {
     .join("");
   // ยกเลิกได้เฉพาะตอนที่ยังไม่มีเจ้าหน้าที่รับเรื่อง (แจ้งผิด/แจ้งซ้ำแล้วอยากถอน)
   const cancelBtn =
-    t.status === "pending" ? '<div class="actions"><button data-act="cancel">ยกเลิกเรื่องนี้</button></div>' : "";
+    t.status === "pending" ? '<div class="actions"><button data-act="cancel">ยกเลิกเรื่อง</button></div>' : "";
   return `<div class="card clickable" data-id="${t.id}">
     <div class="cardtop">
       <div>
@@ -402,7 +402,7 @@ async function goQueue() {
   setTab("queue");
   show("s-queue");
   const list = $("#queueList");
-  list.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  list.innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   const params = new URLSearchParams();
   if (queueDept) params.set("dept", queueDept);
   if (queueFilter === "pending") params.set("status", "pending");
@@ -446,7 +446,7 @@ function renderQueueCard(t, deptCode) {
 async function doStatus(id, to, okMsg) {
   try {
     await api(`/api/tickets/${id}/status`, { method: "PATCH", body: { to_status: to } });
-    toast(okMsg || "อัปเดตสถานะเรียบร้อย");
+    toast(okMsg || "อัปเดตสถานะเรียบร้อยแล้ว");
     goQueue();
   } catch (e) {
     toast(e.message);
@@ -457,12 +457,12 @@ async function openTransferSheet(id, currentDeptCode) {
   const opts = (masters.departments || [])
     .filter((d) => d.code !== currentDeptCode)
     .map((d) => ({ label: d.name, value: d.code }));
-  if (!opts.length) return toast("ไม่มีฝ่ายให้ส่งต่อ");
-  const to = await openSheet("ส่งต่อไปยังฝ่าย", opts);
+  if (!opts.length) return toast("ไม่มีฝ่ายปลายทางให้ส่งต่อ");
+  const to = await openSheet("เลือกฝ่ายปลายทาง", opts);
   if (!to) return;
   try {
     await api(`/api/tickets/${id}/transfer`, { method: "PATCH", body: { to_dept: to } });
-    toast("ส่งต่อเรียบร้อย");
+    toast("ส่งต่อเรื่องเรียบร้อยแล้ว");
     goQueue();
   } catch (e) {
     toast(e.message);
@@ -474,7 +474,7 @@ async function goAdmin() {
   setTab("admin");
   show("s-admin");
   const list = $("#adminList");
-  list.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  list.innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   const params = new URLSearchParams();
   if (adminQ) params.set("q", adminQ);
   try {
@@ -482,15 +482,15 @@ async function goAdmin() {
     const r = await api("/api/admin/employees?" + params.toString());
     const rows = r.employees.length
       ? r.employees.map(renderEmployee).join("")
-      : `<div class="empty">${adminView === "active" ? "ไม่พบพนักงาน" : "ไม่มีรายชื่อที่ถูกระงับสิทธิ์"}</div>`;
+      : `<div class="empty">${adminView === "active" ? "ไม่พบข้อมูลพนักงาน" : "ไม่มีรายชื่อผู้ถูกระงับสิทธิ์"}</div>`;
 
     // แยกเป็นคนละหน้า: หน้าหลักคือพนักงานปัจจุบันเท่านั้น ส่วนคนที่ถูกระงับ (เช่น ลาออกแล้ว)
     // อยู่อีกหน้า เข้าถึงผ่านลิงก์เล็ก ๆ ด้านล่าง ไม่ปนกันและไม่เด่นในหน้าหลัก
     list.innerHTML =
       adminView === "active"
         ? `<div id="admin-rows">${rows}</div>
-           <button class="linkbtn" id="admin-toggle">ดูรายชื่อที่ถูกระงับสิทธิ์ →</button>`
-        : `<button class="linkbtn" id="admin-toggle">← กลับไปพนักงานปัจจุบัน</button>
+           <button class="linkbtn" id="admin-toggle">รายชื่อผู้ถูกระงับสิทธิ์ →</button>`
+        : `<button class="linkbtn" id="admin-toggle">← กลับไปรายชื่อพนักงานปัจจุบัน</button>
            <div class="section">ระงับสิทธิ์</div>
            <div id="admin-rows">${rows}</div>`;
   } catch (e) {
@@ -503,7 +503,7 @@ function removeEmployeeCard(card) {
   const rows = $("#admin-rows");
   card.remove();
   if (rows && !rows.children.length) {
-    rows.innerHTML = `<div class="empty">${adminView === "active" ? "ไม่พบพนักงาน" : "ไม่มีรายชื่อที่ถูกระงับสิทธิ์"}</div>`;
+    rows.innerHTML = `<div class="empty">${adminView === "active" ? "ไม่พบข้อมูลพนักงาน" : "ไม่มีรายชื่อผู้ถูกระงับสิทธิ์"}</div>`;
   }
 }
 
@@ -513,11 +513,11 @@ function renderEmployee(e) {
     ? '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>'
     : '<button data-act="suspend">ระงับสิทธิ์</button>';
   // ปุ่มปลดการผูกบัญชีไลน์ แสดงเฉพาะคนที่ผูกไว้แล้ว (ใช้ตอนพนักงานเปลี่ยนมือถือ/บัญชีไลน์)
-  const unlinkBtn = e.linked ? '<button data-act="unlink">ปลดบัญชีไลน์</button>' : "";
+  const unlinkBtn = e.linked ? '<button data-act="unlink">ปลดการผูกบัญชี</button>' : "";
   return `<div class="card" data-id="${e.id}">
     <div class="cardtop">
       <div>
-        <div class="tid">${esc(e.employee_code)}${e.linked ? "" : " · ยังไม่ได้ผูกบัญชีไลน์"}</div>
+        <div class="tid">${esc(e.employee_code)}${e.linked ? "" : " · ยังไม่ได้ผูกบัญชี LINE"}</div>
         <div class="ttl">${esc(e.full_name)}</div>
         <div class="meta">${esc(e.department_name || "-")}${e.floor ? " · " + esc(e.floor) : ""} · แจ้งเรื่องสะสม ${e.reported_count} รายการ${suspended && e.suspend_reason ? "<br>เหตุผล: " + esc(e.suspend_reason) : ""}</div>
       </div>
@@ -532,7 +532,7 @@ async function openDetail(id, fromTab) {
   show("s-detail");
   $("#backbtn").style.display = "block";
   const body = $("#detailBody");
-  body.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  body.innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   try {
     const t = await api(`/api/tickets/${id}`);
     body.innerHTML = renderDetail(t);
@@ -662,12 +662,15 @@ async function onPickFiles(input) {
     try {
       const c = await compressImage(f);
       pendingFiles.push(c);
+      // แสดงภาพจริงที่แนบ แทนไอคอนตัวแทน — ผู้ใช้ตรวจได้ว่าแนบถูกภาพ
       const d = document.createElement("div");
       d.className = "thumb";
-      d.textContent = "🖼";
+      d.style.backgroundImage = `url("data:${c.type};base64,${c.base64}")`;
+      d.style.backgroundSize = "cover";
+      d.style.backgroundPosition = "center";
       $("#thumbs").appendChild(d);
     } catch {
-      toast("อ่านไฟล์ภาพไม่สำเร็จ");
+      toast("ไม่สามารถอ่านไฟล์ภาพได้");
     }
   }
   input.value = "";
@@ -696,14 +699,14 @@ window.addEventListener("DOMContentLoaded", () => {
       e.stopPropagation();
       const ok = await confirmDialog({
         title: "ยกเลิกเรื่องนี้?",
-        message: "ยกเลิกแล้วจะไม่มีเจ้าหน้าที่มาดำเนินการต่อ",
+        message: "เมื่อยกเลิกแล้ว จะไม่มีเจ้าหน้าที่ดำเนินการต่อ",
         confirmLabel: "ยกเลิกเรื่อง",
         cancelLabel: "ไม่ใช่",
       });
       if (!ok) return;
       try {
         await api(`/api/tickets/${card.dataset.id}/status`, { method: "PATCH", body: { to_status: "cancelled" } });
-        toast("ยกเลิกเรื่องเรียบร้อย");
+        toast("ยกเลิกเรื่องเรียบร้อยแล้ว");
         goMine();
       } catch (err) {
         toast(err.message);
@@ -722,18 +725,18 @@ window.addEventListener("DOMContentLoaded", () => {
       e.stopPropagation();
       const id = card.dataset.id;
       const act = btn.dataset.act;
-      if (act === "claim") doStatus(id, "in_progress", "รับเรื่องเรียบร้อย");
-      else if (act === "complete") doStatus(id, "completed", "ปรับเป็นแล้วเสร็จเรียบร้อย");
-      else if (act === "closed") doStatus(id, "closed", "ปิดเรื่องเรียบร้อย");
+      if (act === "claim") doStatus(id, "in_progress", "รับเรื่องเรียบร้อยแล้ว");
+      else if (act === "complete") doStatus(id, "completed", "ปรับสถานะเป็นดำเนินการแล้วเสร็จ");
+      else if (act === "closed") doStatus(id, "closed", "ปิดเรื่องเรียบร้อยแล้ว");
       else if (act === "transfer") openTransferSheet(id, card.dataset.dept);
       else if (act === "cancel") {
         confirmDialog({
           title: "ยกเลิกเรื่องนี้?",
-          message: "ระบบจะแจ้งผู้แจ้งให้ทราบ",
+          message: "ระบบจะแจ้งผลให้ผู้แจ้งทราบโดยอัตโนมัติ",
           confirmLabel: "ยกเลิกเรื่อง",
           cancelLabel: "ไม่ใช่",
         }).then((ok) => {
-          if (ok) doStatus(id, "cancelled", "ยกเลิกเรื่องเรียบร้อย");
+          if (ok) doStatus(id, "cancelled", "ยกเลิกเรื่องเรียบร้อยแล้ว");
         });
       }
       return;
@@ -773,24 +776,24 @@ window.addEventListener("DOMContentLoaded", () => {
       if (act === "unlink") {
         const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
         const ok = await confirmDialog({
-          title: `ปลดบัญชีไลน์ของ ${name}?`,
-          message: "หลังจากนี้ต้องยืนยันตัวตนด้วยรหัสพนักงานใหม่อีกครั้ง (เรื่องที่เคยแจ้งไว้ยังอยู่ครบ)",
-          confirmLabel: "ปลดบัญชี",
+          title: `ปลดการผูกบัญชีของ ${name}?`,
+          message: "พนักงานต้องยืนยันตัวตนด้วยรหัสพนักงานอีกครั้ง ข้อมูลเรื่องที่เคยแจ้งไว้ยังคงอยู่ครบถ้วน",
+          confirmLabel: "ปลดการผูกบัญชี",
           cancelLabel: "ไม่ใช่",
         });
         if (!ok) return;
         await api(`/api/admin/employees/${id}/unlink`, { method: "PATCH" });
-        toast("ปลดการผูกบัญชีไลน์เรียบร้อย");
+        toast("ปลดการผูกบัญชี LINE เรียบร้อยแล้ว");
         goAdmin();
         return;
       }
       if (act === "suspend") {
-        const reason = window.prompt("เหตุผลการระงับสิทธิ์ (ไม่บังคับ)") || "";
+        const reason = window.prompt("ระบุเหตุผลการระงับสิทธิ์ (ไม่บังคับ)") || "";
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
-        toast("ระงับสิทธิ์เรียบร้อย · ย้ายไปหน้ารายชื่อที่ถูกระงับแล้ว");
+        toast("ระงับสิทธิ์เรียบร้อยแล้ว · ย้ายไปรายชื่อผู้ถูกระงับสิทธิ์");
       } else {
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "restore" } });
-        toast("คืนสิทธิ์เรียบร้อย · ย้ายไปหน้าพนักงานปัจจุบันแล้ว");
+        toast("คืนสิทธิ์เรียบร้อยแล้ว · ย้ายไปรายชื่อพนักงานปัจจุบัน");
       }
       removeEmployeeCard(card);
     } catch (err) {
