@@ -599,25 +599,55 @@ function finishSheet(v) {
  * และมีบรรทัดชื่อเว็บติดมาด้วยเสมอ
  */
 let confirmResolve = null;
-function confirmDialog({ title, message = "", confirmLabel = "ยืนยัน", cancelLabel = "ไม่ใช่" }) {
+let modalHasInput = false;
+
+function openModal({ title, message = "", confirmLabel = "ยืนยัน", cancelLabel = "ไม่ใช่", input = null }) {
   return new Promise((resolve) => {
     confirmResolve = resolve;
+    modalHasInput = !!input;
     $("#modal-title").textContent = title;
     const msg = $("#modal-msg");
     msg.textContent = message;
     msg.style.display = message ? "" : "none";
+
+    const field = $("#modal-input");
+    if (input) {
+      field.value = "";
+      field.placeholder = input.placeholder || "";
+      field.style.display = "";
+    } else {
+      field.style.display = "none";
+    }
+
     $("#modal-yes").textContent = confirmLabel;
     $("#modal-no").textContent = cancelLabel;
     $("#modal").classList.add("on");
     $("#backdrop").classList.add("on");
+    if (input) setTimeout(() => field.focus(), 60);
   });
 }
-function closeConfirm(v) {
+
+/** ถามยืนยัน — คืนค่า true/false */
+function confirmDialog(opts) {
+  return openModal(opts);
+}
+
+/** ถามพร้อมให้กรอกข้อความ — คืนค่าข้อความที่กรอก หรือ null เมื่อยกเลิก */
+function promptDialog(opts) {
+  return openModal({ ...opts, input: { placeholder: opts.placeholder || "" } });
+}
+
+function closeConfirm(ok) {
   $("#modal").classList.remove("on");
   $("#backdrop").classList.remove("on");
   const r = confirmResolve;
+  const hadInput = modalHasInput;
+  const value = $("#modal-input").value.trim();
   confirmResolve = null;
-  if (r) r(v);
+  modalHasInput = false;
+  if (!r) return;
+  // โหมดกรอกข้อความคืนข้อความ (หรือ null เมื่อยกเลิก) ส่วนโหมดยืนยันคืน true/false
+  r(hadInput ? (ok ? value : null) : ok);
 }
 
 function debounce(fn, ms) {
@@ -788,7 +818,15 @@ window.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (act === "suspend") {
-        const reason = window.prompt("ระบุเหตุผลการระงับสิทธิ์ (ไม่บังคับ)") || "";
+        const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
+        const reason = await promptDialog({
+          title: `ระงับสิทธิ์ ${name}?`,
+          message: "พนักงานจะไม่สามารถแจ้งเรื่องใหม่ได้ เรื่องที่แจ้งไว้เดิมยังดำเนินการต่อจนแล้วเสร็จ",
+          placeholder: "เหตุผล (ไม่บังคับ)",
+          confirmLabel: "ระงับสิทธิ์",
+          cancelLabel: "ไม่ใช่",
+        });
+        if (reason === null) return;
         await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
         toast("ระงับสิทธิ์เรียบร้อยแล้ว · ย้ายไปรายชื่อผู้ถูกระงับสิทธิ์");
       } else {
