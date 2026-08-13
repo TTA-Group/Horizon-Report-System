@@ -55,7 +55,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .cat{border:1.5px solid var(--line);background:var(--surface);border-radius:var(--r);padding:14px 12px 15px;text-align:left;
   font-family:inherit;cursor:pointer;transition:.15s;min-height:58px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .cat .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;background:var(--canvas)}
-.cat .ic svg{width:20px;height:20px;fill:none;stroke:var(--ink);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+/* flex:0 0 auto กัน svg ถูกบีบจนรูปเบี้ยวเมื่อชื่อหมวดยาว */
+.cat .ic svg{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:var(--ink);stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
 .cat .nm{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.35}
 .cat.c-it .ic{background:var(--blue-soft)} .cat.c-it svg{stroke:var(--blue)}
 .cat.c-fac .ic{background:var(--amber-soft)} .cat.c-fac svg{stroke:var(--amber)}
