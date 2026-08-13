@@ -82,14 +82,21 @@ function route(pathname: string): Handler | null {
   return null;
 }
 
-// งานตามเวลา — จับคู่ตามรูปแบบ cron ที่ตั้งไว้ใน wrangler.toml
+// งานตามเวลา — คีย์ต้องตรงกับที่ตั้งไว้ใน wrangler.toml
+// หมายเหตุ: Cloudflare ไม่รับเลข 0 ในช่องวันของสัปดาห์ จึงใช้ SUN แทน
 const CRON_JOBS: Record<string, Handler> = {
   "*/15 * * * *": reminders,
   "0 3 * * *": dbKeepalive,
-  "0 4 * * 0": backup,
+  "0 4 * * SUN": backup,
   "0 5 1 * *": cleanupFiles,
   "0 6 1 * *": usageReport,
 };
+
+/** ปรับรูปแบบ cron ให้เทียบกันได้ เผื่อช่องว่าง/ตัวพิมพ์ต่างกันเล็กน้อย */
+function normalizeCron(expr: string): string {
+  return expr.trim().replace(/\s+/g, " ").toUpperCase();
+}
+const CRON_LOOKUP = new Map(Object.entries(CRON_JOBS).map(([k, v]) => [normalizeCron(k), v]));
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -112,7 +119,7 @@ export default {
   async scheduled(event: { cron: string }, env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<void> {
     setEnv(env);
 
-    const job = CRON_JOBS[event.cron];
+    const job = CRON_LOOKUP.get(normalizeCron(event.cron));
     if (!job) {
       console.error("[cron] ไม่พบงานสำหรับรูปแบบเวลา", event.cron);
       return;
