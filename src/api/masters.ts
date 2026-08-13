@@ -1,7 +1,6 @@
 // GET /api/masters — หมวด ฝ่าย ชั้น ระดับความเร่งด่วน (spec หัวข้อ 6)
 // ต้องล็อกอินก่อน — เป็นระบบภายในองค์กร ไม่ควรเปิดรายชื่อฝ่าย/ชั้นให้คนนอกดูได้
 
-import type { Config } from "@netlify/functions";
 import { getSession } from "./_lib/auth";
 import { CATEGORIES, FLOORS, URGENCIES, companyEmailDomains } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -23,5 +22,3 @@ export default async (req: Request): Promise<Response> =>
       company_email_domains: companyEmailDomains(),
     });
   });
-
-export const config: Config = { path: "/api/masters" };

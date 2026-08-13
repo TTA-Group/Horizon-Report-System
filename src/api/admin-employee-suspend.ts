@@ -1,7 +1,6 @@
 // PATCH /api/admin/employees/:id/suspend — ระงับหรือคืนสิทธิ์ (spec หัวข้อ 5.5 / 6)
 // body: { action: "suspend" | "restore", reason?: string }
 
-import type { Config } from "@netlify/functions";
 import { getSession, invalidateSessionByEmployeeId, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -70,5 +69,3 @@ export default async (req: Request): Promise<Response> =>
     invalidateSessionByEmployeeId(id);
     return json({ ok: true, id, status: "active" });
   });
-
-export const config: Config = { path: "/api/admin/employees/:id/suspend" };

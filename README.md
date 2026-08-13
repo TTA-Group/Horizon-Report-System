@@ -12,21 +12,25 @@
 | ส่วน | เทคโนโลยี |
 |---|---|
 | Frontend (LIFF) | HTML/JS + `@line/liff` SDK (static) |
-| Backend API | Netlify Functions v2 (Node.js 20, TypeScript) |
+| Backend API | Cloudflare Workers (TypeScript) |
 | ฐานข้อมูล | PostgreSQL (Supabase) |
 | ไฟล์แนบ / สำรองข้อมูล | Supabase Storage |
-| งานตามเวลา | Netlify Scheduled Functions |
+| งานตามเวลา | Cloudflare Cron Triggers |
+
+> เดิมใช้ Netlify ย้ายมา Cloudflare เพราะแผนฟรีของ Netlify จำกัดจำนวนครั้งที่ deploy ได้ต่อเดือน
+> (`spec.md` หัวข้อ 2 และ 9 ยังอ้างถึง Netlify ตามข้อกำหนดฉบับแรก)
 
 ---
 
 ## โครงสร้างโปรเจกต์
 
 ```
-public/              LIFF frontend — index.html, app.js, config.js (★ ตั้งค่า liffId ที่นี่)
-netlify/functions/   REST API + LINE webhook + งานตามเวลา
-  _lib/              โค้ดใช้ร่วม (db, auth, line, flex, jobs, constants)
-db/                  schema.sql · seed.sql · enable-rls.sql
-netlify.toml         การตั้งค่า build / functions / publish
+public/          หน้าเว็บ LIFF — index.html, app.js, config.js (★ ตั้งค่า liffId ที่นี่)
+src/index.ts     จุดเข้าของ Worker — จัดเส้นทาง /api/*, เสิร์ฟหน้าเว็บ, รันงานตามเวลา
+src/api/         ตัวจัดการแต่ละ endpoint
+  _lib/          โค้ดใช้ร่วม (db, auth, line, flex, jobs, constants, env)
+db/              schema.sql · seed.sql · enable-rls.sql · cleanup-sample-data.sql
+wrangler.toml    การตั้งค่า Worker (assets, nodejs_compat, cron triggers)
 ```
 
 **API** (รายละเอียดใน `spec.md` หัวข้อ 6)
@@ -51,8 +55,10 @@ psql "$DATABASE_URL" -f db/seed.sql
 psql "$DATABASE_URL" -f db/enable-rls.sql
 ```
 
-**ตัวแปรสภาพแวดล้อม** — คัดลอก `.env.example` เป็น `.env` แล้วเติมค่าจริง
-(บน Netlify ให้ตั้งใน Environment variables)
+**ตัวแปรสภาพแวดล้อม** — ดูรายการทั้งหมดใน `.env.example`
+ตั้งค่าที่ Cloudflare → Worker → Settings → Variables and Secrets
+
+⚠️ ตั้งเป็นชนิด **Secret** ทุกตัว — ค่าชนิด Text จะถูกล้างทุกครั้งที่ deploy และถูกพิมพ์ลง build log
 
 ⚠️ `STORAGE_BUCKET_URL` ต้องเป็น bucket แบบ **public** (ภาพต้องแสดงในแอปได้)
 ส่วน `BACKUP_BUCKET_URL` ต้องเป็น bucket แบบ **private คนละตัวกัน** เพราะไฟล์สำรองมีข้อมูลส่วนบุคคล
@@ -61,8 +67,11 @@ psql "$DATABASE_URL" -f db/enable-rls.sql
 
 ```bash
 npm run typecheck   # ตรวจชนิดข้อมูล
-npm run dev         # รันโลคัล (ต้องมี Netlify CLI)
+npm run dev         # รันโลคัลด้วย wrangler
+npm run deploy      # deploy ขึ้น Cloudflare
 ```
+
+Cloudflare จะ build และ deploy อัตโนมัติเมื่อมีการ push เข้า `main`
 
 ---
 

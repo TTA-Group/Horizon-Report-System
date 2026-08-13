@@ -2,7 +2,6 @@
 //
 // รวมยอดของเดือนก่อนหน้าจาก message_logs แล้ว push สรุปให้ผู้ดูแลระบบ (ADMIN_EMPLOYEE_CODES)
 
-import type { Config } from "@netlify/functions";
 import { CHANNEL_KEY, adminCodes } from "./_lib/constants";
 import { assertCron } from "./_lib/cron";
 import { db } from "./_lib/db";
@@ -45,7 +44,3 @@ export default async (req: Request): Promise<Response> =>
 
     return json({ ok: true, total, breakdown: [...agg], notified_admins: sent });
   });
-
-export const config: Config = {
-  schedule: "0 6 1 * *", // 06:00 UTC วันที่ 1 ของทุกเดือน
-};

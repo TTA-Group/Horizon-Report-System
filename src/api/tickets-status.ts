@@ -1,7 +1,6 @@
 // PATCH /api/tickets/:id/status — เปลี่ยนสถานะ (spec หัวข้อ 5.3 / 6)
 // รองรับการกดรับพร้อมกัน: ใช้ conditional update กันรับซ้ำ
 
-import type { Config } from "@netlify/functions";
 import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { CHANNEL_KEY, STATUS_LABELS, STATUS_TRANSITIONS, type StatusCode } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -95,5 +94,3 @@ export default async (req: Request): Promise<Response> =>
 
     return json({ ok: true, id, status: to, status_label: STATUS_LABELS[to] ?? to });
   });
-
-export const config: Config = { path: "/api/tickets/:id/status" };

@@ -1,7 +1,6 @@
 // GET /api/admin/employees — รายชื่อผู้ใช้งาน (เฉพาะผู้ดูแล) (spec หัวข้อ 6)
 // query: ?q=คำค้น&status=active|suspended
 
-import type { Config } from "@netlify/functions";
 import { getSession, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -53,5 +52,3 @@ export default async (req: Request): Promise<Response> =>
 
     return json({ employees: [...rows] });
   });
-
-export const config: Config = { path: "/api/admin/employees" };

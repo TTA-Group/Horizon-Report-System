@@ -6,7 +6,6 @@
 // จึงคืนเฉพาะข้อมูลที่ "พอให้เจ้าตัวยืนยันว่าใช่ตนเอง" แต่ไม่พอให้คนอื่นเอาไปใช้ประโยชน์
 // และจำกัดจำนวนครั้งที่ลองต่อบัญชี LINE หนึ่งบัญชี
 
-import type { Config } from "@netlify/functions";
 import { getSession } from "./_lib/auth";
 import { CHANNEL_KEY } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -90,5 +89,3 @@ export default async (req: Request): Promise<Response> =>
       },
     });
   });
-
-export const config: Config = { path: "/api/auth/verify-employee" };

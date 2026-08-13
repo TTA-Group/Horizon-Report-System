@@ -10,7 +10,6 @@
 // TODO: ตามสเปกควรนำไปเก็บ "นอกผู้ให้บริการเดิม" (เช่น SharePoint/OneDrive)
 //       เมื่อมี credential ปลายทางแล้วให้เปลี่ยนปลายทางการอัปโหลดในฟังก์ชันนี้
 
-import type { Config } from "@netlify/functions";
 import { assertCron } from "./_lib/cron";
 import { db } from "./_lib/db";
 import { json, run } from "./_lib/http";
@@ -73,7 +72,3 @@ export default async (req: Request): Promise<Response> =>
     console.warn("[backup] BACKUP_BUCKET_URL not set — skipped writing backup file; counts=", counts);
     return json({ ok: true, stored: false, reason: "BACKUP_BUCKET_URL not set", bytes: payload.byteLength, counts });
   });
-
-export const config: Config = {
-  schedule: "0 4 * * 0", // 04:00 UTC ทุกวันอาทิตย์
-};
