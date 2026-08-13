@@ -171,6 +171,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   padding:12px;margin-bottom:8px;font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
 .sheet .cancel{width:100%;border:0;background:transparent;color:var(--slate);font-family:inherit;font-size:13px;padding:10px;cursor:pointer}
 
+/* หน้าต่างยืนยัน (แทน window.confirm) */
+.modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-46%) scale(.96);width:calc(100% - 56px);max-width:340px;
+  z-index:31;background:var(--surface);border-radius:18px;padding:22px 20px 16px;text-align:center;
+  box-shadow:0 18px 44px -12px rgba(16,20,24,.45);opacity:0;pointer-events:none;transition:.2s}
+.modal.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.modal h3{font-size:18px;font-weight:700;line-height:1.4;letter-spacing:-.01em}
+.modal p{font-size:13px;color:var(--slate);line-height:1.6;margin-top:8px}
+.modal-actions{display:flex;gap:8px;margin-top:20px}
+.mbtn{flex:1;font-family:inherit;font-size:14px;font-weight:600;padding:12px;border-radius:12px;
+  border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;transition:.15s}
+.mbtn.danger{background:var(--alert);border-color:var(--alert);color:#fff}
+.mbtn:active{transform:translateY(1px)}
+
 /* detail */
 .backbtn{border:0;background:transparent;font-family:inherit;font-size:22px;color:var(--ink);cursor:pointer;padding:0 6px 0 0;line-height:1}
 .dkv{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13px}
@@ -325,6 +338,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <h3 id="sheet-title">เลือก</h3>
     <div id="sheet-opts"></div>
     <button class="cancel" id="sheet-cancel">ยกเลิก</button>
+  </div>
+
+  <!-- หน้าต่างยืนยันของแอปเอง (แทน window.confirm ที่แต่งหน้าตาไม่ได้และมีบรรทัดชื่อเว็บติดมา) -->
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title">ยืนยัน</h3>
+    <p id="modal-msg"></p>
+    <div class="modal-actions">
+      <button class="mbtn" id="modal-no">ไม่ใช่</button>
+      <button class="mbtn danger" id="modal-yes">ยืนยัน</button>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
