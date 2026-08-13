@@ -6,8 +6,8 @@
 # ที่ Settings → Variables and Secrets — ห้ามใส่ลงไฟล์นี้เพราะไฟล์นี้อยู่ใน repo
 
 # ต้องตรงกับชื่อ Worker ที่สร้างไว้ใน Cloudflare (ดูที่ Workers & Pages)
-# ถ้าไม่ตรง คำสั่ง deploy จะล้มเหลว
-name = "horizon-report-system"
+# ถ้าไม่ตรง คำสั่ง deploy จะล้มเหลวเพราะ build token ผูกกับ Worker ตัวใดตัวหนึ่งเท่านั้น
+name = "tta-horizon"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
