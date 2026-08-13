@@ -2,6 +2,6 @@
 window.APP_CONFIG = {
   // LIFF ID จาก LINE Developers Console
   liffId: "2008960303-ci4AFC0z",
-  // ฐานของ API — เว้นว่างไว้ถ้า deploy ที่โดเมนเดียวกับ Netlify Functions (แนะนำ)
+  // ฐานของ API — เว้นว่างไว้เมื่อหน้าเว็บกับ API อยู่โดเมนเดียวกัน (ค่าปกติของระบบนี้)
   apiBase: "",
 };

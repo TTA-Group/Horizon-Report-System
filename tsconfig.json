@@ -13,5 +13,5 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["netlify/functions/**/*.ts", "src/**/*.ts"]
+  "include": ["src/**/*.ts"]
 }

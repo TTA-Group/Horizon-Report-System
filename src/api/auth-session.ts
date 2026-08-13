@@ -1,6 +1,5 @@
 // POST /api/auth/session — ตรวจ token คืนข้อมูลพนักงานและสถานะการผูกบัญชี (spec หัวข้อ 6)
 
-import type { Config } from "@netlify/functions";
 import { getSession } from "./_lib/auth";
 import { json, methodGuard, run } from "./_lib/http";
 
@@ -27,5 +26,3 @@ export default async (req: Request): Promise<Response> =>
         : null,
     });
   });
-
-export const config: Config = { path: "/api/auth/session" };

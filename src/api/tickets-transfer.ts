@@ -1,7 +1,6 @@
 // PATCH /api/tickets/:id/transfer — ส่งต่อฝ่ายอื่น (spec หัวข้อ 5.3 / 6)
 // เปลี่ยน department_id คงสถานะ pending แล้ว push เข้ากลุ่มฝ่ายใหม่
 
-import type { Config } from "@netlify/functions";
 import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { CATEGORY_BY_CODE, CHANNEL_KEY, type UrgencyCode } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -108,5 +107,3 @@ export default async (req: Request): Promise<Response> =>
 
     return json({ ok: true, id, department_id: dept[0].id, status: "pending" });
   });
-
-export const config: Config = { path: "/api/tickets/:id/transfer" };

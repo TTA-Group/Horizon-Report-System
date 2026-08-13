@@ -4,7 +4,6 @@
 // - postback: action=ack|complete|transfer (จากปุ่มใน Flex Message)
 // - join: เก็บ groupId ของกลุ่มฝ่ายไว้ตั้งค่าใน departments.line_group_id
 
-import type { Config } from "@netlify/functions";
 import { adminCodes, CATEGORY_BY_CODE, CHANNEL_KEY, STATUS_LABELS, type StatusCode, type UrgencyCode } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
@@ -249,5 +248,3 @@ async function notifyReporter(reporterId: string, text: string, ticketId: string
     await pushTo(rows[0].line_user_id, [textMessage(text)], { ticketId, channel: "user" });
   }
 }
-
-export const config: Config = { path: "/api/line/webhook" };

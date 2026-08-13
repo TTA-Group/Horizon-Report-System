@@ -1,7 +1,6 @@
 // POST /api/cron/reminders — เรียกงานเตือนซ้ำแบบ manual (spec หัวข้อ 6)
 // ต้องแนบ header x-cron-secret ให้ตรงกับ CRON_SECRET (spec หัวข้อ 9.3)
 
-import type { Config } from "@netlify/functions";
 import { requireCron } from "./_lib/cron";
 import { json, methodGuard, run } from "./_lib/http";
 import { runReminders } from "./_lib/jobs";
@@ -13,5 +12,3 @@ export default async (req: Request): Promise<Response> =>
     const result = await runReminders();
     return json({ ok: true, ...result });
   });
-
-export const config: Config = { path: "/api/cron/reminders" };

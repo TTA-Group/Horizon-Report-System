@@ -1,6 +1,5 @@
 // POST /api/tickets — สร้างเรื่องใหม่ (spec หัวข้อ 5.2 / 6)
 
-import type { Config } from "@netlify/functions";
 import { getSession, requireActive } from "./_lib/auth";
 import { CATEGORY_BY_CODE, CHANNEL_KEY, URGENCY_CODES, type UrgencyCode } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -142,5 +141,3 @@ export default async (req: Request): Promise<Response> =>
 
     return json({ ok: true, id: created.id, ticket_no: created.ticket_no, status: created.status });
   });
-
-export const config: Config = { path: "/api/tickets" };

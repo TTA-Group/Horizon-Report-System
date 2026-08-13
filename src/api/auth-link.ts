@@ -4,7 +4,6 @@
 //  - directory: ระบุ employee_code ที่มีอยู่ในระบบ -> ผูกกับพนักงานคนนั้น
 //  - self: ไม่พบรหัส / ไม่ได้ระบุ -> สร้างพนักงานใหม่ source='self' แล้วผูกทันที (ไม่ต้องรออนุมัติ)
 
-import type { Config } from "@netlify/functions";
 import { getSession, invalidateSessionByLineUserId } from "./_lib/auth";
 import { CHANNEL_KEY, companyEmailDomains, isCompanyEmail } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -90,5 +89,3 @@ export default async (req: Request): Promise<Response> =>
       throw e;
     }
   });
-
-export const config: Config = { path: "/api/auth/link" };

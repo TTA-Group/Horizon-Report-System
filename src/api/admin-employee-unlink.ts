@@ -6,7 +6,6 @@
 //
 // ลบเฉพาะการผูกบัญชี ไม่แตะข้อมูลพนักงานและเรื่องที่เคยแจ้งไว้
 
-import type { Config } from "@netlify/functions";
 import { getSession, invalidateSessionByLineUserId, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -39,5 +38,3 @@ export default async (req: Request): Promise<Response> =>
 
     return json({ ok: true, id, linked: false });
   });
-
-export const config: Config = { path: "/api/admin/employees/:id/unlink" };

@@ -4,7 +4,6 @@
 // ลบเฉพาะไฟล์ ส่วนข้อมูล tickets / ticket_events คงไว้เพื่อทำรายงาน
 // อัปเดต file_url เป็น NULL พร้อมบันทึกวันที่ลบ (deleted_at)
 
-import type { Config } from "@netlify/functions";
 import { assertCron } from "./_lib/cron";
 import { db } from "./_lib/db";
 import { json, run } from "./_lib/http";
@@ -45,7 +44,3 @@ export default async (req: Request): Promise<Response> =>
 
     return json({ ok: true, deleted });
   });
-
-export const config: Config = {
-  schedule: "0 5 1 * *", // 05:00 UTC วันที่ 1 ของทุกเดือน
-};

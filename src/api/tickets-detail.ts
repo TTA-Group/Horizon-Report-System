@@ -1,12 +1,9 @@
 // GET /api/tickets/:id — รายละเอียดพร้อมไทม์ไลน์และไฟล์แนบ (spec หัวข้อ 6)
 //
-// เป็นจุดเดียวที่ประกาศ route ของ "/api/tickets/<segment>" ทั้งหมด แล้ว dispatch เอง
-// (แทนที่จะให้ tickets-mine.ts / tickets-department.ts ประกาศ path static ของตัวเอง)
-// เพราะ Netlify Functions v2 อาจจับคู่ path แบบ static ("/api/tickets/mine") ปะทะกับ
-// path แบบมีตัวแปร ("/api/tickets/:id") ผิดตัว ทำให้ request ไปหลุดเข้า handler คนละตัว
-// การรวมมาที่จุดเดียวตัดปัญหานี้ทิ้งไปเลย ไม่ต้องพึ่งลำดับความสำคัญของเส้นทางฝั่ง Netlify
+// เป็นจุดเดียวที่รับ "/api/tickets/<segment>" ทั้งหมด แล้วแยกเองว่าเป็นคำขอแบบไหน
+// ("mine" / "department" / รหัสเรื่องจริง) — เพราะทั้งสามรูปแบบมีหน้าตาเส้นทางเหมือนกัน
+// ถ้าแยกเป็นคนละไฟล์จะเสี่ยงถูกจับคู่ผิดตัว
 
-import type { Config } from "@netlify/functions";
 import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { CATEGORY_BY_CODE, STATUS_LABELS, type StatusCode } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -111,5 +108,3 @@ export default async (req: Request): Promise<Response> => {
     });
   });
 };
-
-export const config: Config = { path: "/api/tickets/:id" };

@@ -1,33 +1,33 @@
 // จุดเข้าของ Cloudflare Worker — ทำหน้าที่ 3 อย่าง
 //   1. เสิร์ฟหน้าเว็บ LIFF (ไฟล์ใน public/) ผ่าน assets binding
-//   2. จัดเส้นทาง /api/* ไปยังตัวจัดการเดิม (ใช้โค้ดชุดเดียวกับ Netlify ไม่ได้เขียนตรรกะซ้ำ)
+//   2. จัดเส้นทาง /api/* ไปยังตัวจัดการใน src/api/
 //   3. รันงานตามเวลาผ่าน Cron Triggers
 //
-// ตัวจัดการทุกตัวรับ Request คืน Response ตามมาตรฐานเว็บอยู่แล้ว จึงเรียกใช้ได้ตรง ๆ
-// ส่วน `export const config` ในไฟล์เหล่านั้นเป็นข้อมูลสำหรับ Netlify เท่านั้น ฝั่งนี้ไม่ได้ใช้
+// ตัวจัดการทุกตัวรับ Request คืน Response ตามมาตรฐานเว็บ จึงเรียกใช้ได้ตรง ๆ
+// ไฟล์นี้เป็นแหล่งข้อมูลเดียวที่กำหนดว่าเส้นทางไหนไปตัวจัดการใด
 
-import { setEnv } from "../netlify/functions/_lib/env";
+import { setEnv } from "./api/_lib/env";
 
-import authSession from "../netlify/functions/auth-session";
-import authVerifyEmployee from "../netlify/functions/auth-verify-employee";
-import authLink from "../netlify/functions/auth-link";
-import masters from "../netlify/functions/masters";
-import ticketsCreate from "../netlify/functions/tickets-create";
-import ticketsDetail from "../netlify/functions/tickets-detail";
-import ticketsStatus from "../netlify/functions/tickets-status";
-import ticketsTransfer from "../netlify/functions/tickets-transfer";
-import uploads from "../netlify/functions/uploads";
-import adminEmployees from "../netlify/functions/admin-employees";
-import adminEmployeeSuspend from "../netlify/functions/admin-employee-suspend";
-import adminEmployeeUnlink from "../netlify/functions/admin-employee-unlink";
-import lineWebhook from "../netlify/functions/line-webhook";
-import cronReminders from "../netlify/functions/cron-reminders";
+import authSession from "./api/auth-session";
+import authVerifyEmployee from "./api/auth-verify-employee";
+import authLink from "./api/auth-link";
+import masters from "./api/masters";
+import ticketsCreate from "./api/tickets-create";
+import ticketsDetail from "./api/tickets-detail";
+import ticketsStatus from "./api/tickets-status";
+import ticketsTransfer from "./api/tickets-transfer";
+import uploads from "./api/uploads";
+import adminEmployees from "./api/admin-employees";
+import adminEmployeeSuspend from "./api/admin-employee-suspend";
+import adminEmployeeUnlink from "./api/admin-employee-unlink";
+import lineWebhook from "./api/line-webhook";
+import cronReminders from "./api/cron-reminders";
 
-import reminders from "../netlify/functions/reminders";
-import dbKeepalive from "../netlify/functions/db-keepalive";
-import backup from "../netlify/functions/backup";
-import cleanupFiles from "../netlify/functions/cleanup-files";
-import usageReport from "../netlify/functions/usage-report";
+import reminders from "./api/reminders";
+import dbKeepalive from "./api/db-keepalive";
+import backup from "./api/backup";
+import cleanupFiles from "./api/cleanup-files";
+import usageReport from "./api/usage-report";
 
 interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };

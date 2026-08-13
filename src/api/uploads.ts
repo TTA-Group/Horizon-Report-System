@@ -6,7 +6,6 @@
 // การจัดเก็บใช้ Supabase Storage ผ่าน REST (ตั้งค่า STORAGE_BUCKET_URL + STORAGE_SERVICE_KEY)
 // ถ้ายังไม่ได้ตั้งค่า จะตอบ 501 เพื่อให้ผู้ดูแลไปตั้งค่าก่อน
 
-import type { Config } from "@netlify/functions";
 import { getSession, requireActive } from "./_lib/auth";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { envVar } from "./_lib/env";
@@ -65,5 +64,3 @@ export default async (req: Request): Promise<Response> =>
     const publicUrl = putUrl.replace("/object/", "/object/public/");
     return json({ ok: true, url: publicUrl });
   });
-
-export const config: Config = { path: "/api/uploads" };

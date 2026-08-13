@@ -1,9 +1,8 @@
 // ตรรกะของ GET /api/tickets/mine และ GET /api/tickets/department
 //
-// อยู่ใน _lib (ไม่ใช่ endpoint แยก) เพราะ Netlify Functions v2 จับคู่ path แบบ static
-// ("/api/tickets/mine") กับ path แบบมีตัวแปร ("/api/tickets/:id") ชนกันได้ — ทำให้ request
-// ไปที่ /api/tickets/mine ถูกจับคู่เข้ากับ handler ของ /api/tickets/:id แทน (id="mine")
-// จึงรวมมาให้ tickets-detail.ts เป็นจุดเดียวที่ประกาศ route แล้ว dispatch เข้ามาที่นี่แทน
+// อยู่ใน _lib (ไม่ใช่ไฟล์ endpoint แยก) เพราะ "/api/tickets/mine" กับ "/api/tickets/:id"
+// มีรูปแบบเส้นทางชนกัน ถ้าแยกไฟล์กันจะเสี่ยงถูกจับคู่ผิดตัว
+// จึงให้ tickets-detail.ts เป็นจุดเดียวที่รับ แล้วแยกเรียกฟังก์ชันในไฟล์นี้เอง
 
 import { getSession, isMemberOf, requireActive } from "./auth";
 import { CATEGORY_BY_CODE, STATUS_LABELS, STATUS_TRANSITIONS, type StatusCode } from "./constants";

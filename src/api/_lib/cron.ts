@@ -1,6 +1,6 @@
 // ตัวช่วยสำหรับงานตามเวลา — ตรวจ CRON_SECRET เมื่อถูกเรียกแบบมี header (spec หัวข้อ 9.3)
 //
-// หมายเหตุ: ฟังก์ชันที่ตั้ง `schedule` จะถูกเรียกภายในโดย Netlify (ไม่เปิดเป็น public URL)
+// หมายเหตุ: งานตามเวลาถูกเรียกจาก Cron Trigger ภายในของ Cloudflare (ไม่ผ่าน URL สาธารณะ)
 // การตรวจ secret นี้เป็นการป้องกันเพิ่มกรณีมีการเรียกผ่าน HTTP พร้อม header x-cron-secret
 
 import { HttpError } from "./http";
