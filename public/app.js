@@ -594,6 +594,32 @@ function finishSheet(v) {
   if (r) r(v);
 }
 
+/* ---------- หน้าต่างยืนยัน ----------
+ * ใช้แทน window.confirm เพราะหน้าต่างของเบราว์เซอร์แต่งข้อความไม่ได้
+ * และมีบรรทัดชื่อเว็บติดมาด้วยเสมอ
+ */
+let confirmResolve = null;
+function confirmDialog({ title, message = "", confirmLabel = "ยืนยัน", cancelLabel = "ไม่ใช่" }) {
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+    $("#modal-title").textContent = title;
+    const msg = $("#modal-msg");
+    msg.textContent = message;
+    msg.style.display = message ? "" : "none";
+    $("#modal-yes").textContent = confirmLabel;
+    $("#modal-no").textContent = cancelLabel;
+    $("#modal").classList.add("on");
+    $("#backdrop").classList.add("on");
+  });
+}
+function closeConfirm(v) {
+  $("#modal").classList.remove("on");
+  $("#backdrop").classList.remove("on");
+  const r = confirmResolve;
+  confirmResolve = null;
+  if (r) r(v);
+}
+
 function debounce(fn, ms) {
   let t;
   return (...a) => {
@@ -668,7 +694,13 @@ window.addEventListener("DOMContentLoaded", () => {
     const btn = e.target.closest("button[data-act]");
     if (btn && btn.dataset.act === "cancel") {
       e.stopPropagation();
-      if (!window.confirm("ยกเลิกเรื่องนี้?\n\nยกเลิกแล้วจะไม่มีเจ้าหน้าที่มาดำเนินการต่อ")) return;
+      const ok = await confirmDialog({
+        title: "ยกเลิกเรื่องนี้?",
+        message: "ยกเลิกแล้วจะไม่มีเจ้าหน้าที่มาดำเนินการต่อ",
+        confirmLabel: "ยกเลิกเรื่อง",
+        cancelLabel: "ไม่ใช่",
+      });
+      if (!ok) return;
       try {
         await api(`/api/tickets/${card.dataset.id}/status`, { method: "PATCH", body: { to_status: "cancelled" } });
         toast("ยกเลิกเรื่องเรียบร้อย");
@@ -695,9 +727,14 @@ window.addEventListener("DOMContentLoaded", () => {
       else if (act === "closed") doStatus(id, "closed", "ปิดเรื่องเรียบร้อย");
       else if (act === "transfer") openTransferSheet(id, card.dataset.dept);
       else if (act === "cancel") {
-        if (window.confirm("ยกเลิกเรื่องนี้?\n\nระบบจะแจ้งผู้แจ้งให้ทราบ")) {
-          doStatus(id, "cancelled", "ยกเลิกเรื่องเรียบร้อย");
-        }
+        confirmDialog({
+          title: "ยกเลิกเรื่องนี้?",
+          message: "ระบบจะแจ้งผู้แจ้งให้ทราบ",
+          confirmLabel: "ยกเลิกเรื่อง",
+          cancelLabel: "ไม่ใช่",
+        }).then((ok) => {
+          if (ok) doStatus(id, "cancelled", "ยกเลิกเรื่องเรียบร้อย");
+        });
       }
       return;
     }
@@ -735,7 +772,13 @@ window.addEventListener("DOMContentLoaded", () => {
     try {
       if (act === "unlink") {
         const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
-        if (!window.confirm(`ปลดการผูกบัญชีไลน์ของ ${name}?\n\nหลังจากนี้ต้องยืนยันตัวตนด้วยรหัสพนักงานใหม่อีกครั้ง\n(เรื่องที่เคยแจ้งไว้ยังอยู่ครบ)`)) return;
+        const ok = await confirmDialog({
+          title: `ปลดบัญชีไลน์ของ ${name}?`,
+          message: "หลังจากนี้ต้องยืนยันตัวตนด้วยรหัสพนักงานใหม่อีกครั้ง (เรื่องที่เคยแจ้งไว้ยังอยู่ครบ)",
+          confirmLabel: "ปลดบัญชี",
+          cancelLabel: "ไม่ใช่",
+        });
+        if (!ok) return;
         await api(`/api/admin/employees/${id}/unlink`, { method: "PATCH" });
         toast("ปลดการผูกบัญชีไลน์เรียบร้อย");
         goAdmin();
@@ -763,7 +806,16 @@ window.addEventListener("DOMContentLoaded", () => {
   );
   // bottom sheet ยกเลิก
   $("#sheet-cancel").onclick = () => finishSheet(null);
-  $("#backdrop").onclick = () => finishSheet(null);
+
+  // หน้าต่างยืนยัน
+  $("#modal-yes").onclick = () => closeConfirm(true);
+  $("#modal-no").onclick = () => closeConfirm(false);
+
+  // ฉากหลังใช้ร่วมกัน — ปิดอันที่เปิดอยู่ (ถือว่าไม่ยืนยัน)
+  $("#backdrop").onclick = () => {
+    if (confirmResolve) closeConfirm(false);
+    else finishSheet(null);
+  };
 
   boot();
 });
