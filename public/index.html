@@ -204,7 +204,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   </div>
 
   <!-- loading -->
-  <section class="screen on" id="s-loading"><div class="center"><h2>กำลังเชื่อมต่อ…</h2><p>โปรดรอสักครู่</p></div></section>
+  <section class="screen on" id="s-loading"><div class="center"><h2>กำลังเชื่อมต่อระบบ</h2><p>โปรดรอสักครู่</p></div></section>
 
   <!-- config error -->
   <section class="screen" id="s-config"><div class="center">
@@ -227,16 +227,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   <section class="screen" id="s-register">
     <div id="reg-input">
       <div class="welcome"><div class="wave">ยืนยันตัวตน</div>
-        <p>กรุณากรอกรหัสพนักงานเพื่อยืนยันตัวตน กรอกเพียงครั้งเดียว ครั้งต่อไปเข้าใช้งานได้ทันที</p></div>
+        <p>กรุณากรอกรหัสพนักงานเพื่อยืนยันตัวตน ดำเนินการเพียงครั้งเดียว การเข้าใช้งานครั้งถัดไประบบจะจดจำโดยอัตโนมัติ</p></div>
       <div class="block" style="margin-top:20px">
         <label class="q">รหัสพนักงาน <span>*</span></label>
-        <input type="text" id="empid" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="เช่น 10234" style="font-family:'IBM Plex Mono',monospace;letter-spacing:.05em" />
+        <input type="text" id="empid" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="00000" style="font-family:'IBM Plex Mono',monospace;letter-spacing:.05em" />
       </div>
       <button class="send" id="btn-check">ยืนยันตัวตน</button>
     </div>
 
     <div id="reg-found" style="display:none">
-      <div class="foundhead"><div>✅</div><div><b>พบข้อมูลของคุณ</b><span>กรุณาตรวจสอบความถูกต้องของข้อมูล</span></div></div>
+      <div class="foundhead"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--green-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><div><b>พบข้อมูลพนักงาน</b><span>กรุณาตรวจสอบความถูกต้องของข้อมูลก่อนยืนยัน</span></div></div>
       <div class="card" style="margin-top:14px">
         <div class="kv2"><b>รหัสพนักงาน</b><span id="f-id"></span></div>
         <div class="kv2"><b>ชื่อ–สกุล</b><span id="f-name"></span></div>
@@ -245,15 +245,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
         <div class="kv2"><b>อีเมล</b><span id="f-mail" style="font-size:12px"></span></div>
       </div>
       <p class="tip">หากข้อมูลไม่ถูกต้อง กรุณาติดต่อฝ่ายทรัพยากรบุคคลเพื่อแก้ไขข้อมูลต้นทาง</p>
-      <button class="send" style="margin-top:14px" id="btn-confirm-found">ยืนยัน ข้อมูลถูกต้อง</button>
-      <button class="ghost" id="btn-not-me">ไม่ใช่ข้อมูลของฉัน</button>
+      <button class="send" style="margin-top:14px" id="btn-confirm-found">ยืนยันข้อมูล</button>
+      <button class="ghost" id="btn-not-me">ข้อมูลไม่ถูกต้อง</button>
     </div>
 
     <div id="reg-manual" style="display:none">
-      <div class="foundhead alert"><div>⚠️</div><div><b>ไม่พบรหัสพนักงานนี้</b><span>กรุณาระบุข้อมูลเพื่อยืนยันตัวตน</span></div></div>
-      <p class="tip" style="margin:10px 0 16px">ท่านสามารถเริ่มแจ้งเรื่องได้ทันทีหลังกรอกข้อมูล</p>
+      <div class="foundhead alert"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b>ไม่พบรหัสพนักงานนี้ในระบบ</b><span>กรุณาระบุข้อมูลเพื่อยืนยันตัวตน</span></div></div>
+      <p class="tip" style="margin:10px 0 16px">ท่านสามารถเริ่มใช้งานได้ทันทีหลังกรอกข้อมูลครบถ้วน</p>
       <div class="block"><label class="q">รหัสพนักงาน</label><input type="text" id="m-id" inputmode="numeric" maxlength="5" style="font-family:'IBM Plex Mono',monospace" /></div>
-      <div class="block"><label class="q">ชื่อ–สกุล <span>*</span></label><input type="text" id="m-name" placeholder="ระบุชื่อและนามสกุลจริง" /></div>
+      <div class="block"><label class="q">ชื่อ–สกุล <span>*</span></label><input type="text" id="m-name" placeholder="ชื่อ นามสกุล" /></div>
       <div class="block"><label class="q">ฝ่าย/แผนก <span>*</span></label>
         <select id="m-dept"><option value="">เลือกฝ่าย/แผนก</option>
           <option>ฝ่ายบัญชีและการเงิน</option><option>ฝ่ายขายและการตลาด</option><option>ฝ่ายทรัพยากรบุคคล</option>
@@ -261,8 +261,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       <div class="block"><label class="q">ชั้นที่ปฏิบัติงาน</label>
         <select id="m-floor"><option value="">เลือกชั้น</option>
           <option>ชั้น 15</option><option>ชั้น 9</option><option>ชั้น 8</option><option>ชั้น 7</option><option>ชั้น 5</option><option>ชั้นลอย</option></select></div>
-      <div class="block"><label class="q">อีเมลบริษัท</label><input type="text" id="m-mail" placeholder="name@company.co.th" /></div>
-      <button class="send" id="btn-manual">ส่งข้อมูลและเริ่มใช้งาน</button>
+      <div class="block"><label class="q">อีเมลบริษัท</label><input type="text" id="m-mail" placeholder="ชื่อผู้ใช้@บริษัท.co.th" /></div>
+      <button class="send" id="btn-manual">บันทึกข้อมูลและเริ่มใช้งาน</button>
       <button class="ghost" id="btn-manual-back">ย้อนกลับ</button>
     </div>
   </section>
@@ -277,16 +277,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       <label class="q">สถานที่เกิดเหตุ <span>*</span></label>
       <div class="row">
         <select id="floor" style="flex:0 0 120px"><option value="">เลือกชั้น</option></select>
-        <input type="text" id="room" placeholder="ระบุห้องหรือจุดที่พบ" />
+        <input type="text" id="room" placeholder="ระบุห้องหรือจุดที่พบเหตุ" />
       </div>
     </div>
     <div class="block">
       <label class="q">รายละเอียดของปัญหา <span>*</span></label>
-      <textarea id="detail" placeholder="โปรดระบุอาการหรือปัญหาที่พบ พร้อมช่วงเวลาที่เริ่มเกิดเหตุ"></textarea>
+      <textarea id="detail" placeholder="ระบุอาการหรือปัญหาที่พบ และช่วงเวลาที่เริ่มเกิดเหตุ"></textarea>
     </div>
     <div class="block">
       <label class="q">ภาพประกอบ <span class="hint">(หากมี · สูงสุด 3 ภาพ)</span></label>
-      <label class="drop" for="file"><b>แนบภาพถ่ายหรือเลือกจากคลังภาพ</b>ระบบจะย่อขนาดภาพให้อัตโนมัติ</label>
+      <label class="drop" for="file"><b>แนบภาพถ่ายหรือเลือกจากคลังภาพ</b>ระบบจะปรับขนาดภาพให้โดยอัตโนมัติ</label>
       <input type="file" id="file" accept="image/*" multiple hidden />
       <div class="thumbs" id="thumbs"></div>
     </div>
@@ -299,7 +299,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
   <!-- mine -->
   <section class="screen" id="s-mine">
-    <div class="section">เรื่องที่แจ้ง</div>
+    <div class="section">รายการเรื่องที่แจ้ง</div>
     <div id="mineList"></div>
   </section>
 
@@ -309,14 +309,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <div class="filters" id="queue-filters">
       <button class="chip" data-f="" aria-pressed="true">ทั้งหมด</button>
       <button class="chip" data-f="pending" aria-pressed="false">รอรับเรื่อง</button>
-      <button class="chip" data-f="me" aria-pressed="false">ผู้รับผิดชอบ: ฉัน</button>
+      <button class="chip" data-f="me" aria-pressed="false">งานที่รับผิดชอบ</button>
     </div>
     <div id="queueList"></div>
   </section>
 
   <!-- admin (ผู้ดูแล) -->
   <section class="screen" id="s-admin">
-    <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาจากรหัส ชื่อ หรือฝ่าย" />
+    <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาจากรหัสพนักงาน ชื่อ หรือฝ่าย" />
     <div id="adminList"></div>
   </section>
 
