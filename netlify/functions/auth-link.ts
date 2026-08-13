@@ -6,7 +6,7 @@
 
 import type { Config } from "@netlify/functions";
 import { getSession, invalidateSessionByLineUserId } from "./_lib/auth";
-import { CHANNEL_KEY } from "./_lib/constants";
+import { CHANNEL_KEY, companyEmailDomains, isCompanyEmail } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 
@@ -52,6 +52,16 @@ export default async (req: Request): Promise<Response> =>
           const deptName = (body.department_name ?? "").trim();
           if (!fullName || !deptName) {
             throw new HttpError(400, "กรุณากรอกชื่อ–สกุล และเลือกฝ่าย/แผนก");
+          }
+          // ผู้ที่ไม่มีรหัสในระบบต้องยืนยันด้วยอีเมลบริษัท เพื่อกันบุคคลภายนอกสมัครเข้ามาเอง
+          // (ตรวจฝั่งเซิร์ฟเวอร์เสมอ เพราะการตรวจฝั่งหน้าจออย่างเดียวเลี่ยงได้)
+          const domains = companyEmailDomains();
+          if (domains.length > 0) {
+            const email = (body.email ?? "").trim();
+            if (!email) throw new HttpError(400, "กรุณากรอกอีเมลบริษัทเพื่อยืนยันตัวตน");
+            if (!isCompanyEmail(email)) {
+              throw new HttpError(403, `กรุณาใช้อีเมลบริษัท (@${domains.join(" หรือ @")}) เท่านั้น`);
+            }
           }
           const empCode = code || `SELF-${s.lineUserId.slice(-10)}`;
           const inserted = await tx`

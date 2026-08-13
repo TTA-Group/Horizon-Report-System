@@ -81,6 +81,12 @@ async function boot() {
   }
 }
 
+/** คืนข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น/โดเมนอีเมล) — ใช้ผลที่ยิงคู่ขนานไว้ตอน boot() ถ้ามี */
+async function getMasters() {
+  if (!masters) masters = (await mastersPromise) || (await api("/api/masters"));
+  return masters;
+}
+
 function routeBySession() {
   if (session.suspended) return show("s-suspended");
   if (!session.linked) return showRegister();
@@ -106,6 +112,12 @@ async function checkEmp() {
     const r = await api("/api/auth/verify-employee", { method: "POST", body: { employee_code: code } });
     if (!r.found) {
       $("#m-id").value = code;
+      // ถ้าองค์กรกำหนดโดเมนอีเมลไว้ อีเมลจะกลายเป็นช่องบังคับ (ใช้ยืนยันว่าเป็นคนในองค์กร)
+      const domains = (await getMasters().catch(() => null))?.company_email_domains || [];
+      if (domains.length) {
+        $("#m-mail-label").innerHTML = 'อีเมลบริษัท <span>*</span>';
+        $("#m-mail").placeholder = "xxxx@" + domains[0];
+      }
       showRegPart("reg-manual");
       return;
     }
@@ -144,6 +156,17 @@ async function submitManual() {
     email: $("#m-mail").value.trim(),
   };
   if (!body.full_name || !body.department_name) return toast("กรุณากรอกชื่อ–นามสกุล และเลือกฝ่าย/แผนก");
+
+  // ผู้ที่ไม่มีรหัสในระบบต้องยืนยันด้วยอีเมลบริษัท (เซิร์ฟเวอร์ตรวจซ้ำอีกชั้นเสมอ)
+  const domains = (await getMasters().catch(() => null))?.company_email_domains || [];
+  if (domains.length) {
+    const label = "@" + domains.join(" หรือ @");
+    if (!body.email) return toast(`กรุณากรอกอีเมลบริษัท (${label})`);
+    const at = body.email.lastIndexOf("@");
+    const domain = at > 0 ? body.email.slice(at + 1).toLowerCase() : "";
+    if (!domains.includes(domain)) return toast(`กรุณาใช้อีเมลบริษัท (${label}) เท่านั้น`);
+  }
+
   try {
     await api("/api/auth/link", { method: "POST", body });
     session = await api("/api/auth/session", { method: "POST" });
@@ -164,8 +187,7 @@ async function enterApp() {
   $("#me-av").textContent = (emp.full_name || "?").trim().charAt(0);
   if (!masters) {
     try {
-      // ใช้ผลจากคำขอที่ยิงคู่ขนานไว้ตอน boot() ถ้ามันพลาดไป (คืน null) ค่อยลองใหม่อีกครั้ง
-      masters = (await mastersPromise) || (await api("/api/masters"));
+      await getMasters();
       renderMasters();
     } catch (e) {
       toast(e.message);
