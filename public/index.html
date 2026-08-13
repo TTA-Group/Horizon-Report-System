@@ -178,6 +178,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .modal.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
 .modal h3{font-size:18px;font-weight:700;line-height:1.4;letter-spacing:-.01em}
 .modal p{font-size:13px;color:var(--slate);line-height:1.6;margin-top:8px}
+.modal input[type=text]{margin-top:14px;text-align:left}
 .modal-actions{display:flex;gap:8px;margin-top:20px}
 .mbtn{flex:1;font-family:inherit;font-size:14px;font-weight:600;padding:12px;border-radius:12px;
   border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;transition:.15s}
@@ -344,6 +345,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <h3 id="modal-title">ยืนยัน</h3>
     <p id="modal-msg"></p>
+    <input type="text" id="modal-input" style="display:none" />
     <div class="modal-actions">
       <button class="mbtn" id="modal-no">ไม่ใช่</button>
       <button class="mbtn danger" id="modal-yes">ยืนยัน</button>
