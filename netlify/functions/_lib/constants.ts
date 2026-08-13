@@ -47,6 +47,26 @@ export const STATUS_TRANSITIONS: Record<StatusCode, StatusCode[]> = {
   cancelled: [],
 };
 
+/**
+ * โดเมนอีเมลของบริษัท (คั่นด้วยจุลภาคได้ถ้ามีหลายโดเมน) เช่น "thoresen.com"
+ * ใช้เป็นด่านกรองตอนผู้ใช้กรอกข้อมูลเอง — ถ้าไม่ตั้งค่าไว้ ระบบจะไม่ตรวจสอบโดเมน
+ */
+export function companyEmailDomains(): string[] {
+  return (process.env.COMPANY_EMAIL_DOMAIN ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase().replace(/^@/, ""))
+    .filter(Boolean);
+}
+
+/** อีเมลนี้อยู่ในโดเมนของบริษัทหรือไม่ (ไม่ได้ตั้งค่าโดเมนไว้ = ผ่านทุกกรณี) */
+export function isCompanyEmail(email: string): boolean {
+  const domains = companyEmailDomains();
+  if (domains.length === 0) return true;
+  const at = email.lastIndexOf("@");
+  if (at < 1 || at === email.length - 1) return false;
+  return domains.includes(email.slice(at + 1).trim().toLowerCase());
+}
+
 /** รหัสพนักงานที่มีสิทธิ์ผู้ดูแลระบบ อ่านจาก env */
 export function adminCodes(): Set<string> {
   return new Set(
