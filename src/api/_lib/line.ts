@@ -1,7 +1,8 @@
 // ตัวช่วยเชื่อมต่อ LINE: ตรวจ ID token, ตรวจ signature ของ webhook, push/reply/multicast + บันทึก message_logs
 
 import crypto from "node:crypto";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createLocalJWKSet, jwtVerify } from "jose";
+import type { JSONWebKeySet, JWTPayload } from "jose";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { envVar } from "./env";
@@ -18,9 +19,42 @@ export interface LineProfile {
 // ตรวจลายเซ็นของ ID token ด้วยกุญแจสาธารณะของ LINE เอง (JWKS) แทนการเรียก endpoint
 // /oauth2/v2.1/verify ทุกครั้ง — ทุก request ที่ต้องยืนยันตัวตนก่อนหน้านี้ต้องออกไปคุยกับ
 // เซิร์ฟเวอร์ LINE ก่อนเสมอ ทำให้ทุกหน้าในแอปช้าลงเท่ากันหมด (ไม่ใช่แค่ตอนล็อกอินครั้งแรก)
-// วิธีนี้เป็นวิธีที่ LINE แนะนำสำหรับ backend ที่ต้องตรวจ token บ่อย ๆ — กุญแจสาธารณะถูกแคช
-// ไว้ในหน่วยความจำของฟังก์ชัน (รีเฟรชเป็นครั้งคราวเท่านั้น) จึงไม่ต้องออกเน็ตซ้ำทุกครั้ง
-const JWKS = createRemoteJWKSet(new URL(`${LINE_API}/oauth2/v2.1/certs`));
+// วิธีนี้เป็นวิธีที่ LINE แนะนำสำหรับ backend ที่ต้องตรวจ token บ่อย ๆ
+//
+// เก็บกุญแจไว้เป็น "ข้อมูล JSON ธรรมดา" เท่านั้น แล้วประกอบตัวตรวจใหม่ในแต่ละคำขอ
+// เหตุผล: บน Cloudflare Workers อ็อบเจกต์ที่ผูกกับการเชื่อมต่อเครือข่ายของคำขอหนึ่ง
+// เอาไปใช้ในอีกคำขอหนึ่งไม่ได้ ตัวโหลดกุญแจแบบ remote จะเก็บสถานะการดาวน์โหลดค้างไว้ข้ามคำขอ
+const JWKS_URL = `${LINE_API}/oauth2/v2.1/certs`;
+const JWKS_TTL_MS = 60 * 60 * 1000;
+let jwksCache: { set: JSONWebKeySet; at: number } | null = null;
+
+function jwksIsFresh(): boolean {
+  return jwksCache !== null && Date.now() - jwksCache.at < JWKS_TTL_MS;
+}
+
+async function lineJwks(refresh: boolean): Promise<JSONWebKeySet> {
+  if (!refresh && jwksCache && jwksIsFresh()) return jwksCache.set;
+  const res = await fetch(JWKS_URL);
+  if (!res.ok) throw new Error(`โหลดกุญแจสาธารณะของ LINE ไม่สำเร็จ (${res.status})`);
+  const set = (await res.json()) as JSONWebKeySet;
+  if (!Array.isArray(set?.keys)) throw new Error("รูปแบบกุญแจสาธารณะของ LINE ไม่ถูกต้อง");
+  jwksCache = { set, at: Date.now() };
+  return set;
+}
+
+/** ตรวจลายเซ็นด้วยกุญแจชุดปัจจุบัน — คืน null ถ้าลายเซ็น/อายุ/ผู้รับไม่ผ่าน */
+async function tryVerify(idToken: string, clientId: string, refresh: boolean): Promise<JWTPayload | null> {
+  const keys = createLocalJWKSet(await lineJwks(refresh));
+  try {
+    const { payload } = await jwtVerify(idToken, keys, {
+      issuer: "https://access.line.me",
+      audience: clientId,
+    });
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * ตรวจสอบ LINE ID token ฝั่ง server แล้วคืน payload ที่เชื่อถือได้
@@ -30,15 +64,11 @@ export async function verifyIdToken(idToken: string): Promise<LineProfile> {
   const clientId = envVar("LINE_LOGIN_CHANNEL_ID");
   if (!clientId) throw new Error("LINE_LOGIN_CHANNEL_ID is not set");
 
-  let payload;
-  try {
-    ({ payload } = await jwtVerify(idToken, JWKS, {
-      issuer: "https://access.line.me",
-      audience: clientId,
-    }));
-  } catch {
-    throw new HttpError(401, "invalid LINE id token");
-  }
+  const usedCache = jwksIsFresh();
+  let payload = await tryVerify(idToken, clientId, false);
+  // ถ้าใช้กุญแจที่แคชไว้แล้วไม่ผ่าน อาจเป็นเพราะ LINE เปลี่ยนกุญแจ — ดึงใหม่แล้วลองอีกครั้งเดียว
+  if (!payload && usedCache) payload = await tryVerify(idToken, clientId, true);
+  if (!payload) throw new HttpError(401, "invalid LINE id token");
 
   if (typeof payload.sub !== "string") throw new HttpError(401, "invalid LINE id token payload");
   return {
