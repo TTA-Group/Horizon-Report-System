@@ -34,6 +34,16 @@ export async function readJson<T = Record<string, unknown>>(req: Request): Promi
   }
 }
 
+/**
+ * สรุปข้อผิดพลาดเป็นข้อความสั้น ๆ ที่ปลอดภัยพอจะส่งออกไปได้
+ * ตัดสตริงเชื่อมต่อฐานข้อมูลทิ้ง เพราะมีรหัสผ่านอยู่ข้างใน
+ */
+export function safeErrorText(e: unknown, max = 200): string {
+  const raw = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  const scrubbed = raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "[connection-string]");
+  return scrubbed.length > max ? `${scrubbed.slice(0, max)}…` : scrubbed;
+}
+
 /** ครอบ handler เพื่อแปลง HttpError เป็น response และกัน error หลุด */
 export async function run(fn: () => Promise<Response>): Promise<Response> {
   try {

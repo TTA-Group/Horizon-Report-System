@@ -6,8 +6,11 @@
 // ตัวจัดการทุกตัวรับ Request คืน Response ตามมาตรฐานเว็บ จึงเรียกใช้ได้ตรง ๆ
 // ไฟล์นี้เป็นแหล่งข้อมูลเดียวที่กำหนดว่าเส้นทางไหนไปตัวจัดการใด
 
+import { withDbScope } from "./api/_lib/db";
 import { setEnv } from "./api/_lib/env";
+import { safeErrorText } from "./api/_lib/http";
 
+import health from "./api/health";
 import authSession from "./api/auth-session";
 import authVerifyEmployee from "./api/auth-verify-employee";
 import authLink from "./api/auth-link";
@@ -48,6 +51,9 @@ function route(pathname: string): Handler | null {
     if (seg[2] === "link") return authLink;
     return null;
   }
+
+  // /api/health — ตรวจสุขภาพระบบ (ไม่ต้องล็อกอิน ไม่เปิดเผยค่าตั้งค่า)
+  if (seg[1] === "health" && seg.length === 2) return health;
 
   // /api/masters
   if (seg[1] === "masters" && seg.length === 2) return masters;
@@ -98,6 +104,13 @@ function normalizeCron(expr: string): string {
 }
 const CRON_LOOKUP = new Map(Object.entries(CRON_JOBS).map(([k, v]) => [normalizeCron(k), v]));
 
+function jsonResponse(data: unknown, status: number): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     setEnv(env);
@@ -105,15 +118,21 @@ export default {
     const url = new URL(request.url);
     const handler = route(url.pathname);
 
-    if (handler) return handler(request);
+    if (handler) {
+      // ตัวจัดการทุกตัวมีตัวดักจับข้อผิดพลาดของตัวเองอยู่แล้ว ถ้าหลุดมาถึงตรงนี้แปลว่าพัง
+      // นอกเหนือจากนั้น (เช่น ข้อจำกัดของรันไทม์) — บันทึกไว้ให้เห็นสาเหตุจริง ไม่ใช่ 500 เปล่า ๆ
+      try {
+        return await withDbScope(() => handler(request));
+      } catch (e) {
+        console.error("[fatal]", request.method, url.pathname, e);
+        return jsonResponse({ error: "internal error", detail: safeErrorText(e) }, 500);
+      }
+    }
 
     // ไม่ใช่ /api/* -> ส่งให้ไฟล์หน้าเว็บใน public/
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
 
-    return new Response(JSON.stringify({ error: "not found" }), {
-      status: 404,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+    return jsonResponse({ error: "not found" }, 404);
   },
 
   async scheduled(event: { cron: string }, env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<void> {
@@ -129,7 +148,7 @@ export default {
     // (assertCron จะผ่านเมื่อไม่มี header x-cron-secret ส่งมา ซึ่งเป็นกรณีนี้)
     const req = new Request("https://cron.internal/", { method: "POST" });
     ctx.waitUntil(
-      job(req)
+      withDbScope(() => job(req))
         .then((res) => res.text())
         .then((body) => console.log("[cron]", event.cron, body))
         .catch((e) => console.error("[cron]", event.cron, e)),
