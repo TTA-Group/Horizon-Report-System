@@ -7,10 +7,14 @@
 -- - line_group_id เว้นว่างไว้ ให้เก็บจาก webhook `join` แล้วค่อยอัปเดต
 
 -- ฝ่ายผู้รับเรื่อง
+--
+-- ฝ่าย CLN ปิดใช้งานไว้ (is_active = false) เพราะงานแม่บ้านกับงานระบบปรับอากาศเป็นทีมเดียวกัน
+-- ทั้งสองหมวดจึงเข้าคิวของฝ่าย ADM (ดู CATEGORIES ใน src/api/_lib/constants.ts)
+-- คงแถวนี้ไว้เผื่ออนาคตแยกทีมกัน จะได้เปิดใช้ใหม่ได้โดยไม่เสียประวัติงานเดิม
 INSERT INTO departments (code, name, sla_ack_minutes, sla_close_hours, is_active) VALUES
   ('IT',  'IT Support / Help Desk', 120, 24, true),
   ('ADM', 'ฝ่าย Admin',             120, 24, true),
-  ('CLN', 'ฝ่ายแม่บ้าน',            120, 24, true),
+  ('CLN', 'ฝ่ายแม่บ้าน',            120, 24, false),
   ('GEN', 'ฝ่ายธุรการ',             120, 48, true)
 ON CONFLICT (code) DO NOTHING;
 

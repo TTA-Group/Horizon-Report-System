@@ -15,10 +15,15 @@ export interface CategoryDef {
 }
 
 // หมายเหตุ: หมวด FAC ส่งไปฝ่าย Admin (ADM) และใช้คำนำหน้าเลขที่เรื่อง ADM- ตาม spec หัวข้อ 4
+//
+// หมวด CLN ก็ส่งไปฝ่าย Admin เช่นกัน (ต่างจาก spec หัวข้อ 4 ที่แยกเป็นฝ่าย CLN) เพราะที่หน้างานจริง
+// งานระบบปรับอากาศกับงานแม่บ้านเป็นทีมเดียวกัน จึงให้เข้าคิวเดียวไม่ต้องสลับดู 2 ที่
+// ผู้แจ้งยังเลือกได้ 2 หมวดเหมือนเดิม และเลขที่เรื่องยังแยกคำนำหน้า (ADM- / CLN-) จึงดูออกว่างานประเภทไหน
+// ถ้าอนาคตแยกทีมกัน: เปลี่ยน deptCode กลับเป็น "CLN" แล้วเปิด is_active ของฝ่าย CLN ในฐานข้อมูล
 export const CATEGORIES: CategoryDef[] = [
   { code: "IT", label: "IT Support / Help Desk", deptCode: "IT", prefix: "IT" },
   { code: "FAC", label: "ระบบปรับอากาศ ประปา ไฟฟ้า", deptCode: "ADM", prefix: "ADM" },
-  { code: "CLN", label: "งานแม่บ้านและความสะอาด", deptCode: "CLN", prefix: "CLN" },
+  { code: "CLN", label: "งานแม่บ้านและความสะอาด", deptCode: "ADM", prefix: "CLN" },
   { code: "GEN", label: "เรื่องอื่น ๆ", deptCode: "GEN", prefix: "GEN" },
 ];
 export const CATEGORY_BY_CODE = new Map(CATEGORIES.map((c) => [c.code, c]));
