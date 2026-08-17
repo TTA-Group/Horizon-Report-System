@@ -99,7 +99,8 @@ export default async (req: Request): Promise<Response> =>
       const flex = buildTicketFlex({
         ticketId: created.id,
         ticketNo: created.ticket_no,
-        categoryCode: category.code,
+        status: "pending",
+        departmentCode: category.deptCode,
         categoryLabel: category.label,
         reporterName: s.employee.full_name,
         reporterDept: s.employee.department_name,

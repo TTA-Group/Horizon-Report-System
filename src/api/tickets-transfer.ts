@@ -81,7 +81,8 @@ export default async (req: Request): Promise<Response> =>
       const flex = buildTicketFlex({
         ticketId: id,
         ticketNo: t.ticket_no,
-        categoryCode: t.category_code,
+        status: "pending", // ส่งต่อฝ่ายแล้วเรื่องกลับไปรอรับใหม่เสมอ
+        departmentCode: toDept,
         categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
         reporterName: t.reporter_name,
         reporterDept: t.reporter_dept,
