@@ -6,6 +6,7 @@ import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { multicastTo, pushTo, textMessage } from "./_lib/line";
+import { groupMessages } from "./_lib/mentions";
 import { currentYYMM, thaiDateTime } from "./_lib/tickets";
 
 interface Body {
@@ -98,6 +99,7 @@ export default async (req: Request): Promise<Response> =>
       const flex = buildTicketFlex({
         ticketId: created.id,
         ticketNo: created.ticket_no,
+        categoryCode: category.code,
         categoryLabel: category.label,
         reporterName: s.employee.full_name,
         reporterDept: s.employee.department_name,
@@ -109,7 +111,13 @@ export default async (req: Request): Promise<Response> =>
       });
 
       if (lineGroupId) {
-        await pushTo(lineGroupId, [flex], { ticketId: created.id, channel: "group" });
+        // เรียกเจ้าหน้าที่ของฝ่ายที่รับผิดชอบด้วย @mention เพราะทุกฝ่ายใช้กลุ่มไลน์ร่วมกัน
+        const messages = await groupMessages(
+          departmentId,
+          `🔔 เรื่องใหม่ ${created.ticket_no} · ${category.label}`,
+          flex,
+        );
+        await pushTo(lineGroupId, messages, { ticketId: created.id, channel: "group" });
       }
       if (urgency === "critical") {
         const members = await sql<{ line_user_id: string }[]>`

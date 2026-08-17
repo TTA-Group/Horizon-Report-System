@@ -6,6 +6,7 @@ import type { UrgencyCode } from "./constants";
 export interface TicketFlexInput {
   ticketId: string;
   ticketNo: string;
+  categoryCode: string;
   categoryLabel: string;
   reporterName: string;
   reporterDept: string | null;
@@ -16,15 +17,22 @@ export interface TicketFlexInput {
   createdAtLabel: string;
 }
 
-const URGENCY_COLOR: Record<UrgencyCode, string> = {
-  normal: "#5B6672",
-  urgent: "#E39B0C",
-  critical: "#E04A2F",
+// สีหัวการ์ดแยกตามหมวด ใช้ชุดสีเดียวกับไอคอนในแอป LIFF เพื่อให้จำสีได้ตรงกันทั้งสองที่
+// ทุกฝ่ายอยู่ในกลุ่มไลน์เดียวกัน การ์ดจึงปนกัน — สีหัวคือตัวแยกว่าเป็นงานของทีมไหนตั้งแต่แรกเห็น
+const CATEGORY_COLOR: Record<string, string> = {
+  IT: "#2C6BE0", // น้ำเงิน — งานคอมพิวเตอร์
+  FAC: "#E39B0C", // เหลืองอำพัน — แอร์ ไฟ ประปา
+  CLN: "#04A045", // เขียว — งานแม่บ้าน
+  GEN: "#6B4FD8", // ม่วง — เรื่องอื่น ๆ
 };
-const URGENCY_LABEL: Record<UrgencyCode, string> = {
-  normal: "ปกติ",
-  urgent: "เร่งด่วน",
-  critical: "เร่งด่วนมาก",
+const FALLBACK_COLOR = "#5B6672";
+
+// ระดับความเร่งด่วนใช้สัญลักษณ์แทนสี เพราะสีหัวการ์ดถูกใช้บอก "ทีม" ไปแล้ว
+// ถ้าใช้สีบอกทั้งสองอย่างจะชนกันเอง เช่น งานแอร์ (เหลือง) ที่เร่งด่วน (เหลือง) จะแยกไม่ออก
+const URGENCY_MARK: Record<UrgencyCode, string> = {
+  normal: "⚪ ปกติ",
+  urgent: "🟠 เร่งด่วน",
+  critical: "🔴 เร่งด่วนมาก",
 };
 
 function kv(label: string, value: string) {
@@ -41,7 +49,7 @@ function kv(label: string, value: string) {
 
 /** สร้างข้อความ Flex ของ ticket หนึ่งใบ */
 export function buildTicketFlex(t: TicketFlexInput): LineMessage {
-  const accent = URGENCY_COLOR[t.urgency];
+  const accent = CATEGORY_COLOR[t.categoryCode] ?? FALLBACK_COLOR;
   return {
     type: "flex",
     altText: `[${t.ticketNo}] ${t.detail.slice(0, 60)}`,
@@ -52,29 +60,29 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
         type: "box",
         layout: "vertical",
         paddingAll: "12px",
+        spacing: "xs",
         backgroundColor: accent,
         contents: [
-          { type: "text", text: t.ticketNo, color: "#FFFFFF", size: "sm", weight: "bold" },
-          { type: "text", text: URGENCY_LABEL[t.urgency], color: "#FFFFFF", size: "xs" },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: t.ticketNo, color: "#FFFFFF", size: "sm", weight: "bold", flex: 3, gravity: "center" },
+              { type: "text", text: URGENCY_MARK[t.urgency], color: "#FFFFFF", size: "xs", flex: 4, align: "end", gravity: "center" },
+            ],
+          },
+          { type: "text", text: t.categoryLabel, color: "#FFFFFF", size: "xs", wrap: true },
         ],
       },
       body: {
         type: "box",
         layout: "vertical",
-        spacing: "md",
+        spacing: "sm",
         contents: [
-          { type: "text", text: t.categoryLabel, weight: "bold", size: "md", wrap: true },
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "sm",
-            contents: [
-              kv("ผู้แจ้ง", `${t.reporterName}${t.reporterDept ? " · " + t.reporterDept : ""}`),
-              kv("สถานที่", `${t.floor}${t.locationNote ? " · " + t.locationNote : ""}`),
-              kv("รายละเอียด", t.detail),
-              kv("วันเวลา", t.createdAtLabel),
-            ],
-          },
+          kv("ผู้แจ้ง", `${t.reporterName}${t.reporterDept ? " · " + t.reporterDept : ""}`),
+          kv("สถานที่", `${t.floor}${t.locationNote ? " · " + t.locationNote : ""}`),
+          kv("รายละเอียด", t.detail),
+          kv("วันเวลา", t.createdAtLabel),
         ],
       },
       footer: {

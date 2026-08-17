@@ -7,6 +7,7 @@ import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
+import { groupMessages } from "./_lib/mentions";
 import { thaiDateTime } from "./_lib/tickets";
 
 interface Body {
@@ -80,6 +81,7 @@ export default async (req: Request): Promise<Response> =>
       const flex = buildTicketFlex({
         ticketId: id,
         ticketNo: t.ticket_no,
+        categoryCode: t.category_code,
         categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
         reporterName: t.reporter_name,
         reporterDept: t.reporter_dept,
@@ -89,7 +91,12 @@ export default async (req: Request): Promise<Response> =>
         urgency: t.urgency as UrgencyCode,
         createdAtLabel: thaiDateTime(),
       });
-      await pushTo(dept[0].line_group_id, [flex], { ticketId: id, channel: "group" });
+      const messages = await groupMessages(
+        dept[0].id,
+        `↪️ ส่งต่อ ${t.ticket_no} มาที่ ${dept[0].name}`,
+        flex,
+      );
+      await pushTo(dept[0].line_group_id, messages, { ticketId: id, channel: "group" });
     }
 
     // แจ้งผู้แจ้ง
