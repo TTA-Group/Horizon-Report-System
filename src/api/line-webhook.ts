@@ -157,31 +157,34 @@ async function handleCancelMessage(ev: LineEvent, text: string): Promise<void> {
     return say(replyToken, `กรุณาพิมพ์เหตุผลต่อท้ายด้วย เช่น\nยกเลิก ${ticketNo}: แจ้งซ้ำกับเรื่องเดิม`);
   }
 
-  const actor = await resolveActor(userId);
-  if (!actor) return say(replyToken, "กรุณายืนยันตัวตนในระบบก่อนใช้งานคำสั่งนี้");
-  if (actor.status === "suspended") return say(replyToken, "บัญชีของคุณถูกระงับสิทธิ์การใช้งาน");
-
-  const t = await loadTicket({ ticketNo });
-  if (!t) return say(replyToken, `ไม่พบเรื่องเลขที่ ${ticketNo}`);
-  if (!(await canAct(actor, t.department_id))) {
-    return say(replyToken, "คุณไม่ใช่เจ้าหน้าที่ของฝ่ายที่รับผิดชอบเรื่องนี้");
+  const res = await loadContext(userId, { ticketNo });
+  if (!res.ok) {
+    if (res.reason === "no-actor") return say(replyToken, "กรุณายืนยันตัวตนในระบบก่อนใช้งานคำสั่งนี้");
+    return say(replyToken, `ไม่พบเรื่องเลขที่ ${ticketNo}`);
   }
+  const { actor, isMember, t } = res;
+  if (actor.status === "suspended") return say(replyToken, "บัญชีของคุณถูกระงับสิทธิ์การใช้งาน");
+  if (!canAct(actor, isMember)) return say(replyToken, "คุณไม่ใช่เจ้าหน้าที่ของฝ่ายที่รับผิดชอบเรื่องนี้");
 
   const blocked = transitionBlocked(t, "cancelled");
   if (blocked) return say(replyToken, blocked);
 
   const sql = db();
-  const upd = await sql`
-    UPDATE tickets SET status='cancelled', updated_at=now()
-    WHERE id=${t.id} AND status=${t.status} RETURNING id
+  const done = await sql<{ n: number }[]>`
+    WITH upd AS (
+      UPDATE tickets SET status='cancelled', updated_at=now()
+      WHERE id=${t.id} AND status=${t.status}
+      RETURNING id
+    ), ev AS (
+      INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+      SELECT id, ${t.status}, 'cancelled', ${actor.id}, ${reason} FROM upd RETURNING ticket_id
+    )
+    SELECT count(*)::int AS n FROM upd
   `;
-  if (upd.length === 0) return say(replyToken, "สถานะถูกเปลี่ยนไปแล้ว");
+  if (done[0].n === 0) return say(replyToken, "สถานะถูกเปลี่ยนไปแล้ว");
 
-  await insertEvent(t.id, t.status, "cancelled", actor.id, reason);
-  await notifyReporter(t.reporter_id, `เรื่อง ${t.ticket_no} ถูกยกเลิก\nเหตุผล: ${reason}`, t.id);
-  if (replyToken) {
-    await replyTo(replyToken, [cardFor(t, { status: "cancelled", cancelReason: reason, actorName: actor.full_name })]);
-  }
+  await replyCard(replyToken, cardFor(t, { status: "cancelled", cancelReason: reason, actorName: actor.full_name }));
+  await tellReporter(t.reporter_line_user_id, `เรื่อง ${t.ticket_no} ถูกยกเลิก\nเหตุผล: ${reason}`, t.id);
 }
 
 /**
@@ -228,7 +231,9 @@ interface TicketRow {
   created_at: string;
   reporter_name: string;
   reporter_dept: string | null;
+  assignee_id: string | null;
   assignee_name: string | null;
+  reporter_line_user_id: string | null;
 }
 
 interface ActorRow {
@@ -251,34 +256,83 @@ async function resolveActor(lineUserId: string): Promise<ActorRow | null> {
   return rows[0] ?? null;
 }
 
-/** อ่านเรื่องหนึ่งใบพร้อมข้อมูลที่การ์ดต้องใช้ทั้งหมด (ค้นด้วย id หรือเลขที่เรื่องก็ได้) */
-async function loadTicket(by: { id: string } | { ticketNo: string }): Promise<TicketRow | null> {
+type LoadResult =
+  | { ok: true; actor: ActorRow; isMember: boolean; t: TicketRow }
+  | { ok: false; reason: "no-actor" | "no-ticket" };
+
+/**
+ * อ่านทุกอย่างที่ต้องใช้ในคำขอเดียว: ผู้กด เรื่อง ฝ่าย ผู้รับผิดชอบ สิทธิ์ และไลน์ของผู้แจ้ง
+ *
+ * รวมเป็น query เดียวเพราะแต่ละครั้งที่คุยกับฐานข้อมูลคือการวิ่งไปกลับจริง ๆ ครั้งหนึ่ง
+ * ยิ่งหลายรอบ ผู้กดปุ่มยิ่งต้องรอนานกว่าการ์ดจะเด้ง แล้วก็จะกดซ้ำ
+ */
+async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: string }): Promise<LoadResult> {
   const sql = db();
   const match = "id" in by ? sql`t.id = ${by.id}` : sql`t.ticket_no = ${by.ticketNo}`;
-  const rows = await sql<TicketRow[]>`
-    SELECT t.id, t.status, t.department_id, t.reporter_id, t.ticket_no, t.category_code,
-           t.floor, t.location_note, t.detail, t.urgency, t.created_at,
+  const rows = await sql<(TicketRow & ActorRow & { is_member: boolean })[]>`
+    SELECT e.id, e.full_name, e.employee_code, e.status,
+           t.id AS ticket_pk, t.status AS ticket_status, t.department_id, t.reporter_id,
+           t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency,
+           t.created_at, t.assignee_id,
            r.full_name AS reporter_name, r.department_name AS reporter_dept,
            d.code AS department_code, d.name AS department_name,
-           a.full_name AS assignee_name
-    FROM tickets t
+           a.full_name AS assignee_name,
+           rl.line_user_id AS reporter_line_user_id,
+           (dm.employee_id IS NOT NULL) AS is_member
+    FROM line_accounts la
+    JOIN employees e ON e.id = la.employee_id
+    JOIN tickets t ON ${match}
     JOIN employees r ON r.id = t.reporter_id
     JOIN departments d ON d.id = t.department_id
     LEFT JOIN employees a ON a.id = t.assignee_id
-    WHERE ${match} LIMIT 1
+    LEFT JOIN department_members dm ON dm.department_id = t.department_id AND dm.employee_id = e.id
+    LEFT JOIN line_accounts rl ON rl.employee_id = t.reporter_id AND rl.channel_key = ${CHANNEL_KEY}
+    WHERE la.line_user_id = ${lineUserId} AND la.channel_key = ${CHANNEL_KEY}
+    LIMIT 1
   `;
-  return rows[0] ?? null;
+
+  if (rows.length === 0) {
+    // ไม่มีแถวได้ 2 สาเหตุ แยกให้ออกเพื่อบอกผู้ใช้ให้ถูก — เกิดไม่บ่อย ยอมค้นเพิ่มอีกครั้งเฉพาะตอนพลาด
+    const actor = await resolveActor(lineUserId);
+    return { ok: false, reason: actor ? "no-ticket" : "no-actor" };
+  }
+
+  const row = rows[0] as unknown as Record<string, unknown>;
+  return {
+    ok: true,
+    actor: {
+      id: row.id as string,
+      full_name: row.full_name as string,
+      employee_code: row.employee_code as string,
+      status: row.status as string,
+    },
+    isMember: row.is_member === true,
+    t: {
+      id: row.ticket_pk as string,
+      status: row.ticket_status as StatusCode,
+      department_id: row.department_id as string,
+      department_code: row.department_code as string,
+      department_name: row.department_name as string,
+      reporter_id: row.reporter_id as string,
+      ticket_no: row.ticket_no as string,
+      category_code: row.category_code as string,
+      floor: row.floor as string,
+      location_note: row.location_note as string | null,
+      detail: row.detail as string,
+      urgency: row.urgency as string,
+      created_at: row.created_at as string,
+      reporter_name: row.reporter_name as string,
+      reporter_dept: row.reporter_dept as string | null,
+      assignee_id: row.assignee_id as string | null,
+      assignee_name: row.assignee_name as string | null,
+      reporter_line_user_id: row.reporter_line_user_id as string | null,
+    },
+  };
 }
 
 /** มีสิทธิ์จัดการเรื่องนี้ไหม — เจ้าหน้าที่ของฝ่ายนั้น หรือผู้ดูแลระบบ */
-async function canAct(actor: ActorRow, departmentId: string): Promise<boolean> {
-  if (adminCodes().has(actor.employee_code)) return true;
-  const sql = db();
-  const rows = await sql`
-    SELECT 1 FROM department_members
-    WHERE department_id = ${departmentId} AND employee_id = ${actor.id} LIMIT 1
-  `;
-  return rows.length > 0;
+function canAct(actor: ActorRow, isMember: boolean): boolean {
+  return isMember || adminCodes().has(actor.employee_code);
 }
 
 /** เปลี่ยนสถานะนี้ไม่ได้เพราะอะไร — คืน null ถ้าเปลี่ยนได้ */
@@ -294,6 +348,7 @@ function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMe
     ticketNo: t.ticket_no,
     status: t.status,
     departmentCode: t.department_code,
+    departmentName: t.department_name,
     categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
     reporterName: t.reporter_name,
     reporterDept: t.reporter_dept,
@@ -311,6 +366,16 @@ async function say(replyToken: string | undefined, text: string): Promise<void> 
   if (replyToken) await replyTo(replyToken, [textMessage(text)]);
 }
 
+async function replyCard(replyToken: string | undefined, card: LineMessage): Promise<void> {
+  if (replyToken) await replyTo(replyToken, [card]);
+}
+
+/** แจ้งผู้แจ้งด้วย line_user_id ที่อ่านมาแล้ว — ไม่ต้องวิ่งไปถามฐานข้อมูลซ้ำ */
+async function tellReporter(lineUserId: string | null, text: string, ticketId: string): Promise<void> {
+  if (!lineUserId) return;
+  await pushTo(lineUserId, [textMessage(text)], { ticketId, channel: "user" });
+}
+
 async function handlePostback(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   const replyToken = ev.replyToken;
@@ -325,52 +390,78 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   // การยกเลิกจริงเกิดตอนผู้กดพิมพ์เหตุผลแล้วส่งออกมา (ดู handleCancelMessage)
   if (action === "cancel") return;
 
-  const actor = await resolveActor(userId);
-  if (!actor) return say(replyToken, "กรุณายืนยันตัวตนในระบบก่อนใช้งานปุ่มนี้");
-  if (actor.status === "suspended") return say(replyToken, "บัญชีของคุณถูกระงับสิทธิ์การใช้งาน");
-
-  const t = await loadTicket({ id: ticketId });
-  if (!t) return;
-  if (!(await canAct(actor, t.department_id))) {
-    return say(replyToken, "คุณไม่ใช่เจ้าหน้าที่ของฝ่ายที่รับผิดชอบเรื่องนี้");
+  const res = await loadContext(userId, { id: ticketId });
+  if (!res.ok) {
+    if (res.reason === "no-actor") return say(replyToken, "กรุณายืนยันตัวตนในระบบก่อนใช้งานปุ่มนี้");
+    return;
   }
+  const { actor, isMember, t } = res;
+  if (actor.status === "suspended") return say(replyToken, "บัญชีของคุณถูกระงับสิทธิ์การใช้งาน");
+  if (!canAct(actor, isMember)) return say(replyToken, "คุณไม่ใช่เจ้าหน้าที่ของฝ่ายที่รับผิดชอบเรื่องนี้");
 
   const sql = db();
 
   if (action === "ack") {
+    // กดซ้ำเพราะการ์ดยังไม่ทันเด้ง — ถ้าเรื่องนี้เป็นของคนกดอยู่แล้ว ตอบการ์ดปัจจุบันไปเฉย ๆ
+    // ดีกว่าขึ้นข้อความว่าทำไม่ได้ ซึ่งอ่านแล้วเหมือนกดพลาดทั้งที่รับเรื่องสำเร็จไปแล้ว
+    if (t.status === "in_progress" && t.assignee_id === actor.id) {
+      return replyCard(replyToken, cardFor(t));
+    }
     const blocked = transitionBlocked(t, "in_progress");
     if (blocked) return say(replyToken, blocked);
-    const upd = await sql`
-      UPDATE tickets SET status='in_progress', assignee_id=${actor.id},
-        acknowledged_at=COALESCE(acknowledged_at, now()), updated_at=now()
-      WHERE id=${ticketId} AND status='pending' RETURNING id
-    `;
-    if (upd.length === 0) return say(replyToken, `เรื่อง ${t.ticket_no} มีผู้รับไปแล้ว`);
 
-    await insertEvent(ticketId, t.status, "in_progress", actor.id, null);
-    await notifyReporter(t.reporter_id, `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.in_progress}`, ticketId);
-    if (replyToken) {
-      await replyTo(replyToken, [cardFor(t, { status: "in_progress", assigneeName: actor.full_name })]);
-    }
+    // อัปเดตสถานะและบันทึกประวัติในคำสั่งเดียว — CTE ที่แก้ข้อมูลจะทำงานเสมอแม้ไม่ถูก SELECT อ่าน
+    const done = await sql<{ n: number }[]>`
+      WITH upd AS (
+        UPDATE tickets SET status='in_progress', assignee_id=${actor.id},
+          acknowledged_at=COALESCE(acknowledged_at, now()), updated_at=now()
+        WHERE id=${ticketId} AND status='pending'
+        RETURNING id
+      ), ev AS (
+        INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+        SELECT id, 'pending', 'in_progress', ${actor.id}, NULL FROM upd RETURNING ticket_id
+      )
+      SELECT count(*)::int AS n FROM upd
+    `;
+    if (done[0].n === 0) return say(replyToken, `เรื่อง ${t.ticket_no} มีผู้รับไปแล้ว`);
+
+    // ตอบการ์ดก่อน แล้วค่อยแจ้งผู้แจ้ง — คนที่กดปุ่มยืนรออยู่ ส่วนผู้แจ้งช้าไปเสี้ยววินาทีไม่มีผล
+    await replyCard(replyToken, cardFor(t, { status: "in_progress", assigneeName: actor.full_name }));
+    await tellReporter(
+      t.reporter_line_user_id,
+      `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.in_progress}\nผู้รับผิดชอบ: ${actor.full_name}`,
+      ticketId,
+    );
     return;
   }
 
   if (action === "complete") {
+    if (t.status === "completed") return replyCard(replyToken, cardFor(t));
     const blocked = transitionBlocked(t, "completed");
     if (blocked) return say(replyToken, blocked);
-    const upd = await sql`
-      UPDATE tickets SET status='completed', completed_at=now(), updated_at=now()
-      WHERE id=${ticketId} AND status=${t.status} RETURNING id
-    `;
-    if (upd.length === 0) return say(replyToken, "สถานะถูกเปลี่ยนไปแล้ว");
 
-    await insertEvent(ticketId, t.status, "completed", actor.id, null);
-    await notifyReporter(t.reporter_id, `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.completed}`, ticketId);
-    if (replyToken) {
-      await replyTo(replyToken, [
-        cardFor(t, { status: "completed", assigneeName: t.assignee_name ?? actor.full_name, actorName: actor.full_name }),
-      ]);
-    }
+    const done = await sql<{ n: number }[]>`
+      WITH upd AS (
+        UPDATE tickets SET status='completed', completed_at=now(), updated_at=now()
+        WHERE id=${ticketId} AND status=${t.status}
+        RETURNING id
+      ), ev AS (
+        INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+        SELECT id, ${t.status}, 'completed', ${actor.id}, NULL FROM upd RETURNING ticket_id
+      )
+      SELECT count(*)::int AS n FROM upd
+    `;
+    if (done[0].n === 0) return say(replyToken, "สถานะถูกเปลี่ยนไปแล้ว");
+
+    await replyCard(
+      replyToken,
+      cardFor(t, { status: "completed", assigneeName: t.assignee_name ?? actor.full_name, actorName: actor.full_name }),
+    );
+    await tellReporter(
+      t.reporter_line_user_id,
+      `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.completed}`,
+      ticketId,
+    );
     return;
   }
 
@@ -383,53 +474,31 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     if (dept.length === 0 || dept[0].id === t.department_id) return;
 
     await sql`
-      UPDATE tickets SET department_id=${dept[0].id}, status='pending', assignee_id=NULL,
-        acknowledged_at=NULL, updated_at=now() WHERE id=${ticketId}
+      WITH upd AS (
+        UPDATE tickets SET department_id=${dept[0].id}, status='pending', assignee_id=NULL,
+          acknowledged_at=NULL, updated_at=now()
+        WHERE id=${ticketId}
+        RETURNING id
+      )
+      INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+      SELECT id, ${t.status}, 'pending', ${actor.id}, ${"ส่งต่อไปฝ่าย " + dept[0].name} FROM upd
     `;
-    await insertEvent(ticketId, t.status, "pending", actor.id, "ส่งต่อไปฝ่าย " + dept[0].name);
 
     if (dept[0].line_group_id) {
       // ส่งต่อฝ่ายแล้วเรื่องกลับไปรอรับใหม่เสมอ และไม่มีผู้รับผิดชอบคนเดิมติดไปด้วย
       const flex = cardFor(t, {
         status: "pending",
         departmentCode: toDept,
+        departmentName: dept[0].name,
         assigneeName: null,
         actorName: actor.full_name,
       });
-      const messages = await groupMessages(
-        dept[0].id,
-        `↪️ ส่งต่อ ${t.ticket_no} มาที่ ${dept[0].name}`,
-        flex,
-      );
+      const messages = await groupMessages(dept[0].id, `↪️ ส่งต่อ ${t.ticket_no} มาที่ ${dept[0].name}`, flex);
       await pushTo(dept[0].line_group_id, messages, { ticketId, channel: "group" });
     }
-    await notifyReporter(t.reporter_id, `เรื่อง ${t.ticket_no} ถูกส่งต่อไปยัง ${dept[0].name}`, ticketId);
-    if (replyToken) await replyTo(replyToken, [textMessage(`ส่งต่อ ${t.ticket_no} ไปยัง ${dept[0].name} แล้ว`)]);
+    await say(replyToken, `ส่งต่อ ${t.ticket_no} ไปยัง ${dept[0].name} แล้ว`);
+    await tellReporter(t.reporter_line_user_id, `เรื่อง ${t.ticket_no} ถูกส่งต่อไปยัง ${dept[0].name}`, ticketId);
     return;
   }
 }
 
-async function insertEvent(
-  ticketId: string,
-  from: string,
-  to: string,
-  actorId: string,
-  note: string | null,
-): Promise<void> {
-  const sql = db();
-  await sql`
-    INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
-    VALUES (${ticketId}, ${from}, ${to}, ${actorId}, ${note})
-  `;
-}
-
-async function notifyReporter(reporterId: string, text: string, ticketId: string): Promise<void> {
-  const sql = db();
-  const rows = await sql<{ line_user_id: string }[]>`
-    SELECT line_user_id FROM line_accounts
-    WHERE employee_id = ${reporterId} AND channel_key = ${CHANNEL_KEY} LIMIT 1
-  `;
-  if (rows.length > 0) {
-    await pushTo(rows[0].line_user_id, [textMessage(text)], { ticketId, channel: "user" });
-  }
-}

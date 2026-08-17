@@ -46,6 +46,7 @@ export default async (req: Request): Promise<Response> =>
         status: StatusCode;
         department_id: string;
         department_code: string;
+        department_name: string;
         line_group_id: string | null;
         reporter_id: string;
         ticket_no: string;
@@ -63,7 +64,7 @@ export default async (req: Request): Promise<Response> =>
       SELECT t.status, t.department_id, t.reporter_id, t.ticket_no, t.category_code,
              t.floor, t.location_note, t.detail, t.urgency, t.created_at,
              r.full_name AS reporter_name, r.department_name AS reporter_dept,
-             d.code AS department_code, d.line_group_id,
+             d.code AS department_code, d.name AS department_name, d.line_group_id,
              a.full_name AS assignee_name
       FROM tickets t
       JOIN employees r ON r.id = t.reporter_id
@@ -138,6 +139,7 @@ export default async (req: Request): Promise<Response> =>
           ticketNo: t.ticket_no,
           status: to,
           departmentCode: t.department_code,
+          departmentName: t.department_name,
           categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
           reporterName: t.reporter_name,
           reporterDept: t.reporter_dept,
