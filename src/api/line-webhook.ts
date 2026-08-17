@@ -167,7 +167,7 @@ async function handleCancelMessage(ev: LineEvent, text: string): Promise<void> {
   if (!canAct(actor, isMember)) return say(replyToken, "คุณไม่ใช่เจ้าหน้าที่ของฝ่ายที่รับผิดชอบเรื่องนี้");
 
   const blocked = transitionBlocked(t, "cancelled");
-  if (blocked) return say(replyToken, blocked);
+  if (blocked) return replyStale(replyToken, blocked, t);
 
   const sql = db();
   const done = await sql<{ n: number }[]>`
@@ -181,7 +181,7 @@ async function handleCancelMessage(ev: LineEvent, text: string): Promise<void> {
     )
     SELECT count(*)::int AS n FROM upd
   `;
-  if (done[0].n === 0) return say(replyToken, "สถานะถูกเปลี่ยนไปแล้ว");
+  if (done[0].n === 0) return replyLatest(replyToken, userId, t.id, "สถานะถูกเปลี่ยนไปแล้ว");
 
   await replyCard(replyToken, cardFor(t, { status: "cancelled", cancelReason: reason, actorName: actor.full_name }));
   await tellReporter(t.reporter_line_user_id, `เรื่อง ${t.ticket_no} ถูกยกเลิก\nเหตุผล: ${reason}`, t.id);
@@ -370,6 +370,30 @@ async function replyCard(replyToken: string | undefined, card: LineMessage): Pro
   if (replyToken) await replyTo(replyToken, [card]);
 }
 
+/**
+ * กดปุ่มบนการ์ดใบเก่าที่สถานะเลยไปแล้ว
+ *
+ * ไม่ตอบว่า "ทำไม่ได้" เฉย ๆ เพราะการ์ดเก่าค้างอยู่ในกลุ่มเป็นเรื่องปกติ (LINE แก้ข้อความเดิมไม่ได้)
+ * และคนกดก็ไม่ได้ทำอะไรผิด — ตอบการ์ดล่าสุดกลับไปพร้อมกัน เขาจะได้กดต่อจากใบใหม่ได้ทันที
+ * ในข้อความเดียว การตอบกลับแบบนี้ไม่กินโควตาข้อความของ OA
+ */
+async function replyStale(replyToken: string | undefined, reason: string, t: TicketRow): Promise<void> {
+  if (!replyToken) return;
+  await replyTo(replyToken, [textMessage(`${reason}\nนี่คือการ์ดล่าสุด กดต่อจากใบนี้ได้เลย`), cardFor(t)]);
+}
+
+/** เหมือน replyStale แต่ต้องอ่านสถานะล่าสุดใหม่ก่อน — ใช้ตอนมีคนชิงเปลี่ยนสถานะไปพร้อมกันพอดี */
+async function replyLatest(
+  replyToken: string | undefined,
+  lineUserId: string,
+  ticketId: string,
+  reason: string,
+): Promise<void> {
+  const fresh = await loadContext(lineUserId, { id: ticketId });
+  if (!fresh.ok) return say(replyToken, reason);
+  await replyStale(replyToken, reason, fresh.t);
+}
+
 /** แจ้งผู้แจ้งด้วย line_user_id ที่อ่านมาแล้ว — ไม่ต้องวิ่งไปถามฐานข้อมูลซ้ำ */
 async function tellReporter(lineUserId: string | null, text: string, ticketId: string): Promise<void> {
   if (!lineUserId) return;
@@ -408,7 +432,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       return replyCard(replyToken, cardFor(t));
     }
     const blocked = transitionBlocked(t, "in_progress");
-    if (blocked) return say(replyToken, blocked);
+    if (blocked) return replyStale(replyToken, blocked, t);
 
     // อัปเดตสถานะและบันทึกประวัติในคำสั่งเดียว — CTE ที่แก้ข้อมูลจะทำงานเสมอแม้ไม่ถูก SELECT อ่าน
     const done = await sql<{ n: number }[]>`
@@ -423,7 +447,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       )
       SELECT count(*)::int AS n FROM upd
     `;
-    if (done[0].n === 0) return say(replyToken, `เรื่อง ${t.ticket_no} มีผู้รับไปแล้ว`);
+    if (done[0].n === 0) return replyLatest(replyToken, userId, ticketId, `เรื่อง ${t.ticket_no} มีผู้รับไปแล้ว`);
 
     // ตอบการ์ดก่อน แล้วค่อยแจ้งผู้แจ้ง — คนที่กดปุ่มยืนรออยู่ ส่วนผู้แจ้งช้าไปเสี้ยววินาทีไม่มีผล
     await replyCard(replyToken, cardFor(t, { status: "in_progress", assigneeName: actor.full_name }));
@@ -438,7 +462,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   if (action === "complete") {
     if (t.status === "completed") return replyCard(replyToken, cardFor(t));
     const blocked = transitionBlocked(t, "completed");
-    if (blocked) return say(replyToken, blocked);
+    if (blocked) return replyStale(replyToken, blocked, t);
 
     const done = await sql<{ n: number }[]>`
       WITH upd AS (
@@ -451,7 +475,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       )
       SELECT count(*)::int AS n FROM upd
     `;
-    if (done[0].n === 0) return say(replyToken, "สถานะถูกเปลี่ยนไปแล้ว");
+    if (done[0].n === 0) return replyLatest(replyToken, userId, ticketId, "สถานะถูกเปลี่ยนไปแล้ว");
 
     await replyCard(
       replyToken,
