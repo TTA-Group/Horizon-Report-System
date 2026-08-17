@@ -465,9 +465,9 @@ function renderQueueCard(t, deptCode) {
   </div>`;
 }
 
-async function doStatus(id, to, okMsg) {
+async function doStatus(id, to, okMsg, note) {
   try {
-    await api(`/api/tickets/${id}/status`, { method: "PATCH", body: { to_status: to } });
+    await api(`/api/tickets/${id}/status`, { method: "PATCH", body: { to_status: to, note } });
     toast(okMsg || "อัปเดตสถานะเรียบร้อยแล้ว");
     goQueue();
   } catch (e) {
@@ -782,13 +782,18 @@ window.addEventListener("DOMContentLoaded", () => {
       else if (act === "closed") doStatus(id, "closed", "ปิดเรื่องเรียบร้อยแล้ว");
       else if (act === "transfer") openTransferSheet(id, card.dataset.dept);
       else if (act === "cancel") {
-        confirmDialog({
+        // ยกเลิกงานของคนอื่นต้องบอกเหตุผลได้เสมอ — เหตุผลถูกบันทึกลงประวัติ ส่งให้ผู้แจ้ง
+        // และขึ้นบนการ์ดในกลุ่ม เหมือนกับการยกเลิกผ่านปุ่มในกลุ่ม
+        promptDialog({
           title: "ยกเลิกเรื่องนี้?",
-          message: "ระบบจะแจ้งผลให้ผู้แจ้งทราบโดยอัตโนมัติ",
+          message: "ระบบจะแจ้งเหตุผลให้ผู้แจ้งทราบโดยอัตโนมัติ",
+          placeholder: "เหตุผลที่ยกเลิก เช่น แจ้งซ้ำกับเรื่องเดิม",
           confirmLabel: "ยกเลิกเรื่อง",
           cancelLabel: "ไม่ใช่",
-        }).then((ok) => {
-          if (ok) doStatus(id, "cancelled", "ยกเลิกเรื่องเรียบร้อยแล้ว");
+        }).then((reason) => {
+          if (reason === null) return;
+          if (!reason) return toast("กรุณาระบุเหตุผลที่ยกเลิก");
+          doStatus(id, "cancelled", "ยกเลิกเรื่องเรียบร้อยแล้ว", reason);
         });
       }
       return;

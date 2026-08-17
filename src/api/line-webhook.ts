@@ -179,7 +179,9 @@ async function handleCancelMessage(ev: LineEvent, text: string): Promise<void> {
 
   await insertEvent(t.id, t.status, "cancelled", actor.id, reason);
   await notifyReporter(t.reporter_id, `เรื่อง ${t.ticket_no} ถูกยกเลิก\nเหตุผล: ${reason}`, t.id);
-  if (replyToken) await replyTo(replyToken, [cardFor(t, { status: "cancelled", cancelReason: reason })]);
+  if (replyToken) {
+    await replyTo(replyToken, [cardFor(t, { status: "cancelled", cancelReason: reason, actorName: actor.full_name })]);
+  }
 }
 
 /**
@@ -365,7 +367,9 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     await insertEvent(ticketId, t.status, "completed", actor.id, null);
     await notifyReporter(t.reporter_id, `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.completed}`, ticketId);
     if (replyToken) {
-      await replyTo(replyToken, [cardFor(t, { status: "completed", assigneeName: t.assignee_name ?? actor.full_name })]);
+      await replyTo(replyToken, [
+        cardFor(t, { status: "completed", assigneeName: t.assignee_name ?? actor.full_name, actorName: actor.full_name }),
+      ]);
     }
     return;
   }
@@ -386,7 +390,12 @@ async function handlePostback(ev: LineEvent): Promise<void> {
 
     if (dept[0].line_group_id) {
       // ส่งต่อฝ่ายแล้วเรื่องกลับไปรอรับใหม่เสมอ และไม่มีผู้รับผิดชอบคนเดิมติดไปด้วย
-      const flex = cardFor(t, { status: "pending", departmentCode: toDept, assigneeName: null });
+      const flex = cardFor(t, {
+        status: "pending",
+        departmentCode: toDept,
+        assigneeName: null,
+        actorName: actor.full_name,
+      });
       const messages = await groupMessages(
         dept[0].id,
         `↪️ ส่งต่อ ${t.ticket_no} มาที่ ${dept[0].name}`,

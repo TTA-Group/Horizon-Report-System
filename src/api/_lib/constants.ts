@@ -33,7 +33,7 @@ export const FLOORS = ["ชั้น 15", "ชั้น 9", "ชั้น 8", "�
 export const URGENCIES: { code: UrgencyCode; label: string; note: string }[] = [
   { code: "normal", label: "ปกติ", note: "ภายใน 3 วันทำการ" },
   { code: "urgent", label: "เร่งด่วน", note: "ภายในวันนี้" },
-  { code: "critical", label: "เร่งด่วนมาก", note: "กระทบการทำงาน แจ้งรายบุคคลเพิ่ม" },
+  { code: "critical", label: "เร่งด่วนมาก", note: "กระทบการทำงาน" },
 ];
 export const URGENCY_CODES = new Set<string>(URGENCIES.map((u) => u.code));
 
