@@ -41,12 +41,13 @@ export default async (req: Request): Promise<Response> =>
     const sql = db();
 
     // ฝ่ายปลายทางกำหนดจาก mapping ของหมวด ไม่ให้ผู้ใช้เลือกเอง (spec หัวข้อ 5.2)
-    const deptRows = await sql<{ id: string; line_group_id: string | null }[]>`
-      SELECT id, line_group_id FROM departments
+    const deptRows = await sql<{ id: string; name: string; line_group_id: string | null }[]>`
+      SELECT id, name, line_group_id FROM departments
       WHERE code = ${category.deptCode} AND is_active = true LIMIT 1
     `;
     if (deptRows.length === 0) throw new HttpError(400, "ไม่พบฝ่ายปลายทางของหมวดนี้");
     const departmentId = deptRows[0].id;
+    const departmentName = deptRows[0].name;
     const lineGroupId = deptRows[0].line_group_id;
 
     // จำกัดอัตราการแจ้ง: ไม่เกิน 10 เรื่อง/คน/ชั่วโมง (spec หัวข้อ 10)
@@ -101,6 +102,7 @@ export default async (req: Request): Promise<Response> =>
         ticketNo: created.ticket_no,
         status: "pending",
         departmentCode: category.deptCode,
+        departmentName,
         categoryLabel: category.label,
         reporterName: s.employee.full_name,
         reporterDept: s.employee.department_name,
