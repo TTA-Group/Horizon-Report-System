@@ -24,6 +24,7 @@ interface LineEvent {
   replyToken?: string;
   source?: LineSource;
   postback?: { data: string };
+  message?: { type: string; text?: string };
 }
 
 export default async (req: Request): Promise<Response> =>
@@ -50,6 +51,7 @@ export default async (req: Request): Promise<Response> =>
       try {
         if (ev.type === "postback") await handlePostback(ev);
         else if (ev.type === "join") await handleJoin(ev);
+        else if (ev.type === "message") await handleGroupIdRequest(ev);
       } catch (e) {
         console.error("[webhook event]", e);
       }
@@ -86,6 +88,24 @@ async function forwardToCoexisting(rawBody: string, signature: string | null): P
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * พิมพ์คำว่า "groupid" ในกลุ่ม แล้วระบบตอบรหัสกลุ่มกลับมา
+ *
+ * event `join` เกิดขึ้นครั้งเดียวตอนเชิญบอทเข้ากลุ่ม ถ้าบอทอยู่ในกลุ่มอยู่แล้วจะไม่มีทางรู้ groupId
+ * เลยนอกจากเตะออกแล้วเชิญใหม่ — คำสั่งนี้จึงมีไว้ขอค่าเดิมซ้ำได้ทุกเมื่อ
+ * ใช้การตอบกลับ (reply) ไม่ใช่ push จึงไม่กินโควตาข้อความของ OA
+ */
+async function handleGroupIdRequest(ev: LineEvent): Promise<void> {
+  if (ev.message?.type !== "text") return;
+  if (ev.message.text?.trim().toLowerCase() !== "groupid") return;
+  if (!ev.replyToken) return;
+
+  const groupId = ev.source?.groupId ?? ev.source?.roomId;
+  await replyTo(ev.replyToken, [
+    textMessage(groupId ? `groupId ของกลุ่มนี้คือ\n${groupId}` : "คำสั่งนี้ใช้ได้เฉพาะในกลุ่มเท่านั้น"),
+  ]);
 }
 
 async function handleJoin(ev: LineEvent): Promise<void> {
