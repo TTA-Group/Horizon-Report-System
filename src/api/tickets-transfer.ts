@@ -83,6 +83,7 @@ export default async (req: Request): Promise<Response> =>
         ticketNo: t.ticket_no,
         status: "pending", // ส่งต่อฝ่ายแล้วเรื่องกลับไปรอรับใหม่เสมอ
         departmentCode: toDept,
+        actorName: s.employee.full_name,
         categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
         reporterName: t.reporter_name,
         reporterDept: t.reporter_dept,

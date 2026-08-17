@@ -21,6 +21,7 @@ export interface TicketFlexInput {
   urgency: UrgencyCode;
   createdAtLabel: string;
   assigneeName?: string | null;
+  actorName?: string | null;
   cancelReason?: string | null;
 }
 
@@ -37,6 +38,15 @@ const FALLBACK_COLOR = "#5B6672";
 
 // คำบนหัวการ์ด — เขียนให้อ่านแล้วรู้ทันทีว่าเรื่องเดินไปถึงไหน จึงไม่ใช้คำเดียวกับ STATUS_LABELS
 // ที่ใช้ในข้อความแจ้งผู้แจ้ง (เช่น "ยกเลิก" คำเดียวบนหัวการ์ดอ่านเหมือนปุ่มสั่งยกเลิก)
+// คำนำหน้าชื่อคนที่ทำให้สถานะเปลี่ยน — ทุกการ์ดที่เข้ากลุ่มต้องบอกได้ว่าใครเป็นคนทำ
+const ACTOR_LABEL: Record<StatusCode, string> = {
+  pending: "ส่งต่อโดย",
+  in_progress: "รับเรื่องโดย",
+  completed: "ปิดงานโดย",
+  closed: "ปิดเรื่องโดย",
+  cancelled: "ยกเลิกโดย",
+};
+
 const HEADER_LABEL: Record<StatusCode, string> = {
   pending: "รอรับเรื่อง",
   in_progress: "กำลังดำเนินการ",
@@ -121,6 +131,10 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
     kv("วันเวลา", t.createdAtLabel),
   ];
   if (t.assigneeName) rows.push(kv("ผู้รับผิดชอบ", t.assigneeName));
+  // ชื่อคนที่เพิ่งเปลี่ยนสถานะ — ข้ามเมื่อเป็นคนเดียวกับผู้รับผิดชอบ จะได้ไม่ขึ้นชื่อซ้ำสองบรรทัด
+  if (t.actorName && t.actorName !== t.assigneeName) {
+    rows.push(kv(ACTOR_LABEL[t.status] ?? "อัปเดตโดย", t.actorName));
+  }
   if (t.cancelReason) rows.push(kv("เหตุผลที่ยกเลิก", t.cancelReason));
 
   const body: unknown[] = [
