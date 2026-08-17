@@ -9,6 +9,7 @@ import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature } from "./_lib/line";
+import { groupMessages } from "./_lib/mentions";
 import { assertTransition, thaiDateTime } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
 
@@ -92,7 +93,7 @@ async function handleJoin(ev: LineEvent): Promise<void> {
   if (!groupId || !ev.replyToken) return;
   await replyTo(ev.replyToken, [
     textMessage(
-      `เพิ่มบอทเข้ากลุ่มเรียบร้อย\ngroupId ของกลุ่มนี้คือ:\n${groupId}\n\nกรุณาส่งค่านี้ให้ผู้ดูแลระบบเพื่อผูกกับฝ่ายในตาราง departments (คอลัมน์ line_group_id)`,
+      `เพิ่มบอทเข้ากลุ่มเรียบร้อย\ngroupId ของกลุ่มนี้คือ:\n${groupId}\n\nกรุณาส่งค่านี้ให้ผู้ดูแลระบบ เพื่อตั้งเป็น line_group_id ของทุกฝ่ายในตาราง departments (ทุกฝ่ายใช้กลุ่มนี้ร่วมกัน แล้วเรียกเจ้าหน้าที่ที่รับผิดชอบด้วยการ mention)`,
     ),
   ]);
 }
@@ -207,6 +208,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       const flex = buildTicketFlex({
         ticketId,
         ticketNo: t.ticket_no,
+        categoryCode: t.category_code,
         categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
         reporterName: t.reporter_name,
         reporterDept: t.reporter_dept,
@@ -216,7 +218,12 @@ async function handlePostback(ev: LineEvent): Promise<void> {
         urgency: t.urgency as UrgencyCode,
         createdAtLabel: thaiDateTime(),
       });
-      await pushTo(dept[0].line_group_id, [flex], { ticketId, channel: "group" });
+      const messages = await groupMessages(
+        dept[0].id,
+        `↪️ ส่งต่อ ${t.ticket_no} มาที่ ${dept[0].name}`,
+        flex,
+      );
+      await pushTo(dept[0].line_group_id, messages, { ticketId, channel: "group" });
     }
     await notifyReporter(t.reporter_id, `เรื่อง ${t.ticket_no} ถูกส่งต่อไปยัง ${dept[0].name}`, ticketId);
     if (replyToken) await replyTo(replyToken, [textMessage(`ส่งต่อ ${t.ticket_no} ไปยัง ${dept[0].name} แล้ว`)]);
