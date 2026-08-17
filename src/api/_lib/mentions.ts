@@ -15,6 +15,8 @@ import type { LineMessage } from "./line";
 export interface Mentionee {
   index: number;
   length: number;
+  /** ต้องระบุเสมอ — ถ้าไม่ใส่ LINE จะรับข้อความไว้เฉย ๆ แต่แสดงชื่อเป็นตัวหนังสือธรรมดา ไม่เรียกใคร */
+  type: "user";
   userId: string;
 }
 
@@ -53,7 +55,7 @@ export function buildMentionText(lead: string, targets: MentionTarget[]): { text
   targets.forEach((t, i) => {
     if (i > 0) text += " ";
     const tag = `@${t.name}`;
-    mentionees.push({ index: text.length, length: tag.length, userId: t.userId });
+    mentionees.push({ index: text.length, length: tag.length, type: "user", userId: t.userId });
     text += tag;
   });
   return { text, mentionees };
