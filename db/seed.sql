@@ -15,7 +15,7 @@ INSERT INTO departments (code, name, sla_ack_minutes, sla_close_hours, is_active
   ('IT',  'IT Support / Help Desk', 120, 24, true),
   ('ADM', 'ฝ่าย Admin',             120, 24, true),
   ('CLN', 'ฝ่ายแม่บ้าน',            120, 24, false),
-  ('GEN', 'ฝ่ายธุรการ',             120, 48, true)
+  ('GEN', 'เรื่องอื่น ๆ',            120, 48, true)
 ON CONFLICT (code) DO NOTHING;
 
 -- ผู้ดูแลระบบเริ่มต้น (แก้เป็นรหัสพนักงานจริงก่อนเปิดใช้งาน)

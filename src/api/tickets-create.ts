@@ -1,11 +1,11 @@
 // POST /api/tickets — สร้างเรื่องใหม่ (spec หัวข้อ 5.2 / 6)
 
 import { getSession, requireActive } from "./_lib/auth";
-import { CATEGORY_BY_CODE, CHANNEL_KEY, URGENCY_CODES, type UrgencyCode } from "./_lib/constants";
+import { CATEGORY_BY_CODE, URGENCY_CODES, type UrgencyCode } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { multicastTo, pushTo, textMessage } from "./_lib/line";
+import { pushTo, textMessage } from "./_lib/line";
 import { groupMessages } from "./_lib/mentions";
 import { currentYYMM, thaiDateTime } from "./_lib/tickets";
 
@@ -122,19 +122,9 @@ export default async (req: Request): Promise<Response> =>
         );
         await pushTo(lineGroupId, messages, { ticketId: created.id, channel: "group" });
       }
-      if (urgency === "critical") {
-        const members = await sql<{ line_user_id: string }[]>`
-          SELECT la.line_user_id
-          FROM department_members dm
-          JOIN line_accounts la ON la.employee_id = dm.employee_id AND la.channel_key = ${CHANNEL_KEY}
-          WHERE dm.department_id = ${departmentId}
-        `;
-        await multicastTo(
-          members.map((m) => m.line_user_id),
-          [flex],
-          { ticketId: created.id },
-        );
-      }
+      // งาน "เร่งด่วนมาก" เคยส่งการ์ดซ้ำเข้าแชทส่วนตัวของเจ้าหน้าที่ทุกคนตาม spec หัวข้อ 5.2
+      // เลิกทำแล้ว: @mention ในกลุ่มเด้งเตือนถึงตัวคนอยู่แล้วแม้ปิดเสียงกลุ่ม การส่งซ้ำจึงได้แค่
+      // ข้อความซ้ำในสองที่ และกินโควตาข้อความของ OA เพิ่มตามจำนวนเจ้าหน้าที่ในฝ่าย
 
       // แจ้งกลับผู้แจ้งพร้อมเลขที่เรื่อง
       await pushTo(
