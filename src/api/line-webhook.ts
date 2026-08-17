@@ -36,18 +36,28 @@ export default async (req: Request): Promise<Response> =>
       throw new HttpError(401, "invalid signature");
     }
 
-    // ใช้ OA ร่วมกับระบบอื่น (เช่น ระบบจองนวด): ส่งต่อ event ต้นฉบับให้ระบบเดิมก่อนเสมอ
-    // ระบบเดิมจะได้รับ webhook เหมือนที่ LINE เคยส่งให้ทุกอย่าง จึงทำงานต่อได้ตามปกติ
-    await forwardToCoexisting(raw, signature);
-
-    let payload: { events?: LineEvent[] };
+    let payload: { events?: LineEvent[] } | null = null;
     try {
       payload = JSON.parse(raw);
     } catch {
-      return json({ ok: true }); // body ไม่ใช่ JSON — ตอบ 200 เพื่อไม่ให้ LINE retry
+      payload = null; // body ไม่ใช่ JSON — ให้ระบบเดิมตัดสินใจเอง แล้วตอบ 200 ไม่ให้ LINE retry
+    }
+    const events = payload?.events ?? [];
+
+    // ใช้ OA ร่วมกับระบบอื่น (เช่น ระบบจองนวด): ส่งต่อ event ต้นฉบับให้ระบบเดิมก่อนเสมอ
+    // ระบบเดิมจะได้รับ webhook เหมือนที่ LINE เคยส่งให้ทุกอย่าง จึงทำงานต่อได้ตามปกติ
+    //
+    // ยกเว้นกรณีเดียว: ชุด event ที่เป็นการกดปุ่มของระบบเราล้วน ๆ ระบบเดิมไม่ได้ใช้ข้อมูลนี้
+    // แต่จะถูกปลุกให้ทำงาน (และอาจบันทึกแถวขยะลงปลายทาง) ทุกครั้งที่เจ้าหน้าที่กดรับเรื่อง/ปิดงาน
+    // ถ้ามี event อื่นปนมาแม้แต่รายการเดียว ให้ส่งต่อทั้งก้อนตามเดิม — ห้ามตัดแก้ body
+    // เพราะ signature ผูกกับ body ต้นฉบับ ถ้าแก้แล้วระบบเดิมจะตรวจไม่ผ่าน
+    if (!(events.length > 0 && events.every(isOwnPostback))) {
+      await forwardToCoexisting(raw, signature);
     }
 
-    for (const ev of payload.events ?? []) {
+    if (!payload) return json({ ok: true });
+
+    for (const ev of events) {
       try {
         if (ev.type === "postback") await handlePostback(ev);
         else if (ev.type === "join") await handleJoin(ev);
@@ -59,6 +69,18 @@ export default async (req: Request): Promise<Response> =>
     // ต้องตอบ 200 เสมอเพื่อไม่ให้ LINE ส่งซ้ำ
     return json({ ok: true });
   });
+
+/**
+ * เป็นการกดปุ่มจากการ์ดของระบบนี้เองหรือไม่
+ * ปุ่มของเราแนบ ticket= มาด้วยเสมอ และใช้ action ที่ระบบนี้กำหนดไว้เท่านั้น
+ * จึงแยกออกจาก postback ของระบบอื่นบน OA เดียวกันได้แน่นอน
+ */
+function isOwnPostback(ev: LineEvent): boolean {
+  if (ev.type !== "postback") return false;
+  const data = new URLSearchParams(ev.postback?.data ?? "");
+  const action = data.get("action");
+  return Boolean(data.get("ticket")) && (action === "ack" || action === "complete" || action === "transfer");
+}
 
 /**
  * ส่งต่อ webhook ต้นฉบับให้ระบบอื่นที่ใช้ OA เดียวกัน (ตั้งค่า MASSAGE_WEBHOOK_URL)
