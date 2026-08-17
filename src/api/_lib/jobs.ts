@@ -29,13 +29,14 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       reporter_name: string;
       reporter_dept: string | null;
       department_id: string;
+      department_code: string;
       line_group_id: string | null;
       escalate_to: string | null;
     }[]
   >`
     SELECT t.id, t.ticket_no, t.reminder_count, t.category_code, t.floor, t.location_note,
            t.detail, t.urgency, r.full_name AS reporter_name, r.department_name AS reporter_dept,
-           t.department_id, d.line_group_id, d.escalate_to
+           t.department_id, d.code AS department_code, d.line_group_id, d.escalate_to
     FROM tickets t
     JOIN departments d ON d.id = t.department_id
     JOIN employees r ON r.id = t.reporter_id
@@ -57,7 +58,8 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
     const flex = buildTicketFlex({
       ticketId: t.id,
       ticketNo: t.ticket_no,
-      categoryCode: t.category_code,
+      status: "pending", // งานเตือนซ้ำเลือกเฉพาะเรื่องที่ยังไม่มีผู้รับเท่านั้น
+      departmentCode: t.department_code,
       categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
       reporterName: t.reporter_name,
       reporterDept: t.reporter_dept,
