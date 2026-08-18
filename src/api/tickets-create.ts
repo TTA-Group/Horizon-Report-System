@@ -27,8 +27,11 @@ export default async (req: Request): Promise<Response> =>
     const body = await readJson<Body>(req);
     const category = CATEGORY_BY_CODE.get((body.category_code ?? "").trim());
     if (!category) throw new HttpError(400, "กรุณาเลือกประเภทเรื่องที่แจ้ง");
+    // ผู้แจ้งเลือก "ชั้นอื่น" แล้วพิมพ์เองได้ ค่านี้จึงไม่จำกัดอยู่แค่รายการใน FLOORS
+    // แต่ต้องไม่ยาวเกินความกว้างของคอลัมน์ ไม่งั้นฐานข้อมูลจะปฏิเสธและเรื่องหายไปทั้งใบ
     const floor = (body.floor ?? "").trim();
     if (!floor) throw new HttpError(400, "กรุณาเลือกชั้นที่เกิดเหตุ");
+    if (floor.length > 20) throw new HttpError(400, "ชั้นที่ระบุยาวเกินไป (ไม่เกิน 20 ตัวอักษร)");
     const detail = (body.detail ?? "").trim();
     if (!detail) throw new HttpError(400, "กรุณาระบุรายละเอียดของปัญหา");
     const urgency = (body.urgency ?? "normal").trim();

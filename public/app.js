@@ -6,6 +6,10 @@ const CFG = window.APP_CONFIG || {};
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+// ค่าหมายจับของตัวเลือก "ชั้นอื่น" ในหน้าฟอร์ม — ตั้งใจให้เป็นค่าที่ไม่มีวันตรงกับชื่อชั้นจริง
+// สิ่งที่ส่งขึ้นระบบคือข้อความที่ผู้ใช้พิมพ์เอง ไม่ใช่ค่านี้
+const FLOOR_OTHER = "__other__";
+
 let idToken = null;
 let masters = null;
 let session = null;
@@ -241,9 +245,12 @@ function renderMasters() {
     };
     cats.appendChild(b);
   });
-  // ชั้น
+  // ชั้น — มีตัวเลือก "ชั้นอื่น" ปิดท้าย สำหรับจุดที่ไม่อยู่ในรายการ (เช่น ลานจอดรถ ดาดฟ้า ชั้นใต้ดิน)
   const fl = $("#floor");
-  fl.innerHTML = '<option value="">เลือกชั้น</option>' + masters.floors.map((f) => `<option>${f}</option>`).join("");
+  fl.innerHTML =
+    '<option value="">เลือกชั้น</option>' +
+    masters.floors.map((f) => `<option>${esc(f)}</option>`).join("") +
+    `<option value="${FLOOR_OTHER}">ชั้นอื่น</option>`;
   // ความเร่งด่วน
   const urg = $("#urg");
   urg.innerHTML = "";
@@ -273,9 +280,11 @@ function goForm() {
 
 async function submitTicket() {
   if (!picked) return toast("กรุณาเลือกประเภทเรื่องที่แจ้ง");
-  const floor = $("#floor").value;
+  const picked_floor = $("#floor").value;
+  const floor = picked_floor === FLOOR_OTHER ? $("#floorOther").value.trim() : picked_floor;
   const detail = $("#detail").value.trim();
-  if (!floor) return toast("กรุณาเลือกชั้นที่เกิดเหตุ");
+  if (!picked_floor) return toast("กรุณาเลือกชั้นที่เกิดเหตุ");
+  if (!floor) return toast("กรุณาระบุว่าเป็นชั้นไหน");
   if (!detail) return toast("กรุณาระบุรายละเอียดของปัญหา");
 
   const btn = $("#sendBtn");
@@ -335,6 +344,8 @@ function resetForm() {
   $("#room").value = "";
   $("#detail").value = "";
   $("#floor").value = "";
+  $("#floorOther").value = "";
+  $("#floorOther").style.display = "none";
   $$("#cats .cat").forEach((x) => x.setAttribute("aria-pressed", "false"));
   const send = $("#sendBtn");
   send.disabled = true;
@@ -736,6 +747,14 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#btn-manual").onclick = submitManual;
   $("#btn-manual-back").onclick = () => showRegPart("reg-input");
   $("#sendBtn").onclick = submitTicket;
+
+  // เลือก "ชั้นอื่น" แล้วค่อยเผยช่องให้พิมพ์ — ไม่งั้นฟอร์มจะรกด้วยช่องที่แทบไม่ได้ใช้
+  $("#floor").onchange = () => {
+    const other = $("#floor").value === FLOOR_OTHER;
+    $("#floorOther").style.display = other ? "" : "none";
+    if (other) $("#floorOther").focus();
+    else $("#floorOther").value = "";
+  };
   $("#file").onchange = (e) => onPickFiles(e.target);
   $$(".tabbar button").forEach((b) => (b.onclick = () => routeTab(b.dataset.tab)));
 
