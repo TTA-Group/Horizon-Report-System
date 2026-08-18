@@ -21,6 +21,7 @@ import ticketsStatus from "./api/tickets-status";
 import ticketsTransfer from "./api/tickets-transfer";
 import uploads from "./api/uploads";
 import adminEmployees from "./api/admin-employees";
+import adminEmployeeCreate from "./api/admin-employee-create";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
 import adminEmployeeUnlink from "./api/admin-employee-unlink";
 import adminEmployeeDepartments from "./api/admin-employee-departments";
@@ -40,8 +41,11 @@ interface Env {
 
 type Handler = (req: Request) => Promise<Response>;
 
-/** จับคู่เส้นทางกับตัวจัดการ — ตัวจัดการอ่านพารามิเตอร์จาก URL เองอยู่แล้ว */
-function route(pathname: string): Handler | null {
+/**
+ * จับคู่เส้นทางกับตัวจัดการ — ตัวจัดการอ่านพารามิเตอร์จาก URL เองอยู่แล้ว
+ * ใช้ method ประกอบด้วยเฉพาะเส้นทางที่อ่านและเขียนคนละตัวจัดการกัน
+ */
+function route(pathname: string, method: string): Handler | null {
   const seg = pathname.split("/").filter(Boolean); // เช่น ['api','tickets','<id>','status']
   if (seg[0] !== "api") return null;
 
@@ -72,9 +76,9 @@ function route(pathname: string): Handler | null {
     return null;
   }
 
-  // /api/admin/employees, /api/admin/employees/:id/{suspend,unlink}
+  // /api/admin/employees (GET = รายชื่อ, POST = เพิ่มคน), /api/admin/employees/:id/{suspend,unlink}
   if (seg[1] === "admin" && seg[2] === "employees") {
-    if (seg.length === 3) return adminEmployees;
+    if (seg.length === 3) return method === "POST" ? adminEmployeeCreate : adminEmployees;
     if (seg.length === 5 && seg[4] === "suspend") return adminEmployeeSuspend;
     if (seg.length === 5 && seg[4] === "unlink") return adminEmployeeUnlink;
     if (seg.length === 5 && seg[4] === "departments") return adminEmployeeDepartments;
@@ -118,7 +122,7 @@ export default {
     setEnv(env);
 
     const url = new URL(request.url);
-    const handler = route(url.pathname);
+    const handler = route(url.pathname, request.method);
 
     if (handler) {
       // ตัวจัดการทุกตัวมีตัวดักจับข้อผิดพลาดของตัวเองอยู่แล้ว ถ้าหลุดมาถึงตรงนี้แปลว่าพัง

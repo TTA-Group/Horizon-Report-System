@@ -256,9 +256,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       <div class="block"><label class="q">รหัสพนักงาน</label><input type="text" id="m-id" inputmode="numeric" maxlength="5" style="font-family:'IBM Plex Mono',monospace" /></div>
       <div class="block"><label class="q">ชื่อ–สกุล <span>*</span></label><input type="text" id="m-name" placeholder="ชื่อ นามสกุล" /></div>
       <div class="block"><label class="q">ฝ่าย/แผนก <span>*</span></label>
-        <select id="m-dept"><option value="">เลือกฝ่าย/แผนก</option>
-          <option>ฝ่ายบัญชีและการเงิน</option><option>ฝ่ายขายและการตลาด</option><option>ฝ่ายทรัพยากรบุคคล</option>
-          <option>ฝ่ายปฏิบัติการ</option><option>ฝ่าย Admin</option><option>IT Support / Help Desk</option></select></div>
+        <select id="m-dept"></select></div>
       <div class="block"><label class="q">ชั้นที่ปฏิบัติงาน</label>
         <select id="m-floor"><option value="">เลือกชั้น</option>
           <option>ชั้น 15</option><option>ชั้น 9</option><option>ชั้น 8</option><option>ชั้น 7</option><option>ชั้น 5</option><option>ชั้นลอย</option></select></div>
@@ -319,6 +317,26 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
   <!-- admin (ผู้ดูแล) -->
   <section class="screen" id="s-admin">
+    <!-- เพิ่มพนักงานเข้าระบบได้เองจากหน้านี้ ไม่ต้องรอรอบนำเข้าข้อมูลจากคนที่เขียน SQL เป็น -->
+    <button class="send" id="admin-add" style="margin-bottom:14px">+ เพิ่มพนักงาน</button>
+    <div id="admin-new" style="display:none">
+      <div class="section">เพิ่มพนักงานใหม่</div>
+      <div class="block"><label class="q">รหัสพนักงาน <span>*</span></label>
+        <input type="text" id="n-code" inputmode="numeric" maxlength="5" placeholder="ตัวเลข 5 หลัก"
+               style="font-family:'IBM Plex Mono',monospace" /></div>
+      <div class="block"><label class="q">ชื่อ–สกุล ภาษาอังกฤษ <span>*</span></label>
+        <input type="text" id="n-name" maxlength="150" placeholder="Somchai Jaidee" /></div>
+      <div class="block"><label class="q">ฝ่าย/แผนก <span>*</span></label>
+        <select id="n-dept"></select>
+        <input type="text" id="n-deptOther" maxlength="100" placeholder="ระบุชื่อฝ่าย/แผนก"
+               style="display:none;margin-top:8px" /></div>
+      <div class="block"><label class="q">ประจำอยู่ที่ชั้น <span class="hint">(หากทราบ)</span></label>
+        <select id="n-floor"></select>
+        <input type="text" id="n-floorOther" maxlength="20" placeholder="ระบุชั้นที่ประจำอยู่"
+               style="display:none;margin-top:8px" /></div>
+      <button class="send" id="n-save">บันทึกพนักงาน</button>
+      <button class="ghost" id="n-cancel">ยกเลิก</button>
+    </div>
     <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาจากรหัสพนักงาน ชื่อ หรือฝ่าย" />
     <div id="adminList"></div>
   </section>
