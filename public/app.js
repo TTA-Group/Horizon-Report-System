@@ -6,9 +6,20 @@ const CFG = window.APP_CONFIG || {};
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-// ค่าหมายจับของตัวเลือก "ชั้นอื่น" ในหน้าฟอร์ม — ตั้งใจให้เป็นค่าที่ไม่มีวันตรงกับชื่อชั้นจริง
+// ค่าหมายจับของตัวเลือก "อื่น ๆ" ในรายการเลือก (ชั้น ฝ่าย) — ตั้งใจให้เป็นค่าที่ไม่มีวันตรงกับของจริง
 // สิ่งที่ส่งขึ้นระบบคือข้อความที่ผู้ใช้พิมพ์เอง ไม่ใช่ค่านี้
-const FLOOR_OTHER = "__other__";
+const PICK_OTHER = "__other__";
+
+// ฝ่าย/แผนกต้นสังกัดของพนักงาน — คนละเรื่องกับฝ่ายผู้รับเรื่องใน departments
+// ใช้ทั้งหน้าผูกบัญชีและหน้าเพิ่มพนักงานของผู้ดูแล จึงเก็บไว้ที่เดียวไม่ให้สะกดต่างกัน
+const ORG_DEPTS = [
+  "ฝ่ายบัญชีและการเงิน",
+  "ฝ่ายขายและการตลาด",
+  "ฝ่ายทรัพยากรบุคคล",
+  "ฝ่ายปฏิบัติการ",
+  "ฝ่าย Admin",
+  "IT Support / Help Desk",
+];
 
 let idToken = null;
 let masters = null;
@@ -52,9 +63,14 @@ function show(id) {
 }
 
 let toastTimer;
-function toast(msg) {
+/**
+ * ข้อความแจ้งเตือนมุมจอ — ปกติใส่เป็นข้อความล้วน เพราะหลายข้อความมีชื่อคนหรือค่าที่ผู้ใช้กรอกปนมา
+ * ที่อยากได้ตัวหนาจริง ๆ ต้องส่ง { html: true } มาเอง แล้วรับผิดชอบ escape ให้เรียบร้อย
+ */
+function toast(msg, { html = false } = {}) {
   const el = $("#toast");
-  el.innerHTML = msg;
+  if (html) el.innerHTML = msg;
+  else el.textContent = msg;
   el.classList.add("on");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove("on"), 3600);
@@ -254,7 +270,7 @@ function renderMasters() {
   fl.innerHTML =
     '<option value="">เลือกชั้น</option>' +
     masters.floors.map((f) => `<option>${esc(f)}</option>`).join("") +
-    `<option value="${FLOOR_OTHER}">ชั้นอื่น</option>`;
+    `<option value="${PICK_OTHER}">ชั้นอื่น</option>`;
   // ความเร่งด่วน
   const urg = $("#urg");
   urg.innerHTML = "";
@@ -285,7 +301,7 @@ function goForm() {
 async function submitTicket() {
   if (!picked) return toast("กรุณาเลือกประเภทเรื่องที่แจ้ง");
   const picked_floor = $("#floor").value;
-  const floor = picked_floor === FLOOR_OTHER ? $("#floorOther").value.trim() : picked_floor;
+  const floor = picked_floor === PICK_OTHER ? $("#floorOther").value.trim() : picked_floor;
   const detail = $("#detail").value.trim();
   if (!picked_floor) return toast("กรุณาเลือกชั้นที่เกิดเหตุ");
   if (!floor) return toast("กรุณาระบุว่าเป็นชั้นไหน");
@@ -330,7 +346,7 @@ async function submitTicket() {
           `แต่ไม่สามารถแนบภาพได้ ${failedCount} ภาพ${uploadError ? " (" + esc(uploadError) + ")" : ""}`,
       );
     } else {
-      toast(`ส่งเรื่องเรียบร้อยแล้ว เลขที่ <b>${r.ticket_no}</b>`);
+      toast(`ส่งเรื่องเรียบร้อยแล้ว เลขที่ <b>${esc(r.ticket_no)}</b>`, { html: true });
     }
     goMine();
   } catch (e) {
@@ -524,6 +540,10 @@ async function openTransferSheet(id, currentDeptCode) {
 async function goAdmin() {
   setTab("admin");
   show("s-admin");
+  // ฟอร์มเพิ่มพนักงานเกี่ยวกับรายชื่อพนักงานปัจจุบันเท่านั้น หน้าผู้ถูกระงับสิทธิ์ไม่ต้องมี
+  if (adminView !== "active") closeEmpForm();
+  $("#admin-add").style.display =
+    adminView === "active" && $("#admin-new").style.display === "none" ? "" : "none";
   const list = $("#adminList");
   list.innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   const params = new URLSearchParams();
@@ -658,6 +678,87 @@ async function openDeptSheet(id, name, current) {
 function deptName(code) {
   const d = (masters.departments || []).find((x) => x.code === code);
   return d ? d.name : code;
+}
+
+/* ---------- เพิ่มพนักงานเข้าระบบ (ผู้ดูแล) ---------- */
+
+/** ใส่ตัวเลือกลงใน select พร้อมบรรทัดหัวข้อว่าง และตัวเลือก "อื่น ๆ" ปิดท้ายถ้าต้องการ */
+function fillSelect(el, placeholder, options, other) {
+  el.innerHTML =
+    `<option value="">${esc(placeholder)}</option>` +
+    options.map((o) => `<option>${esc(o)}</option>`).join("") +
+    (other ? `<option value="${PICK_OTHER}">${esc(other)}</option>` : "");
+}
+
+/** เผยช่องพิมพ์เองเมื่อเลือก "อื่น ๆ" — ซ่อนไว้ก่อนเพื่อไม่ให้ฟอร์มรกด้วยช่องที่แทบไม่ได้ใช้ */
+function revealOther(sel, input) {
+  const other = sel.value === PICK_OTHER;
+  input.style.display = other ? "" : "none";
+  if (other) input.focus();
+  else input.value = "";
+}
+
+/** ค่าที่เลือกไว้ โดยถ้าเลือก "อื่น ๆ" ให้ใช้ข้อความที่พิมพ์เองแทน */
+function pickedValue(sel, input) {
+  return sel.value === PICK_OTHER ? input.value.trim() : sel.value;
+}
+
+function openEmpForm() {
+  fillSelect($("#n-dept"), "เลือกฝ่าย/แผนก", ORG_DEPTS, "อื่น ๆ (ระบุเอง)");
+  fillSelect($("#n-floor"), "เลือกชั้น", (masters && masters.floors) || [], "ชั้นอื่น");
+  $("#admin-add").style.display = "none";
+  $("#admin-new").style.display = "block";
+  $("#n-code").focus();
+}
+
+function closeEmpForm() {
+  ["#n-code", "#n-name", "#n-deptOther", "#n-floorOther"].forEach((s) => ($(s).value = ""));
+  $("#n-deptOther").style.display = "none";
+  $("#n-floorOther").style.display = "none";
+  $("#admin-new").style.display = "none";
+  $("#admin-add").style.display = "";
+}
+
+async function saveEmployee() {
+  const code = $("#n-code").value.trim();
+  const name = $("#n-name").value.trim();
+  const dept = pickedValue($("#n-dept"), $("#n-deptOther"));
+  const floor = pickedValue($("#n-floor"), $("#n-floorOther"));
+
+  // รหัสต้องเป็นตัวเลข 5 หลักให้ตรงกับที่หน้าผูกบัญชียอมรับ ไม่งั้นเจ้าตัวจะผูกบัญชีไม่ได้
+  if (!/^\d{5}$/.test(code)) return toast("รหัสพนักงานต้องเป็นตัวเลข 5 หลัก");
+  if (!name) return toast("กรุณากรอกชื่อ–สกุล");
+  if (!dept) return toast("กรุณาเลือกหรือระบุฝ่าย/แผนก");
+  // ตั้งใจให้ชื่อเป็นภาษาอังกฤษเหมือนกันทั้งระบบ แต่ไม่ปิดกั้นถ้ายืนยันว่าจะใช้ภาษาไทยจริง ๆ
+  if (/[\u0E00-\u0E7F]/.test(name)) {
+    const ok = await confirmDialog({
+      title: "ชื่อที่กรอกเป็นภาษาไทย",
+      message: "ระบบใช้ชื่อ–สกุลภาษาอังกฤษเป็นหลัก ต้องการบันทึกตามที่กรอกไว้หรือไม่",
+      confirmLabel: "บันทึกตามนี้",
+      cancelLabel: "กลับไปแก้",
+    });
+    if (!ok) return;
+  }
+
+  const btn = $("#n-save");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/admin/employees", {
+      method: "POST",
+      body: { employee_code: code, full_name: name, department_name: dept, floor },
+    });
+    closeEmpForm();
+    toast(`เพิ่ม ${r.employee.full_name} เรียบร้อยแล้ว`);
+    // ค้นด้วยรหัสที่เพิ่งเพิ่ม เพื่อให้เห็นการ์ดของคนนั้นทันที แม้จะมีคำค้นเดิมค้างอยู่ในช่องค้นหา
+    adminQ = r.employee.employee_code;
+    $("#admin-q").value = adminQ;
+    adminView = "active";
+    goAdmin();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* ---------- detail ---------- */
@@ -850,12 +951,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#sendBtn").onclick = submitTicket;
 
   // เลือก "ชั้นอื่น" แล้วค่อยเผยช่องให้พิมพ์ — ไม่งั้นฟอร์มจะรกด้วยช่องที่แทบไม่ได้ใช้
-  $("#floor").onchange = () => {
-    const other = $("#floor").value === FLOOR_OTHER;
-    $("#floorOther").style.display = other ? "" : "none";
-    if (other) $("#floorOther").focus();
-    else $("#floorOther").value = "";
-  };
+  $("#floor").onchange = () => revealOther($("#floor"), $("#floorOther"));
   $("#file").onchange = (e) => onPickFiles(e.target);
   $$(".tabbar button").forEach((b) => (b.onclick = () => routeTab(b.dataset.tab)));
 
@@ -997,6 +1093,15 @@ window.addEventListener("DOMContentLoaded", () => {
       goAdmin();
     }, 350),
   );
+
+  // ผู้ดูแล: ฟอร์มเพิ่มพนักงานเข้าระบบ
+  $("#admin-add").onclick = openEmpForm;
+  $("#n-cancel").onclick = closeEmpForm;
+  $("#n-save").onclick = saveEmployee;
+  $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));
+  $("#n-floor").onchange = () => revealOther($("#n-floor"), $("#n-floorOther"));
+  // รายการฝ่าย/แผนกของหน้าผูกบัญชี สร้างจากชุดเดียวกับฟอร์มเพิ่มพนักงาน
+  fillSelect($("#m-dept"), "เลือกฝ่าย/แผนก", ORG_DEPTS, null);
   // bottom sheet ยกเลิก
   $("#sheet-cancel").onclick = () => finishSheet(null);
 
