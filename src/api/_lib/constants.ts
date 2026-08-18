@@ -35,7 +35,9 @@ export const CATEGORIES: CategoryDef[] = [
 ];
 export const CATEGORY_BY_CODE = new Map(CATEGORIES.map((c) => [c.code, c]));
 
-export const FLOORS = ["ชั้น 15", "ชั้น 9", "ชั้น 8", "ชั้น 7", "ชั้น 5", "ชั้นลอย"];
+// ชั้นที่มีคนทำงานอยู่จริงตามทะเบียนพนักงาน — เรียงจากบนลงล่าง
+// ชั้นที่ไม่อยู่ในรายการนี้ (ลานจอดรถ ดาดฟ้า ชั้นใต้ดิน) แจ้งได้ผ่านตัวเลือก "ชั้นอื่น" ในฟอร์ม
+export const FLOORS = ["ชั้น 15", "ชั้น 12A", "ชั้น 9", "ชั้น 8", "ชั้น 7", "ชั้น 5", "ชั้นลอย"];
 
 export const URGENCIES: { code: UrgencyCode; label: string; note: string }[] = [
   { code: "normal", label: "ปกติ", note: "ภายใน 3 วันทำการ" },

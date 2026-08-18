@@ -30,6 +30,7 @@ src/index.ts     จุดเข้าของ Worker — จัดเส้น
 src/api/         ตัวจัดการแต่ละ endpoint
   _lib/          โค้ดใช้ร่วม (db, auth, line, flex, jobs, constants, env)
 db/              schema.sql · seed.sql · enable-rls.sql · cleanup-sample-data.sql · reset-tickets.sql
+                 import-employees.template.sql (นำเข้าพนักงานเป็นชุด — ห้ามใส่ข้อมูลจริงลงในที่เก็บโค้ด)
 wrangler.toml    การตั้งค่า Worker (assets, nodejs_compat, cron triggers)
 ```
 

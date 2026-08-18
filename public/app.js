@@ -11,14 +11,36 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const PICK_OTHER = "__other__";
 
 // ฝ่าย/แผนกต้นสังกัดของพนักงาน — คนละเรื่องกับฝ่ายผู้รับเรื่องใน departments
+// สะกดตามทะเบียนพนักงานของฝ่ายบุคคล เพื่อให้ชื่อฝ่ายของคนที่กรอกเองตรงกับคนที่นำเข้ามาเป็นชุด
 // ใช้ทั้งหน้าผูกบัญชีและหน้าเพิ่มพนักงานของผู้ดูแล จึงเก็บไว้ที่เดียวไม่ให้สะกดต่างกัน
 const ORG_DEPTS = [
-  "ฝ่ายบัญชีและการเงิน",
-  "ฝ่ายขายและการตลาด",
-  "ฝ่ายทรัพยากรบุคคล",
-  "ฝ่ายปฏิบัติการ",
-  "ฝ่าย Admin",
-  "IT Support / Help Desk",
+  "Administration",
+  "Business Development",
+  "CEO Office",
+  "CEO PROJECT -1",
+  "CEO PROJECT -2",
+  "CEO PROJECT -3",
+  "CEO PROJECT -4",
+  "Corporate Accounting & BPA",
+  "Corporate Affairs",
+  "Corporate Communication",
+  "Corporate Finance & Accounting",
+  "Corporate Human Resources",
+  "DIGITAL TEAM",
+  "Executive Driver",
+  "Executive Secretary",
+  "Finance & Accounting",
+  "Information Technology",
+  "Internal Audit",
+  "Investor Relations & Treasury",
+  "LEGAL",
+  "Legal - CEO Office",
+  "PM Driver",
+  "PM Finance&Accounting",
+  "PM Internal Audit",
+  "PM Secretary",
+  "PM Thoresen Asia Holding Plc.",
+  "Water Project",
 ];
 
 let idToken = null;
