@@ -6,7 +6,6 @@ import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
-import { groupMessages } from "./_lib/mentions";
 import { currentYYMM, thaiDateTimeShort } from "./_lib/tickets";
 
 interface Body {
@@ -118,13 +117,7 @@ export default async (req: Request): Promise<Response> =>
       });
 
       if (lineGroupId) {
-        // เรียกเจ้าหน้าที่ของฝ่ายที่รับผิดชอบด้วย @mention เพราะทุกฝ่ายใช้กลุ่มไลน์ร่วมกัน
-        const messages = await groupMessages(
-          departmentId,
-          `🔔 เรื่องใหม่ ${created.ticket_no} · ${category.label}`,
-          flex,
-        );
-        await pushTo(lineGroupId, messages, { ticketId: created.id, channel: "group" });
+        await pushTo(lineGroupId, [flex], { ticketId: created.id, channel: "group" });
       }
       // งาน "เร่งด่วนมาก" เคยส่งการ์ดซ้ำเข้าแชทส่วนตัวของเจ้าหน้าที่ทุกคนตาม spec หัวข้อ 5.2
       // เลิกทำแล้ว: @mention ในกลุ่มเด้งเตือนถึงตัวคนอยู่แล้วแม้ปิดเสียงกลุ่ม การส่งซ้ำจึงได้แค่

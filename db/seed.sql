@@ -11,11 +11,13 @@
 -- ฝ่าย CLN ปิดใช้งานไว้ (is_active = false) เพราะงานแม่บ้านกับงานระบบปรับอากาศเป็นทีมเดียวกัน
 -- ทั้งสองหมวดจึงเข้าคิวของฝ่าย ADM (ดู CATEGORIES ใน src/api/_lib/constants.ts)
 -- คงแถวนี้ไว้เผื่ออนาคตแยกทีมกัน จะได้เปิดใช้ใหม่ได้โดยไม่เสียประวัติงานเดิม
+-- sla_ack_minutes = 15 : เกิน 15 นาทีแล้วยังไม่มีใครกดรับเรื่อง ระบบจะส่งข้อความส่วนตัว
+-- หาเจ้าหน้าที่ของฝ่ายนั้นทุกคน (การ์ดในกลุ่มปลุกคนที่ปิดเสียงกลุ่มไว้ไม่ได้)
 INSERT INTO departments (code, name, sla_ack_minutes, sla_close_hours, is_active) VALUES
-  ('IT',  'IT / IT Helpdesk', 120, 24, true),
-  ('ADM', 'ADMIN',            120, 24, true),
-  ('CLN', 'MAID',             120, 24, false),
-  ('GEN', 'OTHER',            120, 48, true)
+  ('IT',  'IT / IT Helpdesk', 15, 24, true),
+  ('ADM', 'ADMIN',            15, 24, true),
+  ('CLN', 'MAID',             15, 24, false),
+  ('GEN', 'OTHER',            15, 48, true)
 ON CONFLICT (code) DO NOTHING;
 
 -- ผู้ดูแลระบบเริ่มต้น (แก้เป็นรหัสพนักงานจริงก่อนเปิดใช้งาน)
