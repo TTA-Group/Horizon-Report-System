@@ -51,3 +51,19 @@ export function thaiDateTime(d = new Date()): string {
   const mm = String(th.getUTCMinutes()).padStart(2, "0");
   return `${day} ${mon} ${year} · ${hh}:${mm}`;
 }
+
+/**
+ * ย่อชื่อสำหรับข้อความที่ส่งถึงผู้แจ้ง เช่น "Somchai Jaidee" -> "Somchai J."
+ *
+ * ผู้แจ้งต้องการรู้ว่าใครรับเรื่องไป ไม่ได้ต้องการนามสกุลเต็มของเจ้าหน้าที่
+ * ส่วนการ์ดในกลุ่มยังใช้ชื่อเต็มเหมือนเดิม เพราะที่นั่นใช้ไล่ความรับผิดชอบกันจริง ๆ
+ *
+ * ชื่อคำเดียวคืนตามเดิม (ย่อแล้วไม่เหลืออะไรให้จำ) และตัดอักษรแรกแบบ code point
+ * เพื่อไม่ให้ตัวอักษรที่กินสองหน่วยขาดครึ่ง
+ */
+export function shortName(full: string | null | undefined): string {
+  const parts = (full ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${[...parts[1]][0]}.`;
+}

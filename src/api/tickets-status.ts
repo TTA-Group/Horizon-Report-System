@@ -14,7 +14,7 @@ import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
-import { assertTransition, thaiDateTimeShort } from "./_lib/tickets";
+import { assertTransition, shortName, thaiDateTimeShort } from "./_lib/tickets";
 
 interface Body {
   to_status?: string;
@@ -127,9 +127,12 @@ export default async (req: Request): Promise<Response> =>
         `;
         if (reporter.length > 0) {
           const label = STATUS_LABELS[to] ?? to;
+          // บอกชื่อผู้รับผิดชอบด้วยตอนมีคนรับเรื่อง ให้ตรงกับตอนกดปุ่มจากการ์ดในกลุ่ม
+          // ไม่งั้นผู้แจ้งจะรู้ชื่อคนรับผิดชอบบ้างไม่รู้บ้าง ขึ้นอยู่กับว่าเจ้าหน้าที่กดจากที่ไหน
+          const who = to === "in_progress" ? `\nผู้รับผิดชอบ: ${shortName(s.employee.full_name)}` : "";
           await pushTo(
             reporter[0].line_user_id,
-            [textMessage(`อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${label}${note ? "\nหมายเหตุ: " + note : ""}`)],
+            [textMessage(`อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${label}${who}${note ? "\nหมายเหตุ: " + note : ""}`)],
             { ticketId: id, channel: "user" },
           );
         }
