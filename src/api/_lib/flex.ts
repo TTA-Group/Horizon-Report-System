@@ -31,10 +31,12 @@ export interface TicketFlexInput {
   photos?: string[] | null;
 }
 
-// สีหลักของการ์ด — เขียวเหมือนกันทุกฝ่าย ตรงกับสีประจำระบบในแอป LIFF
-// เลือกเฉดเข้มกว่าเขียวในแอปเล็กน้อย เพราะหัวการ์ดเป็นตัวหนังสือสีขาวบนพื้นสีทึบ
-// (เขียวสดของแอปอ่อนเกินไป ตัวหนังสือขาวบนพื้นนั้นอ่านยาก)
-const CARD_COLOR = "#05803A";
+// สีหัวการ์ด — ใช้เขียวเดียวกับปุ่มท้ายการ์ด (สีเขียวของ LINE) ทั้งใบจึงเป็นสีเดียวกันหมด
+const CARD_COLOR = "#06C755";
+
+// สีของขั้นตอนที่ผ่านมาแล้วในแถบขั้นตอน — เขียวเข้มกว่าหัวการ์ดหนึ่งระดับ
+// เพราะตรงนั้นเป็นตัวหนังสือขนาดเล็กที่สุดบนพื้นขาว เขียวสดจะจางจนอ่านไม่ออก
+const STEP_DONE = "#04A045";
 
 // แถบความเร่งด่วน — แถบสีทึบเต็มความกว้าง อ่านออกตั้งแต่ยังไม่ได้เปิดดูรายละเอียด
 // ทุกสีเลือกให้เข้มพอสำหรับตัวหนังสือสีขาว และต่างจากสีหัวการ์ดชัดเจน
@@ -97,8 +99,8 @@ function stepsFor(t: TicketFlexInput): Step[] {
 }
 
 /** จุดกลม ๆ ของหนึ่งขั้น — ทึบเมื่อผ่านมาแล้ว กลวงเมื่อยังไม่ถึง */
-function stepNode(s: Step, accent: string) {
-  const filled = s.bad ? STEP_BAD : accent;
+function stepNode(s: Step) {
+  const filled = s.bad ? STEP_BAD : STEP_DONE;
   return {
     type: "box",
     layout: "vertical",
@@ -113,7 +115,7 @@ function stepNode(s: Step, accent: string) {
 }
 
 /** แถบขั้นตอนแนวนอน: จุด — เส้น — จุด พร้อมชื่อขั้นเรียงใต้จุด */
-function stepper(t: TicketFlexInput, accent: string) {
+function stepper(t: TicketFlexInput) {
   const steps = stepsFor(t);
   const strip: unknown[] = [];
   steps.forEach((s, i) => {
@@ -122,11 +124,11 @@ function stepper(t: TicketFlexInput, accent: string) {
         type: "box",
         layout: "vertical",
         height: "2px",
-        backgroundColor: s.done ? (s.bad ? STEP_BAD : accent) : STEP_LINE,
+        backgroundColor: s.done ? (s.bad ? STEP_BAD : STEP_DONE) : STEP_LINE,
         contents: [{ type: "filler" }],
       });
     }
-    strip.push(stepNode(s, accent));
+    strip.push(stepNode(s));
   });
 
   return {
@@ -146,7 +148,7 @@ function stepper(t: TicketFlexInput, accent: string) {
           flex: 1,
           align: i === 0 ? "start" : i === steps.length - 1 ? "end" : "center",
           weight: s.done ? "bold" : "regular",
-          color: s.done ? (s.bad ? STEP_BAD : accent) : STEP_FUTURE,
+          color: s.done ? (s.bad ? STEP_BAD : STEP_DONE) : STEP_FUTURE,
         })),
       },
     ],
@@ -302,7 +304,6 @@ function unassignedBlock() {
 
 /** สร้างข้อความ Flex ของ ticket หนึ่งใบตามสถานะปัจจุบัน */
 export function buildTicketFlex(t: TicketFlexInput): LineMessage {
-  const accent = CARD_COLOR;
   const urgency = URGENCY[t.urgency];
   const statusLabel = STATUS_CHIP[t.status] ?? STATUS_LABELS[t.status] ?? t.status;
 
@@ -361,7 +362,7 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
       ],
     },
     { type: "text", text: t.categoryLabel, size: "xs", color: "#8A94A0", wrap: true },
-    stepper(t, accent),
+    stepper(t),
     ...(latest ? [latest] : []),
     { type: "separator", margin: "lg", color: "#EDF0F3" },
     { type: "box", layout: "vertical", margin: "lg", spacing: "sm", contents: rows },
@@ -388,7 +389,7 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
             type: "box",
             layout: "vertical",
             paddingAll: "14px",
-            backgroundColor: accent,
+            backgroundColor: CARD_COLOR,
             contents: [
               { type: "text", text: t.departmentName, color: "#FFFFFF", size: "md", weight: "bold", wrap: true },
             ],

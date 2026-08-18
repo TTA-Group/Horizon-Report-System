@@ -17,7 +17,7 @@ import { db } from "./_lib/db";
 import { buildTicketFlex, type TicketFlexInput } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
-import { thaiDateTimeShort } from "./_lib/tickets";
+import { shortName, thaiDateTimeShort } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
 
 interface LineSource {
@@ -481,7 +481,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     await replyCard(replyToken, cardFor(t, { status: "in_progress", assigneeName: actor.full_name, ...justNow(actor.full_name) }));
     await tellReporter(
       t.reporter_line_user_id,
-      `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.in_progress}\nผู้รับผิดชอบ: ${actor.full_name}`,
+      `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.in_progress}\nผู้รับผิดชอบ: ${shortName(actor.full_name)}`,
       ticketId,
     );
     return;
