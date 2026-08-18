@@ -23,6 +23,7 @@ import uploads from "./api/uploads";
 import adminEmployees from "./api/admin-employees";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
 import adminEmployeeUnlink from "./api/admin-employee-unlink";
+import adminEmployeeDepartments from "./api/admin-employee-departments";
 import lineWebhook from "./api/line-webhook";
 import cronReminders from "./api/cron-reminders";
 
@@ -76,6 +77,7 @@ function route(pathname: string): Handler | null {
     if (seg.length === 3) return adminEmployees;
     if (seg.length === 5 && seg[4] === "suspend") return adminEmployeeSuspend;
     if (seg.length === 5 && seg[4] === "unlink") return adminEmployeeUnlink;
+    if (seg.length === 5 && seg[4] === "departments") return adminEmployeeDepartments;
     return null;
   }
 

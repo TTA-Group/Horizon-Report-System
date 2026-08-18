@@ -35,6 +35,7 @@ export default async (req: Request): Promise<Response> =>
         suspend_reason: string | null;
         reported_count: number;
         linked: boolean;
+        depts: { code: string; role: string }[] | null;
       }[]
     >`
       SELECT e.id, e.employee_code, e.full_name, e.department_name, e.floor, e.status,
@@ -43,7 +44,11 @@ export default async (req: Request): Promise<Response> =>
              EXISTS (
                SELECT 1 FROM line_accounts la
                WHERE la.employee_id = e.id AND la.channel_key = ${CHANNEL_KEY}
-             ) AS linked
+             ) AS linked,
+             (SELECT json_agg(json_build_object('code', d.code, 'role', dm.role) ORDER BY d.code)
+                FROM department_members dm
+                JOIN departments d ON d.id = dm.department_id
+               WHERE dm.employee_id = e.id AND d.is_active = true) AS depts
       FROM employees e
       WHERE 1=1 ${qFilter} ${statusFilter}
       ORDER BY e.status DESC, e.employee_code ASC

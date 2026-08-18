@@ -19,6 +19,9 @@ let queueDept = null; // ฝ่ายที่กำลังดูในหน�
 let queueFilter = ""; // ตัวกรองคิวงาน: "" | "pending" | "me"
 let adminQ = ""; // คำค้นหน้าผู้ดูแล
 let adminView = "active"; // หน้าที่กำลังดูในผู้ดูแล: "active" (พนักงานปัจจุบัน) | "suspended" (ถูกระงับสิทธิ์)
+// ข้อมูลพนักงานที่แสดงอยู่ในหน้าผู้ดูแล คีย์ด้วย id — ใช้อ่านฝ่ายที่แต่ละคนดูแลตอนเปิดแผ่นเลือก
+// โดยไม่ต้องยิงถามเซิร์ฟเวอร์ซ้ำ (รายการนี้เพิ่งโหลดมาหมาด ๆ อยู่แล้ว)
+const adminEmployeeIndex = new Map();
 let detailReturnTab = "mine"; // แท็บที่จะกลับไปหลังปิดหน้ารายละเอียด
 let sheetPick = null; // ตัวรับค่าเมื่อเลือกจาก bottom sheet
 let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น ไม่ต้องรอ session ก่อน
@@ -526,6 +529,8 @@ async function goAdmin() {
   try {
     params.set("status", adminView);
     const r = await api("/api/admin/employees?" + params.toString());
+    adminEmployeeIndex.clear();
+    r.employees.forEach((e) => adminEmployeeIndex.set(e.id, e));
     const rows = r.employees.length
       ? r.employees.map(renderEmployee).join("")
       : `<div class="empty">${adminView === "active" ? "ไม่พบข้อมูลพนักงาน" : "ไม่มีรายชื่อผู้ถูกระงับสิทธิ์"}</div>`;
@@ -560,16 +565,66 @@ function renderEmployee(e) {
     : '<button data-act="suspend">ระงับสิทธิ์</button>';
   // ปุ่มปลดการผูกบัญชีไลน์ แสดงเฉพาะคนที่ผูกไว้แล้ว (ใช้ตอนพนักงานเปลี่ยนมือถือ/บัญชีไลน์)
   const unlinkBtn = e.linked ? '<button data-act="unlink">ปลดการผูกบัญชี</button>' : "";
+  // ฝ่ายที่รับผิดชอบ — คนที่ไม่ได้ดูแลฝ่ายไหนคือพนักงานทั่วไป ไม่ต้องขึ้นบรรทัดนี้ให้รก
+  const deptLine = (e.depts || []).length
+    ? `<div class="meta">ดูแล: ${e.depts.map((d) => esc(d.code) + (d.role === "head" ? " (หัวหน้าฝ่าย)" : "")).join(" · ")}</div>`
+    : "";
+  const deptBtn = suspended ? "" : '<button data-act="depts">กำหนดฝ่าย</button>';
   return `<div class="card" data-id="${e.id}">
     <div class="cardtop">
       <div>
         <div class="tid">${esc(e.employee_code)}${e.linked ? "" : " · ยังไม่ได้ผูกบัญชี LINE"}</div>
         <div class="ttl">${esc(e.full_name)}</div>
         <div class="meta">${esc(e.department_name || "-")}${e.floor ? " · " + esc(e.floor) : ""} · แจ้งเรื่องสะสม ${e.reported_count} รายการ${suspended && e.suspend_reason ? "<br>เหตุผล: " + esc(e.suspend_reason) : ""}</div>
+        ${deptLine}
       </div>
     </div>
-    <div class="actions">${btn}${unlinkBtn}</div>
+    <div class="actions">${btn}${unlinkBtn}${deptBtn}</div>
   </div>`;
+}
+
+const ROLE_LABEL = { head: "หัวหน้าฝ่าย", staff: "เจ้าหน้าที่" };
+
+/**
+ * กำหนดฝ่ายและตำแหน่งให้พนักงานหนึ่งคน — เลือกฝ่ายก่อน แล้วค่อยเลือกตำแหน่งในฝ่ายนั้น
+ * แยกสองจังหวะเพราะบนมือถือการกดทีละอย่างอ่านง่ายกว่าตารางที่ต้องเล็งให้ตรงช่อง
+ */
+async function openDeptSheet(id, name, current) {
+  const have = new Map((current || []).map((d) => [d.code, d.role]));
+  const opts = (masters.departments || []).map((d) => ({
+    label: `${d.name} — ${ROLE_LABEL[have.get(d.code)] || "ไม่ได้อยู่ในฝ่ายนี้"}`,
+    value: d.code,
+  }));
+  if (!opts.length) return toast("ยังไม่มีฝ่ายที่เปิดใช้งาน");
+
+  const code = await openSheet(`กำหนดฝ่ายของ ${name}`, opts);
+  if (!code) return;
+
+  const dept = masters.departments.find((d) => d.code === code);
+  const now = have.get(code);
+  const roleOpts = [
+    { label: "แต่งตั้งเป็นหัวหน้าฝ่าย", value: "head" },
+    { label: "กำหนดเป็นเจ้าหน้าที่", value: "staff" },
+  ].filter((o) => o.value !== now);
+  if (now) roleOpts.push({ label: "ถอดออกจากฝ่ายนี้", value: "none" });
+
+  const role = await openSheet(`${dept ? dept.name : code} — เลือกตำแหน่ง`, roleOpts);
+  if (!role) return;
+
+  try {
+    await api(`/api/admin/employees/${id}/departments`, {
+      method: "PATCH",
+      body: { department_code: code, role: role === "none" ? "" : role },
+    });
+    toast(role === "none" ? "ถอดออกจากฝ่ายเรียบร้อยแล้ว" : `กำหนดเป็น${ROLE_LABEL[role]}เรียบร้อยแล้ว`);
+    // แก้สิทธิ์ของตัวเองแล้วต้องโหลด session ใหม่ ไม่งั้นแท็บคิวงานจะยังเป็นชุดเดิม
+    if (session.employee && session.employee.id === id) {
+      session = await api("/api/auth/session", { method: "POST" });
+    }
+    goAdmin();
+  } catch (e) {
+    toast(e.message);
+  }
 }
 
 /* ---------- detail ---------- */
@@ -861,6 +916,12 @@ window.addEventListener("DOMContentLoaded", () => {
     const id = card.dataset.id;
     const act = btn.dataset.act;
     try {
+      if (act === "depts") {
+        const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
+        const current = adminEmployeeIndex.get(id)?.depts || [];
+        await openDeptSheet(id, name, current);
+        return;
+      }
       if (act === "unlink") {
         const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
         const ok = await confirmDialog({
