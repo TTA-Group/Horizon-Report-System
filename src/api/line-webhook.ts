@@ -287,6 +287,7 @@ interface TicketRow {
   reporter_line_user_id: string | null;
   last_actor_name: string | null;
   last_at: string | null;
+  photos: string[] | null;
 }
 
 interface ActorRow {
@@ -332,6 +333,9 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
            a.full_name AS assignee_name,
            rl.line_user_id AS reporter_line_user_id,
            last.actor_name AS last_actor_name, last.at AS last_at,
+           (SELECT array_agg(ta.file_url ORDER BY ta.created_at)
+              FROM ticket_attachments ta
+             WHERE ta.ticket_id = t.id AND ta.file_url IS NOT NULL) AS photos,
            (dm.employee_id IS NOT NULL) AS is_member
     FROM line_accounts la
     JOIN employees e ON e.id = la.employee_id
@@ -392,6 +396,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
       reporter_line_user_id: row.reporter_line_user_id as string | null,
       last_actor_name: row.last_actor_name as string | null,
       last_at: row.last_at as string | null,
+      photos: (row.photos as string[] | null) ?? null,
     },
   };
 }
@@ -426,6 +431,7 @@ function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMe
     assigneeName: t.assignee_name,
     latestActor: t.last_actor_name,
     latestAtLabel: t.last_at ? thaiDateTimeShort(new Date(t.last_at)) : null,
+    photos: t.photos,
     ...overrides,
   });
 }

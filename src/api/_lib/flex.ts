@@ -28,6 +28,8 @@ export interface TicketFlexInput {
   /** คนที่ทำให้สถานะเปลี่ยนล่าสุด และเวลาแบบสั้น — ใช้เขียนแถบ "ล่าสุด" ใต้แถบขั้นตอน */
   latestActor?: string | null;
   latestAtLabel?: string | null;
+  /** URL รูปภาพแนบ (สาธารณะ) — แสดงเป็นรูปย่อให้กดดูได้จากในกลุ่ม */
+  photos?: string[] | null;
 }
 
 // สีหัวการ์ดแยกตามฝ่ายที่รับผิดชอบ — ทุกฝ่ายใช้กลุ่มไลน์เดียวกัน สีหัวจึงเป็นตัวบอกตั้งแต่แรกเห็น
@@ -246,6 +248,48 @@ function footerFor(t: TicketFlexInput): Record<string, unknown> | null {
   return { type: "box", layout: "vertical", spacing: "sm", contents: buttons };
 }
 
+/**
+ * รูปภาพแนบ — แตะที่รูปแล้วเปิดขนาดเต็มในเบราว์เซอร์ของ LINE ได้ทันที ไม่ต้องเปิดแอป
+ *
+ * LINE เป็นฝ่ายไปดึงรูปจาก URL เอง ไฟล์จึงต้องอยู่ใน bucket แบบสาธารณะ (STORAGE_BUCKET_URL)
+ * แสดงไม่เกิน 3 รูปให้พอดีหนึ่งแถว รูปที่เกินยังดูได้ในแอปตามเดิม
+ */
+const MAX_PHOTOS = 3;
+
+function photoBlock(urls: string[]) {
+  const shown = urls.slice(0, MAX_PHOTOS);
+  const more = urls.length - shown.length;
+  return {
+    type: "box",
+    layout: "vertical",
+    margin: "lg",
+    spacing: "xs",
+    contents: [
+      {
+        type: "text",
+        text: more > 0 ? `รูปภาพแนบ · แตะเพื่อดูขนาดเต็ม (อีก ${more} รูปดูในแอป)` : "รูปภาพแนบ · แตะเพื่อดูขนาดเต็ม",
+        size: "xxs",
+        color: "#8A94A0",
+        wrap: true,
+      },
+      {
+        type: "box",
+        layout: "horizontal",
+        spacing: "sm",
+        contents: shown.map((url) => ({
+          type: "image",
+          url,
+          size: "full",
+          aspectRatio: "1:1",
+          aspectMode: "cover",
+          flex: 1,
+          action: { type: "uri", label: "ดูรูปภาพ", uri: url },
+        })),
+      },
+    ],
+  };
+}
+
 /** กล่องผู้รับผิดชอบ — แยกออกมาให้เด่น เพราะเป็นข้อมูลที่คนในกลุ่มมองหาบ่อยที่สุด */
 function assigneeBlock(t: TicketFlexInput, accent: string) {
   const taken = Boolean(t.assigneeName);
@@ -337,6 +381,7 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
     ...(latest ? [latest] : []),
     { type: "separator", margin: "lg", color: "#EDF0F3" },
     { type: "box", layout: "vertical", margin: "lg", spacing: "sm", contents: rows },
+    ...(t.photos && t.photos.length > 0 ? [photoBlock(t.photos)] : []),
     assigneeBlock(t, accent),
   ];
 

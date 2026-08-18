@@ -47,11 +47,15 @@ export default async (req: Request): Promise<Response> =>
         reporter_id: string;
         reporter_name: string;
         reporter_dept: string | null;
+        photos: string[] | null;
       }[]
     >`
       SELECT t.status, t.department_id, t.category_code, t.floor, t.location_note, t.detail,
              t.urgency, t.ticket_no, t.created_at, t.reporter_id,
-             r.full_name AS reporter_name, r.department_name AS reporter_dept
+             r.full_name AS reporter_name, r.department_name AS reporter_dept,
+             (SELECT array_agg(ta.file_url ORDER BY ta.created_at)
+              FROM ticket_attachments ta
+             WHERE ta.ticket_id = t.id AND ta.file_url IS NOT NULL) AS photos
       FROM tickets t JOIN employees r ON r.id = t.reporter_id
       WHERE t.id = ${id} LIMIT 1
     `;
@@ -88,6 +92,7 @@ export default async (req: Request): Promise<Response> =>
         actorName: s.employee.full_name,
         latestActor: s.employee.full_name,
         latestAtLabel: thaiDateTimeShort(),
+        photos: t.photos,
         categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
         reporterName: t.reporter_name,
         reporterDept: t.reporter_dept,

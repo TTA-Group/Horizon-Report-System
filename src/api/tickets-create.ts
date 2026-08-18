@@ -114,6 +114,7 @@ export default async (req: Request): Promise<Response> =>
         detail,
         urgency: urgency as UrgencyCode,
         createdAtLabel: thaiDateTimeShort(),
+        photos: attachments,
       });
 
       if (lineGroupId) {
