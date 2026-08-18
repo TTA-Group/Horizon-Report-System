@@ -4,6 +4,13 @@ import { envVar } from "./env";
 
 export const CHANNEL_KEY = "report";
 
+/**
+ * ฝ่ายที่ให้สิทธิ์ผู้ดูแลระบบ — ใครอยู่ในฝ่ายนี้จะเห็นและใช้หน้า "ผู้ดูแล" ได้
+ * เก็บเป็นฝ่ายในฐานข้อมูลแทนรายชื่อในไฟล์ตั้งค่า เพราะการเพิ่ม/ถอดคน HR เป็นงานประจำของ HR เอง
+ * ไม่ควรต้องรอคนที่เข้าถึงหน้าตั้งค่าของ Cloudflare ได้มาแก้ให้ทุกครั้ง
+ */
+export const ADMIN_DEPARTMENT_CODE = "HR";
+
 export type UrgencyCode = "normal" | "urgent" | "critical";
 export type StatusCode = "pending" | "in_progress" | "completed" | "closed" | "cancelled";
 

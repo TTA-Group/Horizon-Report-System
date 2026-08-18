@@ -13,11 +13,15 @@
 -- คงแถวนี้ไว้เผื่ออนาคตแยกทีมกัน จะได้เปิดใช้ใหม่ได้โดยไม่เสียประวัติงานเดิม
 -- sla_ack_minutes = 15 : เกิน 15 นาทีแล้วยังไม่มีใครกดรับเรื่อง ระบบจะส่งข้อความส่วนตัว
 -- หาเจ้าหน้าที่ของฝ่ายนั้นทุกคน (การ์ดในกลุ่มปลุกคนที่ปิดเสียงกลุ่มไว้ไม่ได้)
-INSERT INTO departments (code, name, sla_ack_minutes, sla_close_hours, is_active) VALUES
-  ('IT',  'IT / IT Helpdesk', 15, 24, true),
-  ('ADM', 'ADMIN',            15, 24, true),
-  ('CLN', 'MAID',             15, 24, false),
-  ('GEN', 'OTHER',            15, 48, true)
+--
+-- ฝ่าย HR ไม่รับเรื่องแจ้ง (receives_tickets = false) มีไว้เพื่อกำหนดว่าใครเป็นผู้ดูแลระบบ
+-- ใครก็ตามที่อยู่ในฝ่าย HR จะเห็นและใช้หน้า "ผู้ดูแล" ได้
+INSERT INTO departments (code, name, sla_ack_minutes, sla_close_hours, is_active, receives_tickets) VALUES
+  ('IT',  'IT / IT Helpdesk', 15, 24, true,  true),
+  ('ADM', 'ADMIN',            15, 24, true,  true),
+  ('CLN', 'MAID',             15, 24, false, true),
+  ('GEN', 'OTHER',            15, 48, true,  true),
+  ('HR',  'HR',               15, 24, true,  false)
 ON CONFLICT (code) DO NOTHING;
 
 -- ผู้ดูแลระบบเริ่มต้น (แก้เป็นรหัสพนักงานจริงก่อนเปิดใช้งาน)

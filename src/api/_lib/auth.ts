@@ -1,6 +1,6 @@
 // การยืนยันตัวตนและตรวจสิทธิ์จาก LINE ID token ใน header Authorization
 
-import { CHANNEL_KEY, adminCodes } from "./constants";
+import { ADMIN_DEPARTMENT_CODE, CHANNEL_KEY, adminCodes } from "./constants";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { verifyIdToken } from "./line";
@@ -83,7 +83,11 @@ export async function getSession(req: Request): Promise<Session> {
       displayName: profile.name,
       linked: true,
       employee,
-      isAdmin: adminCodes().has(employee.employee_code),
+      // สิทธิ์ผู้ดูแลมาจากการอยู่ในฝ่าย HR เป็นหลัก ส่วน ADMIN_EMPLOYEE_CODES เก็บไว้เป็นทางสำรอง
+      // เผื่อกรณีที่ยังไม่มีใครอยู่ในฝ่าย HR เลย จะได้ไม่มีใครเข้าหน้าผู้ดูแลไม่ได้ทั้งระบบ
+      isAdmin:
+        adminCodes().has(employee.employee_code) ||
+        deptRoles.some((r) => r.code === ADMIN_DEPARTMENT_CODE),
       deptRoles: [...deptRoles],
     };
   }
