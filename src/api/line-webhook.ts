@@ -18,7 +18,7 @@ import { buildTicketFlex, type TicketFlexInput } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
 import { groupMessages } from "./_lib/mentions";
-import { thaiDateTime } from "./_lib/tickets";
+import { thaiDateTime, thaiDateTimeShort } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
 
 interface LineSource {
@@ -183,7 +183,7 @@ async function handleCancelMessage(ev: LineEvent, text: string): Promise<void> {
   `;
   if (done[0].n === 0) return replyLatest(replyToken, userId, t.id, "สถานะถูกเปลี่ยนไปแล้ว");
 
-  await replyCard(replyToken, cardFor(t, { status: "cancelled", cancelReason: reason, actorName: actor.full_name }));
+  await replyCard(replyToken, cardFor(t, { status: "cancelled", cancelReason: reason, actorName: actor.full_name, ...justNow(actor.full_name) }));
   await tellReporter(t.reporter_line_user_id, `เรื่อง ${t.ticket_no} ถูกยกเลิก\nเหตุผล: ${reason}`, t.id);
 }
 
@@ -234,6 +234,8 @@ interface TicketRow {
   assignee_id: string | null;
   assignee_name: string | null;
   reporter_line_user_id: string | null;
+  last_actor_name: string | null;
+  last_at: string | null;
 }
 
 interface ActorRow {
@@ -278,6 +280,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
            d.code AS department_code, d.name AS department_name,
            a.full_name AS assignee_name,
            rl.line_user_id AS reporter_line_user_id,
+           last.actor_name AS last_actor_name, last.at AS last_at,
            (dm.employee_id IS NOT NULL) AS is_member
     FROM line_accounts la
     JOIN employees e ON e.id = la.employee_id
@@ -287,6 +290,16 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
     LEFT JOIN employees a ON a.id = t.assignee_id
     LEFT JOIN department_members dm ON dm.department_id = t.department_id AND dm.employee_id = e.id
     LEFT JOIN line_accounts rl ON rl.employee_id = t.reporter_id AND rl.channel_key = ${CHANNEL_KEY}
+    -- ความเคลื่อนไหวล่าสุดที่ "คน" เป็นคนทำ (actor_id IS NOT NULL ตัดรายการเตือนซ้ำของระบบทิ้ง)
+    -- อยู่ใน query เดียวกัน จึงไม่ได้เพิ่มรอบวิ่งไปฐานข้อมูล
+    LEFT JOIN LATERAL (
+      SELECT ae.full_name AS actor_name, ev.created_at AS at
+      FROM ticket_events ev
+      JOIN employees ae ON ae.id = ev.actor_id
+      WHERE ev.ticket_id = t.id
+      ORDER BY ev.created_at DESC
+      LIMIT 1
+    ) last ON true
     WHERE la.line_user_id = ${lineUserId} AND la.channel_key = ${CHANNEL_KEY}
     LIMIT 1
   `;
@@ -326,6 +339,8 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
       assignee_id: row.assignee_id as string | null,
       assignee_name: row.assignee_name as string | null,
       reporter_line_user_id: row.reporter_line_user_id as string | null,
+      last_actor_name: row.last_actor_name as string | null,
+      last_at: row.last_at as string | null,
     },
   };
 }
@@ -358,8 +373,15 @@ function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMe
     urgency: t.urgency as UrgencyCode,
     createdAtLabel: thaiDateTime(new Date(t.created_at)),
     assigneeName: t.assignee_name,
+    latestActor: t.last_actor_name,
+    latestAtLabel: t.last_at ? thaiDateTimeShort(new Date(t.last_at)) : null,
     ...overrides,
   });
+}
+
+/** ค่าที่ต้องส่งให้การ์ดเมื่อผู้กดปุ่มเพิ่งทำรายการนี้เดี๋ยวนี้ */
+function justNow(actorName: string): Partial<TicketFlexInput> {
+  return { latestActor: actorName, latestAtLabel: thaiDateTimeShort() };
 }
 
 async function say(replyToken: string | undefined, text: string): Promise<void> {
@@ -450,7 +472,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     if (done[0].n === 0) return replyLatest(replyToken, userId, ticketId, `เรื่อง ${t.ticket_no} มีผู้รับไปแล้ว`);
 
     // ตอบการ์ดก่อน แล้วค่อยแจ้งผู้แจ้ง — คนที่กดปุ่มยืนรออยู่ ส่วนผู้แจ้งช้าไปเสี้ยววินาทีไม่มีผล
-    await replyCard(replyToken, cardFor(t, { status: "in_progress", assigneeName: actor.full_name }));
+    await replyCard(replyToken, cardFor(t, { status: "in_progress", assigneeName: actor.full_name, ...justNow(actor.full_name) }));
     await tellReporter(
       t.reporter_line_user_id,
       `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.in_progress}\nผู้รับผิดชอบ: ${actor.full_name}`,
@@ -479,7 +501,12 @@ async function handlePostback(ev: LineEvent): Promise<void> {
 
     await replyCard(
       replyToken,
-      cardFor(t, { status: "completed", assigneeName: t.assignee_name ?? actor.full_name, actorName: actor.full_name }),
+      cardFor(t, {
+        status: "completed",
+        assigneeName: t.assignee_name ?? actor.full_name,
+        actorName: actor.full_name,
+        ...justNow(actor.full_name),
+      }),
     );
     await tellReporter(
       t.reporter_line_user_id,
@@ -516,6 +543,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
         departmentName: dept[0].name,
         assigneeName: null,
         actorName: actor.full_name,
+        ...justNow(actor.full_name),
       });
       const messages = await groupMessages(dept[0].id, `↪️ ส่งต่อ ${t.ticket_no} มาที่ ${dept[0].name}`, flex);
       await pushTo(dept[0].line_group_id, messages, { ticketId, channel: "group" });

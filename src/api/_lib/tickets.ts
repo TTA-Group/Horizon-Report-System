@@ -33,6 +33,14 @@ const TH_MONTHS = [
   "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
 ];
 
+/** วันเวลาแบบสั้น เช่น "7 ส.ค. 09:41" — ใช้ในที่แคบอย่างแถบ "ล่าสุด" บนการ์ด */
+export function thaiDateTimeShort(d = new Date()): string {
+  const th = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  const hh = String(th.getUTCHours()).padStart(2, "0");
+  const mm = String(th.getUTCMinutes()).padStart(2, "0");
+  return `${th.getUTCDate()} ${TH_MONTHS[th.getUTCMonth()]} ${hh}:${mm}`;
+}
+
 /** จัดรูปแบบวันเวลาแบบไทย เช่น "7 ส.ค. 2569 · 09:41" (โซนเวลา Asia/Bangkok, พ.ศ.) */
 export function thaiDateTime(d = new Date()): string {
   const th = new Date(d.getTime() + 7 * 60 * 60 * 1000);

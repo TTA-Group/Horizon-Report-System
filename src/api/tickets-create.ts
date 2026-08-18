@@ -7,7 +7,7 @@ import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
 import { groupMessages } from "./_lib/mentions";
-import { currentYYMM, thaiDateTime } from "./_lib/tickets";
+import { currentYYMM, thaiDateTime, thaiDateTimeShort } from "./_lib/tickets";
 
 interface Body {
   category_code?: string;
@@ -114,6 +114,7 @@ export default async (req: Request): Promise<Response> =>
         detail,
         urgency: urgency as UrgencyCode,
         createdAtLabel: thaiDateTime(),
+        latestAtLabel: thaiDateTimeShort(),
       });
 
       if (lineGroupId) {
