@@ -559,6 +559,20 @@ async function openTransferSheet(id, currentDeptCode) {
 }
 
 /* ---------- admin (ผู้ดูแล) ---------- */
+
+/**
+ * รายชื่อพนักงานจัดกลุ่มตามฝ่ายต้นสังกัด พับเก็บไว้ก่อนทั้งหมด
+ *
+ * ทั้งองค์กรมีร้อยกว่าคน ถ้าเรียงเป็นรายการเดียวจะยาวหลายสิบหน้าจอจนหาอะไรไม่เจอ
+ * พับเป็นฝ่ายแล้วทั้งองค์กรจบในไม่กี่หน้าจอ กดฝ่ายไหนจึงคลี่เฉพาะฝ่ายนั้น
+ * ส่วนกลุ่ม "ทีมงานระบบ" (คนที่ดูแลฝ่ายผู้รับเรื่อง) ยกขึ้นบนสุดและคลี่ไว้ตั้งแต่แรก
+ * เพราะเป็นกลุ่มที่ผู้ดูแลเข้ามาดูบ่อยที่สุด
+ */
+const TEAM_GROUP = "__team__";
+const NO_DEPT_GROUP = "__nodept__";
+let adminRows = []; // รายชื่อรอบล่าสุดที่โหลดมา ใช้วาดใหม่ตอนพับ/คลี่โดยไม่ต้องยิงเซิร์ฟเวอร์ซ้ำ
+const adminOpen = new Set([TEAM_GROUP]); // ฝ่ายที่กำลังคลี่อยู่
+
 async function goAdmin() {
   setTab("admin");
   show("s-admin");
@@ -573,58 +587,177 @@ async function goAdmin() {
   try {
     params.set("status", adminView);
     const r = await api("/api/admin/employees?" + params.toString());
+    adminRows = r.employees;
     adminEmployeeIndex.clear();
-    r.employees.forEach((e) => adminEmployeeIndex.set(e.id, e));
-    const rows = r.employees.length
-      ? r.employees.map(renderEmployee).join("")
-      : `<div class="empty">${adminView === "active" ? "ไม่พบข้อมูลพนักงาน" : "ไม่มีรายชื่อผู้ถูกระงับสิทธิ์"}</div>`;
-
-    // แยกเป็นคนละหน้า: หน้าหลักคือพนักงานปัจจุบันเท่านั้น ส่วนคนที่ถูกระงับ (เช่น ลาออกแล้ว)
-    // อยู่อีกหน้า เข้าถึงผ่านลิงก์เล็ก ๆ ด้านล่าง ไม่ปนกันและไม่เด่นในหน้าหลัก
-    list.innerHTML =
-      adminView === "active"
-        ? `<div id="admin-rows">${rows}</div>
-           <button class="linkbtn" id="admin-toggle">รายชื่อผู้ถูกระงับสิทธิ์ →</button>`
-        : `<button class="linkbtn" id="admin-toggle">← กลับไปรายชื่อพนักงานปัจจุบัน</button>
-           <div class="section">ระงับสิทธิ์</div>
-           <div id="admin-rows">${rows}</div>`;
+    adminRows.forEach((e) => adminEmployeeIndex.set(e.id, e));
+    renderAdminList();
   } catch (e) {
     list.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
 }
 
-// หลังระงับ/คืนสิทธิ์ พนักงานคนนั้นจะไปอยู่อีกหน้าหนึ่ง จึงเอาการ์ดออกจากหน้าปัจจุบันทันที
-function removeEmployeeCard(card) {
-  const rows = $("#admin-rows");
-  card.remove();
-  if (rows && !rows.children.length) {
-    rows.innerHTML = `<div class="empty">${adminView === "active" ? "ไม่พบข้อมูลพนักงาน" : "ไม่มีรายชื่อผู้ถูกระงับสิทธิ์"}</div>`;
+/** แบ่งรายชื่อเป็นกลุ่ม — ทีมงานระบบขึ้นก่อน แล้วไล่ฝ่ายตามตัวอักษร คนที่ไม่ระบุฝ่ายไว้ท้ายสุด */
+function groupEmployees(rows) {
+  const team = rows.filter((e) => (e.depts || []).length);
+  const byDept = new Map();
+  rows.forEach((e) => {
+    const key = (e.department_name || "").trim() || NO_DEPT_GROUP;
+    if (!byDept.has(key)) byDept.set(key, []);
+    byDept.get(key).push(e);
+  });
+  const byName = (a, b) => a.full_name.localeCompare(b.full_name, "th");
+  const groups = [];
+  if (team.length) groups.push({ key: TEAM_GROUP, name: "ผู้รับผิดชอบและหัวหน้าฝ่าย", rows: team.sort(byName) });
+  [...byDept.keys()]
+    .sort((a, b) =>
+      a === NO_DEPT_GROUP ? 1 : b === NO_DEPT_GROUP ? -1 : a.localeCompare(b, "th"),
+    )
+    .forEach((key) => {
+      groups.push({
+        key,
+        name: key === NO_DEPT_GROUP ? "ไม่ได้ระบุฝ่าย" : key,
+        rows: byDept.get(key).sort(byName),
+        dept: true,
+      });
+    });
+  return { groups, teamCount: team.length };
+}
+
+function renderAdminList() {
+  const list = $("#adminList");
+  const toggle =
+    adminView === "active"
+      ? '<button class="linkbtn" id="admin-toggle">รายชื่อผู้ถูกระงับสิทธิ์ →</button>'
+      : '<button class="linkbtn" id="admin-toggle">← กลับไปรายชื่อพนักงานปัจจุบัน</button>';
+
+  if (!adminRows.length) {
+    const msg = adminQ
+      ? `ไม่พบใครที่ตรงกับ “${esc(adminQ)}”`
+      : adminView === "active"
+        ? "ไม่พบข้อมูลพนักงาน"
+        : "ไม่มีรายชื่อผู้ถูกระงับสิทธิ์";
+    list.innerHTML = `<div class="empty">${msg}</div>${toggle}`;
+    return;
+  }
+
+  // กำลังค้นหา หรือดูหน้าผู้ถูกระงับสิทธิ์ — แสดงเป็นรายการเรียบ ไม่ต้องพับเป็นฝ่าย
+  // เพราะทั้งสองกรณีมีคนไม่กี่คน การพับกลับทำให้ต้องกดเพิ่มโดยไม่ได้อะไร
+  if (adminQ || adminView !== "active") {
+    const head = adminQ
+      ? `<div class="section">พบ ${adminRows.length} คน</div>`
+      : '<div class="section">ระงับสิทธิ์</div>';
+    list.innerHTML = `${head}<div class="plist">${adminRows.map(personRow).join("")}</div>${toggle}`;
+    return;
+  }
+
+  const { groups } = groupEmployees(adminRows);
+  const html = groups
+    .map((g, i) => {
+      const open = adminOpen.has(g.key);
+      const label = i === 0 && g.key === TEAM_GROUP ? '<div class="section">ทีมงานระบบ</div>' : "";
+      const deptLabel = g.dept && !groups.slice(0, i).some((x) => x.dept) ? '<div class="section">ตามฝ่าย</div>' : "";
+      const body = open ? `<div class="grp-body">${g.rows.map(personRow).join("")}</div>` : "";
+      return `${label}${deptLabel}
+        <button class="grp" data-grp="${esc(g.key)}" aria-expanded="${open}">
+          <svg class="gcv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          <span class="gnm">${esc(g.name)}</span>
+          <span class="gct">${g.rows.length}</span>
+        </button>${body}`;
+    })
+    .join("");
+  list.innerHTML = `${html}<div class="section" style="margin-top:14px">รวม ${adminRows.length} คน</div>${toggle}`;
+}
+
+/** ป้ายขวาสุดของแถว — บอกได้แค่เรื่องเดียว จึงเลือกเรื่องที่สำคัญที่สุดของคนนั้น */
+function personTag(e) {
+  if (e.status === "suspended") return '<span class="rtag susp">ระงับสิทธิ์</span>';
+  const head = (e.depts || []).find((d) => d.role === "head");
+  if (head) return `<span class="rtag head">หัวหน้าฝ่าย ${esc(head.code)}</span>`;
+  const staff = (e.depts || [])[0];
+  if (staff) return `<span class="rtag staff">ผู้รับผิดชอบ ${esc(staff.code)}</span>`;
+  if (!e.linked) return '<span class="rtag nolink">ยังไม่ผูก LINE</span>';
+  return "";
+}
+
+function personRow(e) {
+  return `<div class="prow" data-id="${e.id}">
+    <div class="pw">
+      <div class="pnm">${esc(e.full_name)}</div>
+      <div class="psub"><b>${esc(e.employee_code)}</b>${e.department_name ? " · " + esc(e.department_name) : ""}</div>
+    </div>${personTag(e)}
+  </div>`;
+}
+
+/**
+ * แผ่นจัดการของพนักงานหนึ่งคน — เปิดเมื่อแตะที่แถว
+ * ย้ายปุ่มทั้งหมดมาไว้ตรงนี้ เพื่อให้รายชื่อเหลือแค่ข้อมูลที่ใช้กวาดตาหา
+ */
+async function openEmployeeSheet(id) {
+  const e = adminEmployeeIndex.get(id);
+  if (!e) return;
+  const suspended = e.status === "suspended";
+  const roles = (e.depts || []).map((d) => `${deptName(d.code)} (${ROLE_LABEL[d.role] || d.role})`).join("<br>");
+  const meta = `
+    <div class="sub">${esc(e.employee_code)}${e.department_name ? " · " + esc(e.department_name) : ""}</div>
+    <div class="kv"><i>ชั้นที่ประจำ</i><b>${esc(e.floor || "ไม่ได้ระบุ")}</b></div>
+    <div class="kv"><i>บัญชี LINE</i><b>${e.linked ? "ผูกแล้ว" : "ยังไม่ได้ผูก"}</b></div>
+    <div class="kv"><i>สถานะในระบบ</i><b>${roles || "พนักงาน"}</b></div>
+    <div class="kv"><i>แจ้งเรื่องสะสม</i><b>${e.reported_count} รายการ</b></div>
+    ${suspended && e.suspend_reason ? `<div class="kv"><i>เหตุผลที่ระงับ</i><b>${esc(e.suspend_reason)}</b></div>` : ""}`;
+
+  const opts = [];
+  if (!suspended) opts.push({ label: "เปลี่ยนสถานะ", value: "depts" });
+  if (e.linked) opts.push({ label: "ปลดการผูกบัญชี LINE", value: "unlink" });
+  opts.push(
+    suspended
+      ? { label: "คืนสิทธิ์การใช้งาน", value: "restore" }
+      : { label: "ระงับสิทธิ์การใช้งาน", value: "suspend", danger: true },
+  );
+
+  const act = await openSheet(e.full_name, opts, { meta });
+  if (!act) return;
+  try {
+    if (act === "depts") return openDeptSheet(e.id, e.full_name, e.depts || []);
+    if (act === "unlink") return actUnlink(e.id, e.full_name);
+    if (act === "suspend") return actSuspend(e.id, e.full_name);
+    if (act === "restore") return actRestore(e.id);
+  } catch (err) {
+    toast(err.message);
   }
 }
 
-function renderEmployee(e) {
-  const suspended = e.status === "suspended";
-  const btn = suspended
-    ? '<button class="fill" data-act="restore">คืนสิทธิ์การใช้งาน</button>'
-    : '<button data-act="suspend">ระงับสิทธิ์</button>';
-  // ปุ่มปลดการผูกบัญชีไลน์ แสดงเฉพาะคนที่ผูกไว้แล้ว (ใช้ตอนพนักงานเปลี่ยนมือถือ/บัญชีไลน์)
-  const unlinkBtn = e.linked ? '<button data-act="unlink">ปลดการผูกบัญชี</button>' : "";
-  // ฝ่ายที่รับผิดชอบ — คนที่ไม่ได้ดูแลฝ่ายไหนคือพนักงานทั่วไป ไม่ต้องขึ้นบรรทัดนี้ให้รก
-  const deptLine = (e.depts || []).length
-    ? `<div class="meta">ดูแล: ${e.depts.map((d) => esc(d.code) + " (" + esc(ROLE_LABEL[d.role] || d.role) + ")").join(" · ")}</div>`
-    : "";
-  const deptBtn = suspended ? "" : '<button data-act="depts">กำหนดสถานะ</button>';
-  return `<div class="card" data-id="${e.id}">
-    <div class="cardtop">
-      <div>
-        <div class="tid">${esc(e.employee_code)}${e.linked ? "" : " · ยังไม่ได้ผูกบัญชี LINE"}</div>
-        <div class="ttl">${esc(e.full_name)}</div>
-        <div class="meta">${esc(e.department_name || "-")}${e.floor ? " · " + esc(e.floor) : ""} · แจ้งเรื่องสะสม ${e.reported_count} รายการ${suspended && e.suspend_reason ? "<br>เหตุผล: " + esc(e.suspend_reason) : ""}</div>
-        ${deptLine}
-      </div>
-    </div>
-    <div class="actions">${btn}${unlinkBtn}${deptBtn}</div>
-  </div>`;
+async function actUnlink(id, name) {
+  const ok = await confirmDialog({
+    title: `ปลดการผูกบัญชีของ ${name}?`,
+    message: "พนักงานต้องยืนยันตัวตนด้วยรหัสพนักงานอีกครั้ง ข้อมูลเรื่องที่เคยแจ้งไว้ยังคงอยู่ครบถ้วน",
+    confirmLabel: "ปลดการผูกบัญชี",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+  await api(`/api/admin/employees/${id}/unlink`, { method: "PATCH" });
+  toast("ปลดการผูกบัญชี LINE เรียบร้อยแล้ว");
+  goAdmin();
+}
+
+async function actSuspend(id, name) {
+  const reason = await promptDialog({
+    title: `ระงับสิทธิ์ ${name}?`,
+    message: "พนักงานจะไม่สามารถแจ้งเรื่องใหม่ได้ เรื่องที่แจ้งไว้เดิมยังดำเนินการต่อจนแล้วเสร็จ",
+    placeholder: "เหตุผล (ไม่บังคับ)",
+    confirmLabel: "ระงับสิทธิ์",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (reason === null) return;
+  await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
+  toast("ระงับสิทธิ์เรียบร้อยแล้ว · ย้ายไปรายชื่อผู้ถูกระงับสิทธิ์");
+  goAdmin();
+}
+
+async function actRestore(id) {
+  await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "restore" } });
+  toast("คืนสิทธิ์เรียบร้อยแล้ว · ย้ายไปรายชื่อพนักงานปัจจุบัน");
+  goAdmin();
 }
 
 const ROLE_LABEL = { head: "หัวหน้าฝ่าย", staff: "ผู้รับผิดชอบฝ่าย" };
@@ -826,15 +959,21 @@ function renderDetail(t) {
 }
 
 /* ---------- bottom sheet ---------- */
-function openSheet(title, options) {
+/**
+ * แผ่นเลือกจากด้านล่าง — คืนค่าที่เลือก หรือ null เมื่อปิดทิ้ง
+ * meta คือบล็อกข้อมูลเหนือรายการตัวเลือก (เป็น HTML จึงต้อง escape มาจากผู้เรียก)
+ * ตัวเลือกที่ตั้ง danger ไว้จะขึ้นเป็นสีแดง สำหรับการกระทำที่ย้อนกลับยาก
+ */
+function openSheet(title, options, { meta = "" } = {}) {
   return new Promise((resolve) => {
     sheetPick = resolve;
     $("#sheet-title").textContent = title;
+    $("#sheet-meta").innerHTML = meta;
     const c = $("#sheet-opts");
     c.innerHTML = "";
     options.forEach((o) => {
       const b = document.createElement("button");
-      b.className = "opt";
+      b.className = o.danger ? "opt danger" : "opt";
       b.textContent = o.label;
       b.onclick = () => finishSheet(o.value);
       c.appendChild(b);
@@ -1052,61 +1191,24 @@ window.addEventListener("DOMContentLoaded", () => {
     goQueue();
   });
 
-  // ผู้ดูแล: สลับหน้า + ระงับ/คืนสิทธิ์
-  $("#adminList").addEventListener("click", async (e) => {
-    // สลับระหว่างหน้า "พนักงานปัจจุบัน" กับ "ถูกระงับสิทธิ์"
+  // ผู้ดูแล: พับ/คลี่ฝ่าย · แตะแถวเพื่อเปิดแผ่นจัดการ · สลับไปหน้าผู้ถูกระงับสิทธิ์
+  $("#adminList").addEventListener("click", (e) => {
     if (e.target.closest("#admin-toggle")) {
       adminView = adminView === "active" ? "suspended" : "active";
       goAdmin();
       return;
     }
-
-    const btn = e.target.closest("button[data-act]");
-    if (!btn) return;
-    const card = e.target.closest(".card[data-id]");
-    const id = card.dataset.id;
-    const act = btn.dataset.act;
-    try {
-      if (act === "depts") {
-        const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
-        const current = adminEmployeeIndex.get(id)?.depts || [];
-        await openDeptSheet(id, name, current);
-        return;
-      }
-      if (act === "unlink") {
-        const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
-        const ok = await confirmDialog({
-          title: `ปลดการผูกบัญชีของ ${name}?`,
-          message: "พนักงานต้องยืนยันตัวตนด้วยรหัสพนักงานอีกครั้ง ข้อมูลเรื่องที่เคยแจ้งไว้ยังคงอยู่ครบถ้วน",
-          confirmLabel: "ปลดการผูกบัญชี",
-          cancelLabel: "ไม่ใช่",
-        });
-        if (!ok) return;
-        await api(`/api/admin/employees/${id}/unlink`, { method: "PATCH" });
-        toast("ปลดการผูกบัญชี LINE เรียบร้อยแล้ว");
-        goAdmin();
-        return;
-      }
-      if (act === "suspend") {
-        const name = card.querySelector(".ttl")?.textContent || "พนักงานคนนี้";
-        const reason = await promptDialog({
-          title: `ระงับสิทธิ์ ${name}?`,
-          message: "พนักงานจะไม่สามารถแจ้งเรื่องใหม่ได้ เรื่องที่แจ้งไว้เดิมยังดำเนินการต่อจนแล้วเสร็จ",
-          placeholder: "เหตุผล (ไม่บังคับ)",
-          confirmLabel: "ระงับสิทธิ์",
-          cancelLabel: "ไม่ใช่",
-        });
-        if (reason === null) return;
-        await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "suspend", reason } });
-        toast("ระงับสิทธิ์เรียบร้อยแล้ว · ย้ายไปรายชื่อผู้ถูกระงับสิทธิ์");
-      } else {
-        await api(`/api/admin/employees/${id}/suspend`, { method: "PATCH", body: { action: "restore" } });
-        toast("คืนสิทธิ์เรียบร้อยแล้ว · ย้ายไปรายชื่อพนักงานปัจจุบัน");
-      }
-      removeEmployeeCard(card);
-    } catch (err) {
-      toast(err.message);
+    const grp = e.target.closest(".grp[data-grp]");
+    if (grp) {
+      const key = grp.dataset.grp;
+      // วาดใหม่จากรายชื่อที่โหลดไว้แล้ว ไม่ต้องยิงเซิร์ฟเวอร์ซ้ำทุกครั้งที่พับ/คลี่
+      if (adminOpen.has(key)) adminOpen.delete(key);
+      else adminOpen.add(key);
+      renderAdminList();
+      return;
     }
+    const row = e.target.closest(".prow[data-id]");
+    if (row) openEmployeeSheet(row.dataset.id);
   });
   $("#admin-q").addEventListener(
     "input",
