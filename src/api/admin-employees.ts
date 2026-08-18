@@ -1,5 +1,8 @@
 // GET /api/admin/employees — รายชื่อผู้ใช้งาน (เฉพาะผู้ดูแล) (spec หัวข้อ 6)
 // query: ?q=คำค้น&status=active|suspended
+//
+// ส่งทั้งองค์กรมาในครั้งเดียว เพราะหน้าผู้ดูแลจัดกลุ่มตามฝ่ายและนับจำนวนคนของแต่ละฝ่ายเอง
+// ถ้าตัดรายชื่อทิ้งกลางทาง ตัวเลขที่ขึ้นข้างชื่อฝ่ายจะผิดโดยไม่มีอะไรบอก
 
 import { getSession, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY } from "./_lib/constants";
@@ -52,7 +55,7 @@ export default async (req: Request): Promise<Response> =>
       FROM employees e
       WHERE 1=1 ${qFilter} ${statusFilter}
       ORDER BY e.status DESC, e.employee_code ASC
-      LIMIT 200
+      LIMIT 1000
     `;
 
     return json({ employees: [...rows] });
