@@ -12,10 +12,10 @@
 -- ทั้งสองหมวดจึงเข้าคิวของฝ่าย ADM (ดู CATEGORIES ใน src/api/_lib/constants.ts)
 -- คงแถวนี้ไว้เผื่ออนาคตแยกทีมกัน จะได้เปิดใช้ใหม่ได้โดยไม่เสียประวัติงานเดิม
 INSERT INTO departments (code, name, sla_ack_minutes, sla_close_hours, is_active) VALUES
-  ('IT',  'IT Support / Help Desk', 120, 24, true),
-  ('ADM', 'ฝ่าย Admin',             120, 24, true),
-  ('CLN', 'ฝ่ายแม่บ้าน',            120, 24, false),
-  ('GEN', 'เรื่องอื่น ๆ',            120, 48, true)
+  ('IT',  'IT / IT Helpdesk', 120, 24, true),
+  ('ADM', 'ADMIN',            120, 24, true),
+  ('CLN', 'MAID',             120, 24, false),
+  ('GEN', 'OTHER',            120, 48, true)
 ON CONFLICT (code) DO NOTHING;
 
 -- ผู้ดูแลระบบเริ่มต้น (แก้เป็นรหัสพนักงานจริงก่อนเปิดใช้งาน)

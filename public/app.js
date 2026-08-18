@@ -198,9 +198,10 @@ async function enterApp() {
     }
   }
   // เผยแท็บตามสิทธิ์: เจ้าหน้าที่เห็น "คิวงาน", ผู้ดูแลเห็น "ผู้ดูแล"
-  if (session.dept_roles && session.dept_roles.length) {
+  const myDepts = activeDepts();
+  if (myDepts.length) {
     $('.tabbar button[data-tab="queue"]').style.display = "";
-    queueDept = session.dept_roles[0].code;
+    queueDept = myDepts[0].code;
     renderQueueDepts();
   }
   if (session.is_admin) {
@@ -417,17 +418,29 @@ function routeTab(tab) {
 }
 
 /* ---------- queue (เจ้าหน้าที่) ---------- */
+
+/**
+ * ฝ่ายที่เรารับผิดชอบ เฉพาะที่ยังเปิดใช้งานอยู่ พร้อมชื่อสำหรับแสดงบนชิป
+ * /api/masters คืนเฉพาะฝ่ายที่เปิดใช้งาน — ฝ่ายที่ปิดไปแล้ว (เช่น CLN ที่ยุบไปรวมกับ ADMIN)
+ * จึงหลุดออกไปเอง ไม่ต้องขึ้นชิปให้กดค้างไว้ทั้งที่ไม่มีวันมีงานเข้า
+ */
+function activeDepts() {
+  const names = new Map((masters?.departments || []).map((d) => [d.code, d.name]));
+  return (session.dept_roles || [])
+    .filter((r) => names.has(r.code))
+    .map((r) => ({ code: r.code, name: names.get(r.code) }));
+}
+
 function renderQueueDepts() {
   const wrap = $("#queue-depts");
-  const roles = session.dept_roles || [];
-  if (roles.length <= 1) {
+  const depts = activeDepts();
+  if (depts.length <= 1) {
     wrap.style.display = "none";
     return;
   }
-  const dm = new Map((masters.departments || []).map((d) => [d.code, d.name]));
   wrap.style.display = "flex";
-  wrap.innerHTML = roles
-    .map((r) => `<button class="chip" data-dept="${esc(r.code)}" aria-pressed="${r.code === queueDept}">${esc(dm.get(r.code) || r.code)}</button>`)
+  wrap.innerHTML = depts
+    .map((d) => `<button class="chip" data-dept="${esc(d.code)}" aria-pressed="${d.code === queueDept}">${esc(d.name)}</button>`)
     .join("");
 }
 
