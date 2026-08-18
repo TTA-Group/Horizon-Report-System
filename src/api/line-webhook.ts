@@ -18,7 +18,7 @@ import { buildTicketFlex, type TicketFlexInput } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
 import { groupMessages } from "./_lib/mentions";
-import { thaiDateTime, thaiDateTimeShort } from "./_lib/tickets";
+import { thaiDateTimeShort } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
 
 interface LineSource {
@@ -93,7 +93,8 @@ function isOwnEvent(ev: LineEvent): boolean {
   }
   if (ev.type === "message" && ev.message?.type === "text") {
     const text = (ev.message.text ?? "").trim();
-    return text.toLowerCase() === "groupid" || CANCEL_RE.test(text);
+    const cmd = text.toLowerCase();
+    return cmd === "groupid" || cmd === "whoami" || CANCEL_RE.test(text);
   }
   return false;
 }
@@ -136,7 +137,57 @@ async function handleMessage(ev: LineEvent): Promise<void> {
   if (ev.message?.type !== "text") return;
   const text = (ev.message.text ?? "").trim();
   if (text.toLowerCase() === "groupid") return handleGroupIdRequest(ev);
+  if (text.toLowerCase() === "whoami") return handleWhoAmI(ev);
   if (CANCEL_RE.test(text)) return handleCancelMessage(ev, text);
+}
+
+/**
+ * พิมพ์ "whoami" ในกลุ่ม เพื่อตรวจว่ารหัสไลน์ที่ระบบเก็บไว้ตอนผูกบัญชี ตรงกับรหัสที่ LINE
+ * ส่งมาพร้อมข้อความในกลุ่มหรือไม่
+ *
+ * ทำไมต้องมี: รหัสผู้ใช้ของ LINE ออกให้ต่อ Provider ถ้า LINE Login channel (ที่ใช้เปิดแอป)
+ * กับ Messaging API channel (ที่ส่งข้อความ) อยู่คนละ Provider คนคนเดียวจะมีรหัสคนละชุด
+ * ระบบจะ @mention ไม่ติด — ขึ้นเป็นตัวหนังสือธรรมดาไม่เรียกใคร ทั้งที่ไม่มี error อะไรเลย
+ * เป็นการตอบกลับ (reply) จึงไม่กินโควตาข้อความของ OA
+ */
+async function handleWhoAmI(ev: LineEvent): Promise<void> {
+  const replyToken = ev.replyToken;
+  const userId = ev.source?.userId;
+  if (!replyToken) return;
+  if (!userId) return say(replyToken, "คำสั่งนี้ต้องพิมพ์ในที่ที่ LINE ระบุตัวผู้ส่งได้");
+
+  const shortId = `${userId.slice(0, 9)}…${userId.slice(-4)}`;
+  const sql = db();
+  const rows = await sql<{ full_name: string; employee_code: string; display_name: string | null; depts: string | null }[]>`
+    SELECT e.full_name, e.employee_code, la.display_name,
+           (SELECT string_agg(d.code, ', ' ORDER BY d.code)
+              FROM department_members dm JOIN departments d ON d.id = dm.department_id
+             WHERE dm.employee_id = e.id) AS depts
+    FROM line_accounts la
+    JOIN employees e ON e.id = la.employee_id
+    WHERE la.line_user_id = ${userId} AND la.channel_key = ${CHANNEL_KEY}
+    LIMIT 1
+  `;
+
+  if (rows.length === 0) {
+    return say(
+      replyToken,
+      `รหัสไลน์ที่ระบบเห็นตอนนี้\n${shortId}\n\n` +
+        `❌ ระบบไม่รู้จักรหัสนี้\n` +
+        `ถ้าคุณผูกบัญชีในแอปไปแล้ว แปลว่ารหัสไลน์ในกลุ่มกับรหัสที่เก็บตอนผูกบัญชีเป็นคนละชุดกัน ` +
+        `ซึ่งเป็นสาเหตุที่ @mention ไม่ติด`,
+    );
+  }
+
+  const r = rows[0];
+  await say(
+    replyToken,
+    `รหัสไลน์ที่ระบบเห็นตอนนี้\n${shortId}\n\n` +
+      `✅ ตรงกับรหัสที่เก็บไว้ตอนผูกบัญชี\n` +
+      `พนักงาน: ${r.full_name} (${r.employee_code})\n` +
+      `ชื่อที่ใช้ตอน mention: ${r.display_name || r.full_name}\n` +
+      `ฝ่ายที่ดูแล: ${r.depts || "ยังไม่ได้กำหนด"}`,
+  );
 }
 
 /**
@@ -371,7 +422,7 @@ function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMe
     locationNote: t.location_note,
     detail: t.detail,
     urgency: t.urgency as UrgencyCode,
-    createdAtLabel: thaiDateTime(new Date(t.created_at)),
+    createdAtLabel: thaiDateTimeShort(new Date(t.created_at)),
     assigneeName: t.assignee_name,
     latestActor: t.last_actor_name,
     latestAtLabel: t.last_at ? thaiDateTimeShort(new Date(t.last_at)) : null,

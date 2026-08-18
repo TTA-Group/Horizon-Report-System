@@ -14,7 +14,7 @@ import { db } from "./_lib/db";
 import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
-import { assertTransition, thaiDateTime, thaiDateTimeShort } from "./_lib/tickets";
+import { assertTransition, thaiDateTimeShort } from "./_lib/tickets";
 
 interface Body {
   to_status?: string;
@@ -147,7 +147,7 @@ export default async (req: Request): Promise<Response> =>
           locationNote: t.location_note,
           detail: t.detail,
           urgency: t.urgency as UrgencyCode,
-          createdAtLabel: thaiDateTime(new Date(t.created_at)),
+          createdAtLabel: thaiDateTimeShort(new Date(t.created_at)),
           assigneeName: to === "in_progress" ? s.employee.full_name : to === "pending" ? null : t.assignee_name,
           actorName: s.employee.full_name,
           latestActor: s.employee.full_name,

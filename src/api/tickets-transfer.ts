@@ -8,7 +8,7 @@ import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
 import { groupMessages } from "./_lib/mentions";
-import { thaiDateTime, thaiDateTimeShort } from "./_lib/tickets";
+import { thaiDateTimeShort } from "./_lib/tickets";
 
 interface Body {
   to_dept?: string;
@@ -43,13 +43,14 @@ export default async (req: Request): Promise<Response> =>
         detail: string;
         urgency: string;
         ticket_no: string;
+        created_at: string;
         reporter_id: string;
         reporter_name: string;
         reporter_dept: string | null;
       }[]
     >`
       SELECT t.status, t.department_id, t.category_code, t.floor, t.location_note, t.detail,
-             t.urgency, t.ticket_no, t.reporter_id,
+             t.urgency, t.ticket_no, t.created_at, t.reporter_id,
              r.full_name AS reporter_name, r.department_name AS reporter_dept
       FROM tickets t JOIN employees r ON r.id = t.reporter_id
       WHERE t.id = ${id} LIMIT 1
@@ -94,7 +95,7 @@ export default async (req: Request): Promise<Response> =>
         locationNote: t.location_note,
         detail: t.detail,
         urgency: t.urgency as UrgencyCode,
-        createdAtLabel: thaiDateTime(),
+        createdAtLabel: thaiDateTimeShort(new Date(t.created_at)),
       });
       const messages = await groupMessages(
         dept[0].id,

@@ -460,7 +460,7 @@ function renderQueueCard(t, deptCode) {
   } else if (t.status === "in_progress") {
     actions = '<button class="fill" data-act="complete">แล้วเสร็จ</button><button data-act="transfer">ส่งต่อฝ่าย</button>';
   } else if (t.status === "completed") {
-    actions = '<button class="fill" data-act="closed">ปิดเรื่อง</button>';
+    actions = ""; // ดำเนินการเสร็จสิ้นคือจุดจบของงานแล้ว ไม่มีขั้นปิดเรื่องต่อ
   }
   const tag = t.urgency === "critical" ? " · เร่งด่วนมาก" : t.urgency === "urgent" ? " · เร่งด่วน" : "";
   return `<div class="card clickable" data-id="${t.id}" data-dept="${esc(deptCode || "")}">
@@ -798,7 +798,6 @@ window.addEventListener("DOMContentLoaded", () => {
       const act = btn.dataset.act;
       if (act === "claim") doStatus(id, "in_progress", "รับเรื่องเรียบร้อยแล้ว");
       else if (act === "complete") doStatus(id, "completed", "ปรับสถานะเป็นดำเนินการแล้วเสร็จ");
-      else if (act === "closed") doStatus(id, "closed", "ปิดเรื่องเรียบร้อยแล้ว");
       else if (act === "transfer") openTransferSheet(id, card.dataset.dept);
       else if (act === "cancel") {
         // ยกเลิกงานของคนอื่นต้องบอกเหตุผลได้เสมอ — เหตุผลถูกบันทึกลงประวัติ ส่งให้ผู้แจ้ง
