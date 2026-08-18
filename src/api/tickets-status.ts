@@ -142,7 +142,6 @@ export default async (req: Request): Promise<Response> =>
           ticketId: id,
           ticketNo: t.ticket_no,
           status: to,
-          departmentCode: t.department_code,
           departmentName: t.department_name,
           categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
           reporterName: t.reporter_name,

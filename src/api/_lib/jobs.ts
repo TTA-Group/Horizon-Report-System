@@ -70,7 +70,6 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       ticketId: t.id,
       ticketNo: t.ticket_no,
       status: "pending", // งานเตือนซ้ำเลือกเฉพาะเรื่องที่ยังไม่มีผู้รับเท่านั้น
-      departmentCode: t.department_code,
       departmentName: t.department_name,
       categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
       reporterName: t.reporter_name,

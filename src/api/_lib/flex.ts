@@ -12,7 +12,6 @@ export interface TicketFlexInput {
   ticketId: string;
   ticketNo: string;
   status: StatusCode;
-  departmentCode: string;
   departmentName: string;
   categoryLabel: string;
   reporterName: string;
@@ -32,18 +31,13 @@ export interface TicketFlexInput {
   photos?: string[] | null;
 }
 
-// สีหัวการ์ดแยกตามฝ่ายที่รับผิดชอบ — ทุกฝ่ายใช้กลุ่มไลน์เดียวกัน สีหัวจึงเป็นตัวบอกตั้งแต่แรกเห็น
-// ว่าการ์ดใบนี้เป็นงานของทีมไหน ใช้โทนเดียวกับไอคอนในแอป LIFF แต่เข้มขึ้นพอให้ตัวหนังสือสีขาวอ่านออก
-const DEPARTMENT_COLOR: Record<string, string> = {
-  IT: "#2C6BE0", // น้ำเงิน — งานคอมพิวเตอร์และระบบงาน
-  ADM: "#B26A00", // เหลืองอำพันเข้ม — แอร์ ไฟ ประปา และงานแม่บ้าน
-  CLN: "#05803A", // เขียวเข้ม — งานแม่บ้าน (เผื่อวันที่แยกทีมออกจากฝ่าย Admin)
-  GEN: "#6B4FD8", // ม่วง — เรื่องอื่น ๆ
-};
-const FALLBACK_COLOR = "#5B6672";
+// สีหลักของการ์ด — เขียวเหมือนกันทุกฝ่าย ตรงกับสีประจำระบบในแอป LIFF
+// เลือกเฉดเข้มกว่าเขียวในแอปเล็กน้อย เพราะหัวการ์ดเป็นตัวหนังสือสีขาวบนพื้นสีทึบ
+// (เขียวสดของแอปอ่อนเกินไป ตัวหนังสือขาวบนพื้นนั้นอ่านยาก)
+const CARD_COLOR = "#05803A";
 
 // แถบความเร่งด่วน — แถบสีทึบเต็มความกว้าง อ่านออกตั้งแต่ยังไม่ได้เปิดดูรายละเอียด
-// ทุกสีเลือกให้เข้มพอสำหรับตัวหนังสือสีขาว และต่างจากสีหัวการ์ดของทุกฝ่าย
+// ทุกสีเลือกให้เข้มพอสำหรับตัวหนังสือสีขาว และต่างจากสีหัวการ์ดชัดเจน
 const URGENCY: Record<UrgencyCode, { label: string; color: string; note: string | null }> = {
   normal: { label: "ปกติ", color: "#5B6672", note: null },
   urgent: { label: "เร่งด่วน", color: "#C2410C", note: "ภายในวันนี้" },
@@ -58,7 +52,7 @@ const STATUS_CHIP: Record<StatusCode, string> = {
   cancelled: "ยกเลิกแล้ว",
 };
 
-// สีของแถบขั้นตอน — ขั้นที่ยังไม่ถึงใช้สีจางกลาง ๆ ที่ไม่ชนกับสีของฝ่ายไหนเลย
+// สีของแถบขั้นตอน — ขั้นที่ยังไม่ถึงใช้สีจางกลาง ๆ ให้ต่างจากขั้นที่ผ่านมาแล้วอย่างชัดเจน
 const STEP_FUTURE = "#C6CDD6";
 const STEP_LINE = "#E3E8EE";
 const STEP_BAD = "#B3261E";
@@ -308,7 +302,7 @@ function unassignedBlock() {
 
 /** สร้างข้อความ Flex ของ ticket หนึ่งใบตามสถานะปัจจุบัน */
 export function buildTicketFlex(t: TicketFlexInput): LineMessage {
-  const accent = DEPARTMENT_COLOR[t.departmentCode] ?? FALLBACK_COLOR;
+  const accent = CARD_COLOR;
   const urgency = URGENCY[t.urgency];
   const statusLabel = STATUS_CHIP[t.status] ?? STATUS_LABELS[t.status] ?? t.status;
 

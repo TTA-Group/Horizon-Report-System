@@ -367,7 +367,6 @@ function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMe
     ticketId: t.id,
     ticketNo: t.ticket_no,
     status: t.status,
-    departmentCode: t.department_code,
     departmentName: t.department_name,
     categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
     reporterName: t.reporter_name,
@@ -546,7 +545,6 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       // ส่งต่อฝ่ายแล้วเรื่องกลับไปรอรับใหม่เสมอ และไม่มีผู้รับผิดชอบคนเดิมติดไปด้วย
       const flex = cardFor(t, {
         status: "pending",
-        departmentCode: toDept,
         departmentName: dept[0].name,
         assigneeName: null,
         actorName: actor.full_name,
