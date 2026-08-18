@@ -103,8 +103,18 @@ async function callMessaging(path: string, body: unknown): Promise<boolean> {
   });
   if (!res.ok) {
     console.error("[line]", path, res.status, await res.text().catch(() => ""));
+  } else if (hasMention(body)) {
+    // การ @mention ที่ไม่ติดจะไม่ทำให้เกิด error — LINE ตอบ 200 แล้วทิ้งการเรียกไปเงียบ ๆ
+    // บันทึกทั้งสิ่งที่ส่งไปและสิ่งที่ตอบกลับมาไว้ จะได้ไล่จากของจริงแทนการเดา
+    console.log("[line mention]", path, res.status, JSON.stringify(body), await res.text().catch(() => ""));
   }
   return res.ok;
+}
+
+/** มีข้อความที่พยายามเรียกชื่อคนอยู่ในชุดนี้ไหม */
+function hasMention(body: unknown): boolean {
+  const messages = (body as { messages?: unknown[] })?.messages;
+  return Array.isArray(messages) && messages.some((m) => (m as { mention?: unknown })?.mention !== undefined);
 }
 
 interface LogMeta {
