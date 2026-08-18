@@ -526,7 +526,7 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     const toDept = (data.get("to") ?? "").trim().toUpperCase();
     if (!toDept) return;
     const dept = await sql<{ id: string; name: string; line_group_id: string | null }[]>`
-      SELECT id, name, line_group_id FROM departments WHERE code=${toDept} AND is_active=true LIMIT 1
+      SELECT id, name, line_group_id FROM departments WHERE code=${toDept} AND is_active=true AND receives_tickets=true LIMIT 1
     `;
     if (dept.length === 0 || dept[0].id === t.department_id) return;
 

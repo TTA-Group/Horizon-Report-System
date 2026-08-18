@@ -64,7 +64,7 @@ export default async (req: Request): Promise<Response> =>
     if (!isMemberOf(s, t.department_id)) throw new HttpError(403, "ไม่มีสิทธิ์ส่งต่อเรื่องของฝ่ายนี้");
 
     const dept = await sql<{ id: string; name: string; line_group_id: string | null }[]>`
-      SELECT id, name, line_group_id FROM departments WHERE code = ${toDept} AND is_active = true LIMIT 1
+      SELECT id, name, line_group_id FROM departments WHERE code = ${toDept} AND is_active = true AND receives_tickets = true LIMIT 1
     `;
     if (dept.length === 0) throw new HttpError(404, "ไม่พบฝ่ายปลายทาง");
     if (dept[0].id === t.department_id) throw new HttpError(400, "เรื่องนี้อยู่ในฝ่ายดังกล่าวอยู่แล้ว");

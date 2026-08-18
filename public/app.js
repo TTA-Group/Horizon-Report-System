@@ -428,7 +428,9 @@ function routeTab(tab) {
  * จึงหลุดออกไปเอง ไม่ต้องขึ้นชิปให้กดค้างไว้ทั้งที่ไม่มีวันมีงานเข้า
  */
 function activeDepts() {
-  const names = new Map((masters?.departments || []).map((d) => [d.code, d.name]));
+  const names = new Map(
+    (masters?.departments || []).filter((d) => d.receives_tickets).map((d) => [d.code, d.name]),
+  );
   return (session.dept_roles || [])
     .filter((r) => names.has(r.code))
     .map((r) => ({ code: r.code, name: names.get(r.code) }));
@@ -504,7 +506,7 @@ async function doStatus(id, to, okMsg, note) {
 
 async function openTransferSheet(id, currentDeptCode) {
   const opts = (masters.departments || [])
-    .filter((d) => d.code !== currentDeptCode)
+    .filter((d) => d.receives_tickets && d.code !== currentDeptCode)
     .map((d) => ({ label: d.name, value: d.code }));
   if (!opts.length) return toast("ไม่มีฝ่ายปลายทางให้ส่งต่อ");
   const to = await openSheet("เลือกฝ่ายปลายทาง", opts);

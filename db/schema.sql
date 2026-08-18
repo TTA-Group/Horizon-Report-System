@@ -20,7 +20,10 @@ CREATE TABLE departments (
   sla_ack_minutes   INT NOT NULL DEFAULT 120,      -- เกินนี้ยังไม่มีคนรับ -> เตือนซ้ำ
   sla_close_hours   INT NOT NULL DEFAULT 24,
   escalate_to       UUID,                          -- หัวหน้าฝ่าย (ผูก FK ภายหลัง)
-  is_active         BOOLEAN NOT NULL DEFAULT true
+  is_active         BOOLEAN NOT NULL DEFAULT true,
+  -- ฝ่ายนี้รับเรื่องแจ้งหรือไม่ — ฝ่ายอย่าง HR อยู่ในตารางนี้เพื่อใช้จัดกลุ่มคนและให้สิทธิ์เท่านั้น
+  -- ไม่มีหมวดไหนส่งงานเข้าไป จึงต้องไม่โผล่ในตัวเลือกส่งต่อฝ่ายและไม่มีคิวงานของตัวเอง
+  receives_tickets  BOOLEAN NOT NULL DEFAULT true
 );
 
 -- พนักงาน (แกนกลางของทุกระบบ ใช้ employee_code เป็นตัวอ้างอิงหลัก)
