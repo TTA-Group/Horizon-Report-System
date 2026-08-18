@@ -50,15 +50,6 @@ const URGENCY: Record<UrgencyCode, { label: string; color: string; note: string 
   critical: { label: "เร่งด่วนมาก", color: "#B3261E", note: "กระทบการทำงาน กรุณารับเรื่องทันที" },
 };
 
-// คำนำหน้าชื่อคนที่ทำให้สถานะเปลี่ยน — ทุกการ์ดที่เข้ากลุ่มต้องบอกได้ว่าใครเป็นคนทำ
-const ACTOR_LABEL: Record<StatusCode, string> = {
-  pending: "ส่งต่อโดย",
-  in_progress: "รับเรื่องโดย",
-  completed: "ปิดงานโดย",
-  closed: "ปิดเรื่องโดย",
-  cancelled: "ยกเลิกโดย",
-};
-
 const STATUS_CHIP: Record<StatusCode, string> = {
   pending: "รอรับเรื่อง",
   in_progress: "กำลังดำเนินการ",
@@ -75,7 +66,7 @@ const STEP_BAD = "#B3261E";
 /** คำต่อท้ายชื่อคนในแถบ "ล่าสุด" ให้อ่านเป็นประโยคได้ */
 const LATEST_VERB: Record<StatusCode, string> = {
   pending: "ส่งต่อมาโดย",
-  in_progress: "รับเรื่องโดย",
+  in_progress: "รับเรื่องและรับผิดชอบโดย",
   completed: "ดำเนินการเสร็จสิ้นโดย",
   closed: "ปิดเรื่องโดย",
   cancelled: "ยกเลิกโดย",
@@ -174,8 +165,12 @@ function stepper(t: TicketFlexInput, accent: string) {
  * คืน null เมื่อยังไม่มีใครทำอะไรกับเรื่องนี้เลย (เพิ่งแจ้งเข้ามา) เพราะการเขียนว่า
  * "ผู้แจ้ง แจ้งเรื่องเมื่อ ..." ซ้ำกับชิปวันเวลาด้านบนและแถวผู้แจ้งอยู่แล้ว
  */
+function latestWho(t: TicketFlexInput): string | null {
+  return t.latestActor ?? t.actorName ?? t.assigneeName ?? null;
+}
+
 function latestBox(t: TicketFlexInput): Record<string, unknown> | null {
-  const who = t.latestActor ?? t.actorName ?? t.assigneeName ?? null;
+  const who = latestWho(t);
   if (!who) return null;
   return {
     type: "box",
@@ -290,28 +285,23 @@ function photoBlock(urls: string[]) {
   };
 }
 
-/** กล่องผู้รับผิดชอบ — แยกออกมาให้เด่น เพราะเป็นข้อมูลที่คนในกลุ่มมองหาบ่อยที่สุด */
-function assigneeBlock(t: TicketFlexInput, accent: string) {
-  const taken = Boolean(t.assigneeName);
+/**
+ * กล่องเตือนว่ายังไม่มีใครรับเรื่อง — ขึ้นเฉพาะตอนที่ยังว่างอยู่จริงเท่านั้น
+ * พอมีคนรับแล้ว กล่อง "ล่าสุด" บอกชื่อคนนั้นไว้แล้ว กล่องซ้ำอีกใบมีแต่ทำให้การ์ดยาวขึ้นเปล่า ๆ
+ */
+function unassignedBlock() {
   return {
     type: "box",
     layout: "vertical",
     margin: "lg",
     paddingAll: "12px",
     cornerRadius: "8px",
-    backgroundColor: taken ? "#F4F7FB" : "#FFF6F5",
+    backgroundColor: "#FFF6F5",
     borderWidth: "1px",
-    borderColor: taken ? accent : "#E7B7B1",
+    borderColor: "#E7B7B1",
     contents: [
       { type: "text", text: "ผู้รับผิดชอบ", size: "xs", color: "#8A94A0" },
-      {
-        type: "text",
-        text: taken ? (t.assigneeName as string) : "ยังไม่มีผู้รับผิดชอบ",
-        size: "lg",
-        weight: "bold",
-        color: taken ? accent : "#B3261E",
-        wrap: true,
-      },
+      { type: "text", text: "ยังไม่มีผู้รับผิดชอบ", size: "lg", weight: "bold", color: "#B3261E", wrap: true },
     ],
   };
 }
@@ -347,10 +337,10 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
     kv("สถานที่", `${t.floor}${t.locationNote ? " · " + t.locationNote : ""}`),
     kv("รายละเอียด", t.detail),
   ];
-  // ชื่อคนที่เพิ่งเปลี่ยนสถานะ — ข้ามเมื่อเป็นคนเดียวกับผู้รับผิดชอบ จะได้ไม่ขึ้นชื่อซ้ำสองที่
-  if (t.actorName && t.actorName !== t.assigneeName) {
-    rows.push(kv(ACTOR_LABEL[t.status] ?? "อัปเดตโดย", t.actorName));
-  }
+  // ชื่อผู้รับผิดชอบขึ้นเป็นบรรทัดเดียว เฉพาะตอนที่ไม่ใช่คนเดียวกับคนที่ทำรายการล่าสุด
+  // (เช่น A รับเรื่องไว้ แต่ B เป็นคนกดปิดงาน) ถ้าเป็นคนเดียวกัน กล่อง "ล่าสุด" บอกไปแล้ว
+  const who = latestWho(t);
+  if (t.assigneeName && t.assigneeName !== who) rows.push(kv("ผู้รับผิดชอบ", t.assigneeName));
   if (t.cancelReason) rows.push(kv("เหตุผลที่ยกเลิก", t.cancelReason));
 
   const latest = latestBox(t);
@@ -382,7 +372,7 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
     { type: "separator", margin: "lg", color: "#EDF0F3" },
     { type: "box", layout: "vertical", margin: "lg", spacing: "sm", contents: rows },
     ...(t.photos && t.photos.length > 0 ? [photoBlock(t.photos)] : []),
-    assigneeBlock(t, accent),
+    ...(t.assigneeName ? [] : [unassignedBlock()]),
   ];
 
   const footer = footerFor(t);
