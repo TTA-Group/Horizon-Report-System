@@ -29,7 +29,7 @@ public/          หน้าเว็บ LIFF — index.html, app.js, config.js
 src/index.ts     จุดเข้าของ Worker — จัดเส้นทาง /api/*, เสิร์ฟหน้าเว็บ, รันงานตามเวลา
 src/api/         ตัวจัดการแต่ละ endpoint
   _lib/          โค้ดใช้ร่วม (db, auth, line, flex, jobs, constants, env)
-db/              schema.sql · seed.sql · enable-rls.sql · cleanup-sample-data.sql
+db/              schema.sql · seed.sql · enable-rls.sql · cleanup-sample-data.sql · reset-tickets.sql
 wrangler.toml    การตั้งค่า Worker (assets, nodejs_compat, cron triggers)
 ```
 

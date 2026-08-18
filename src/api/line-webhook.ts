@@ -445,7 +445,8 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   const res = await loadContext(userId, { id: ticketId });
   if (!res.ok) {
     if (res.reason === "no-actor") return say(replyToken, "กรุณายืนยันตัวตนในระบบก่อนใช้งานปุ่มนี้");
-    return;
+    // การ์ดยังค้างอยู่ในกลุ่มแต่เรื่องถูกลบไปแล้ว — ตอบให้รู้ ไม่ปล่อยให้กดแล้วเงียบเหมือนปุ่มเสีย
+    return say(replyToken, "ไม่พบเรื่องนี้ในระบบแล้ว การ์ดใบนี้อาจค้างอยู่จากก่อนที่ข้อมูลจะถูกลบ");
   }
   const { actor, isMember, t } = res;
   if (actor.status === "suspended") return say(replyToken, "บัญชีของคุณถูกระงับสิทธิ์การใช้งาน");
