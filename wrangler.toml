@@ -18,9 +18,14 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 # หน้าเว็บ LIFF — เสิร์ฟไฟล์ใน public/ โดยตรง
+#
+# run_worker_first ให้โค้ดทำงานก่อนเฉพาะหน้า HTML เพราะ Worker ต้องเติมชื่อโดเมนลงในแท็ก
+# og:image / og:url ก่อนส่งออกไป (ดู absolutizeMeta ใน src/index.ts) ไม่งั้นตัวไต่ลิงก์ของไลน์
+# จะได้เส้นทางเปล่า ๆ แล้วไม่ขึ้นภาพตัวอย่าง ส่วนไฟล์อื่นยังถูกเสิร์ฟตรงจากที่เก็บไฟล์เหมือนเดิม
 [assets]
 directory = "./public"
 binding = "ASSETS"
+run_worker_first = ["/", "/index.html"]
 
 # งานตามเวลา (เวลาเป็น UTC) — ต้องตรงกับที่จับคู่ไว้ใน src/index.ts (CRON_JOBS)
 [triggers]
