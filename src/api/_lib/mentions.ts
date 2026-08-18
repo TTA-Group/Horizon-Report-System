@@ -44,21 +44,42 @@ export async function departmentMentionTargets(departmentId: string): Promise<Me
 }
 
 /**
- * ประกอบข้อความนำ + รายชื่อที่ถูก mention
- * ตำแหน่ง (index/length) นับเป็นหน่วยอักขระแบบ UTF-16 ซึ่งตรงกับค่า .length ของ JavaScript พอดี
+ * ตัดอักขระนอกระนาบพื้นฐาน (อีโมจิ) ออกจากชื่อที่จะใช้เรียก
+ *
+ * เหตุผลเดียวกับที่ต้องเอาชื่อขึ้นก่อน — ถ้าชื่อของใครมีอีโมจิ ตำแหน่งของชื่อคนถัดไปจะคลาดกัน
+ * ระหว่างสองวิธีนับอีกเช่นเดิม ตัดออกให้หมดแล้วทุกวิธีนับตรงกันแน่นอน
  */
-export function buildMentionText(lead: string, targets: MentionTarget[]): { text: string; mentionees: Mentionee[] } {
-  if (targets.length === 0) return { text: lead, mentionees: [] };
+function safeName(name: string): string {
+  const cleaned = name
+    .replace(/[\u{10000}-\u{10FFFF}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || "เจ้าหน้าที่";
+}
 
-  let text = lead ? `${lead}\n` : "";
+/**
+ * ประกอบข้อความเรียกชื่อ — **ชื่อทุกคนขึ้นก่อน** แล้วค่อยตามด้วยข้อความอธิบาย
+ *
+ * ทำไมชื่อต้องขึ้นก่อน: LINE ระบุตำแหน่งของชื่อด้วยเลขลำดับอักขระ แต่เอกสารไม่ได้บอกชัดว่านับ
+ * แบบ UTF-16 (แบบเดียวกับ .length ของ JavaScript) หรือนับเป็นตัวอักษรจริง สองวิธีนี้ให้ผลต่างกัน
+ * เมื่อมีอีโมจิบางตัวอยู่ข้างหน้า เช่น 🔔 ที่ JavaScript นับเป็น 2 แต่เป็นตัวอักษรเดียว
+ * ตำแหน่งที่ส่งไปจึงเลื่อนไป 1 ช่อง — LINE หาชื่อไม่เจอ เลยแสดงเป็นตัวหนังสือธรรมดาโดยไม่แจ้ง error
+ *
+ * พอย้ายชื่อมาไว้หน้าสุด คนแรกอยู่ตำแหน่ง 0 เสมอ ไม่ว่าจะนับวิธีไหนก็ได้เลขเดียวกัน
+ * ปัญหาการนับจึงหมดไปทั้งหมด ไม่ต้องเดาว่า LINE ใช้วิธีไหน
+ */
+export function buildMentionText(trailer: string, targets: MentionTarget[]): { text: string; mentionees: Mentionee[] } {
+  if (targets.length === 0) return { text: trailer, mentionees: [] };
+
+  let text = "";
   const mentionees: Mentionee[] = [];
   targets.forEach((t, i) => {
     if (i > 0) text += " ";
-    const tag = `@${t.name}`;
+    const tag = `@${safeName(t.name)}`;
     mentionees.push({ index: text.length, length: tag.length, type: "user", userId: t.userId });
     text += tag;
   });
-  return { text, mentionees };
+  return { text: trailer ? `${text}\n${trailer}` : text, mentionees };
 }
 
 /** ข้อความตัวอักษรที่มี mention (ถ้าไม่มีใครให้เรียก ก็เป็นข้อความธรรมดา) */
@@ -68,11 +89,12 @@ export function mentionMessage(text: string, mentionees: Mentionee[]): LineMessa
 
 /**
  * ชุดข้อความสำหรับ push เข้ากลุ่มรวม: ข้อความเรียกเจ้าหน้าที่ + การ์ดรายละเอียด
+ * `trailer` คือคำอธิบายที่จะต่อท้ายรายชื่อ (ต้องอยู่หลังชื่อเสมอ ดู buildMentionText)
  * ถ้าฝ่ายนั้นยังไม่มีใครผูกบัญชีไลน์ จะส่งแค่การ์ดใบเดียวเหมือนเดิม ไม่เปลืองข้อความเปล่า ๆ
  */
-export async function groupMessages(departmentId: string, lead: string, card: LineMessage): Promise<LineMessage[]> {
+export async function groupMessages(departmentId: string, trailer: string, card: LineMessage): Promise<LineMessage[]> {
   const targets = await departmentMentionTargets(departmentId);
   if (targets.length === 0) return [card];
-  const { text, mentionees } = buildMentionText(lead, targets);
+  const { text, mentionees } = buildMentionText(trailer, targets);
   return [mentionMessage(text, mentionees), card];
 }
