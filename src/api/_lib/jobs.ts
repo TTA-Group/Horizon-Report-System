@@ -3,15 +3,18 @@
 import { CATEGORY_BY_CODE, CHANNEL_KEY, type UrgencyCode } from "./constants";
 import { db } from "./db";
 import { buildTicketFlex } from "./flex";
-import { pushTo, textMessage } from "./line";
-import { groupMessages } from "./mentions";
+import { multicastTo, pushTo, textMessage } from "./line";
+import { departmentStaffLineIds } from "./staff";
 import { thaiDateTimeShort } from "./tickets";
 
 /**
  * เตือนซ้ำเรื่องที่ค้างเกิน SLA (spec หัวข้อ 5.4)
- * - ครั้งที่ 1: push ซ้ำเข้ากลุ่มฝ่าย
- * - ครั้งที่ 2 เป็นต้นไป: push ถึงหัวหน้าฝ่าย (escalate_to) เพิ่ม
+ * - ครั้งที่ 1: เตือนในกลุ่ม + ส่งข้อความส่วนตัวหาเจ้าหน้าที่ของฝ่ายทุกคน
+ * - ครั้งที่ 2 เป็นต้นไป: เตือนในกลุ่ม + ส่งถึงหัวหน้าฝ่าย (escalate_to)
  * - เตือนซ้ำได้ไม่เกิน 3 ครั้งต่อเรื่อง
+ *
+ * กำหนดเวลาอยู่ที่ departments.sla_ack_minutes (ตั้งไว้ 15 นาที) และงานนี้ทำงานทุก 15 นาที
+ * เรื่องที่ยังไม่มีผู้รับจึงถูกเตือนภายในประมาณ 15–30 นาทีหลังแจ้ง
  */
 export async function runReminders(): Promise<{ checked: number; notified: number }> {
   const sql = db();
@@ -34,13 +37,14 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       department_name: string;
       line_group_id: string | null;
       escalate_to: string | null;
+      sla_ack_minutes: number;
       photos: string[] | null;
     }[]
   >`
     SELECT t.id, t.ticket_no, t.reminder_count, t.category_code, t.floor, t.location_note,
            t.detail, t.urgency, t.created_at, r.full_name AS reporter_name, r.department_name AS reporter_dept,
            t.department_id, d.code AS department_code, d.name AS department_name,
-           d.line_group_id, d.escalate_to,
+           d.line_group_id, d.escalate_to, d.sla_ack_minutes,
            (SELECT array_agg(ta.file_url ORDER BY ta.created_at)
               FROM ticket_attachments ta
              WHERE ta.ticket_id = t.id AND ta.file_url IS NOT NULL) AS photos
@@ -80,12 +84,25 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
     });
 
     if (t.line_group_id) {
-      const messages = await groupMessages(
-        t.department_id,
-        `⏰ เตือนซ้ำ (ครั้งที่ ${nextCount}) ${t.ticket_no} ยังไม่มีผู้รับเรื่อง`,
-        flex,
-      );
-      await pushTo(t.line_group_id, messages, { ticketId: t.id, channel: "group" });
+      await pushTo(t.line_group_id, [flex], { ticketId: t.id, channel: "group" });
+    }
+
+    // ครั้งแรกที่เกินกำหนด: ส่งข้อความส่วนตัวหาเจ้าหน้าที่ของฝ่ายทุกคน
+    //
+    // การ์ดในกลุ่มปลุกคนที่ปิดเสียงกลุ่มไว้ไม่ได้ และบัญชีทางการของ LINE ส่ง @mention ไม่ได้
+    // (ทดลองแล้วทั้งเรียกรายคนและเรียกทั้งกลุ่ม) ข้อความส่วนตัวจึงเป็นทางเดียวที่เตือนถึงตัวคนจริง
+    //
+    // ส่งเฉพาะรอบแรกรอบเดียว เพราะแต่ละข้อความนับโควตาของ OA ที่ใช้ร่วมกับระบบอื่น — เตือนให้รู้ตัว
+    // ครั้งเดียวก็พอ รอบถัดไปเตือนในกลุ่มและส่งถึงหัวหน้าฝ่ายแทน
+    if (nextCount === 1) {
+      const staff = await departmentStaffLineIds(t.department_id);
+      if (staff.length > 0) {
+        await multicastTo(
+          staff,
+          [textMessage(`⏰ ${t.ticket_no} ยังไม่มีผู้รับเรื่อง เกิน ${t.sla_ack_minutes} นาทีแล้ว`), flex],
+          { ticketId: t.id },
+        );
+      }
     }
 
     // ครั้งที่ 2 เป็นต้นไป แจ้งหัวหน้าฝ่ายเพิ่ม
