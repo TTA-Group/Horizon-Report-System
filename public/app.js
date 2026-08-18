@@ -13,6 +13,10 @@ const PICK_OTHER = "__other__";
 // ฝ่าย/แผนกต้นสังกัดของพนักงาน — คนละเรื่องกับฝ่ายผู้รับเรื่องใน departments
 // สะกดตามทะเบียนพนักงานของฝ่ายบุคคล เพื่อให้ชื่อฝ่ายของคนที่กรอกเองตรงกับคนที่นำเข้ามาเป็นชุด
 // ใช้ทั้งหน้าผูกบัญชีและหน้าเพิ่มพนักงานของผู้ดูแล จึงเก็บไว้ที่เดียวไม่ให้สะกดต่างกัน
+//
+// รายการนี้ตรงกับหัวข้อที่พับในหน้าผู้ดูแล — ฝ่ายย่อยของ PMTA รวมเป็น "PMTA" และ
+// Finance & Accounting รวมอยู่ใน Corporate Finance & Accounting แล้ว
+// คนที่บันทึกไว้ด้วยชื่อฝ่ายย่อยเดิมยังอยู่ครบ ไม่ได้ถูกแก้ และยังถูกจัดเข้ากลุ่มเดียวกันอยู่ดี
 const ORG_DEPTS = [
   "Administration",
   "Business Development",
@@ -29,17 +33,12 @@ const ORG_DEPTS = [
   "DIGITAL TEAM",
   "Executive Driver",
   "Executive Secretary",
-  "Finance & Accounting",
   "Information Technology",
   "Internal Audit",
   "Investor Relations & Treasury",
   "LEGAL",
   "Legal - CEO Office",
-  "PM Driver",
-  "PM Finance&Accounting",
-  "PM Internal Audit",
-  "PM Secretary",
-  "PM Thoresen Asia Holding Plc.",
+  "PMTA",
   "Water Project",
 ];
 
