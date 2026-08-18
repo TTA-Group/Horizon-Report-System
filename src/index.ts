@@ -110,6 +110,30 @@ function normalizeCron(expr: string): string {
 }
 const CRON_LOOKUP = new Map(Object.entries(CRON_JOBS).map(([k, v]) => [normalizeCron(k), v]));
 
+/**
+ * เติมชื่อโดเมนให้แท็ก og:image / og:url ก่อนส่งหน้าเว็บออกไป
+ *
+ * ตัวไต่ลิงก์ของไลน์ต้องการ URL เต็มถึงจะดึงภาพตัวอย่างมาแสดงได้ แต่ไฟล์ใน public/
+ * ไม่มีทางรู้ว่าตัวเองถูกวางไว้ที่โดเมนไหน จึงเขียนไว้เป็นเส้นทาง แล้วเติมโดเมนตอนมีคำขอเข้ามา
+ * ทำเฉพาะไฟล์ HTML — ไฟล์อื่น (js, png, svg) ส่งผ่านไปตรง ๆ ไม่ต้องแตะ
+ */
+const ABSOLUTE_META = new Set(["og:image", "og:url", "twitter:image"]);
+
+function absolutizeMeta(res: Response, origin: string): Response {
+  if (!(res.headers.get("content-type") ?? "").includes("text/html")) return res;
+  return new HTMLRewriter()
+    .on("meta", {
+      element(el) {
+        const key = el.getAttribute("property") ?? el.getAttribute("name");
+        if (!key || !ABSOLUTE_META.has(key)) return;
+        const value = el.getAttribute("content");
+        if (!value || !value.startsWith("/")) return;
+        el.setAttribute("content", origin + value);
+      },
+    })
+    .transform(res);
+}
+
 function jsonResponse(data: unknown, status: number): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -136,7 +160,9 @@ export default {
     }
 
     // ไม่ใช่ /api/* -> ส่งให้ไฟล์หน้าเว็บใน public/
-    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    if (!url.pathname.startsWith("/api/")) {
+      return absolutizeMeta(await env.ASSETS.fetch(request), url.origin);
+    }
 
     return jsonResponse({ error: "not found" }, 404);
   },

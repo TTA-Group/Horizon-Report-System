@@ -3,7 +3,30 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>แจ้งเรื่องในออฟฟิศ · Horizon Report System</title>
+<title>แจ้งปัญหาภายในออฟฟิศ - TTA Report</title>
+<meta name="description" content="แจ้งซ่อม หรือ แจ้งปัญหาขัดข้องต่างๆ" />
+<meta name="theme-color" content="#06C755" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+
+<!-- ภาพตัวอย่างตอนแชร์ลิงก์ในไลน์ — ไลน์อ่านค่าจากแท็ก og:* ถ้าไม่มี จะไปกวาดข้อความ
+     ในหน้ามาแสดงแทน ซึ่งได้ข้อความระหว่างโหลดอย่าง "กำลังเชื่อมต่อระบบ" ติดมาด้วย
+     og:image กับ og:url เขียนเป็นเส้นทางในเว็บ แล้ว Worker เติมชื่อโดเมนให้ตอนส่งหน้านี้ออกไป
+     (ดู absolutizeMeta ใน src/index.ts) เพราะโดเมนจริงรู้ได้ตอนมีคำขอเข้ามาเท่านั้น -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="TTA Report" />
+<meta property="og:locale" content="th_TH" />
+<meta property="og:title" content="แจ้งปัญหาภายในออฟฟิศ - TTA Report" />
+<meta property="og:description" content="แจ้งซ่อม หรือ แจ้งปัญหาขัดข้องต่างๆ" />
+<meta property="og:url" content="/" />
+<meta property="og:image" content="/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="TTA Report — แจ้งปัญหาภายในออฟฟิศ" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="แจ้งปัญหาภายในออฟฟิศ - TTA Report" />
+<meta name="twitter:description" content="แจ้งซ่อม หรือ แจ้งปัญหาขัดข้องต่างๆ" />
+<meta name="twitter:image" content="/og.png" />
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <!-- โหลดฟอนต์แบบไม่บล็อกการแสดงผลหน้าแรก (media=print แล้วสลับเป็น all หลังโหลดเสร็จ) -->
