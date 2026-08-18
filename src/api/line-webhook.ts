@@ -17,7 +17,7 @@ import { db } from "./_lib/db";
 import { buildTicketFlex, type TicketFlexInput } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
-import { groupMessages } from "./_lib/mentions";
+import { buildMentionText, groupMessages, mentionMessage } from "./_lib/mentions";
 import { thaiDateTimeShort } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
 
@@ -94,7 +94,7 @@ function isOwnEvent(ev: LineEvent): boolean {
   if (ev.type === "message" && ev.message?.type === "text") {
     const text = (ev.message.text ?? "").trim();
     const cmd = text.toLowerCase();
-    return cmd === "groupid" || cmd === "whoami" || CANCEL_RE.test(text);
+    return cmd === "groupid" || cmd === "whoami" || cmd === "mentiontest" || CANCEL_RE.test(text);
   }
   return false;
 }
@@ -138,7 +138,48 @@ async function handleMessage(ev: LineEvent): Promise<void> {
   const text = (ev.message.text ?? "").trim();
   if (text.toLowerCase() === "groupid") return handleGroupIdRequest(ev);
   if (text.toLowerCase() === "whoami") return handleWhoAmI(ev);
+  if (text.toLowerCase() === "mentiontest") return handleMentionTest(ev);
   if (CANCEL_RE.test(text)) return handleCancelMessage(ev, text);
+}
+
+/**
+ * พิมพ์ "mentiontest" ในกลุ่ม แล้วระบบส่งการเรียกชื่อ 3 แบบมาให้เทียบกันในข้อความเดียว
+ *
+ * ทำไมต้องมี: การ @mention ไม่ติด แต่ LINE ตอบรับข้อความเป็นปกติทุกครั้ง ไม่มี error ให้ไล่
+ * และรหัสผู้ใช้ก็ตรวจแล้วว่าตรง (ดู whoami) จึงต้องแยกให้ออกว่าปัญหาอยู่ที่ "การเรียกทั้งกลุ่ม
+ * ก็ไม่ได้เหมือนกัน" หรือ "เรียกทั้งกลุ่มได้ แต่เรียกรายคนไม่ได้" — สองกรณีนี้คนละสาเหตุกันคนละทาง
+ * แบบที่ 3 เป็นตัวควบคุม ให้เห็นว่าข้อความที่ไม่ได้เรียกใครเลยหน้าตาเป็นยังไง
+ * ใช้การตอบกลับ (reply) จึงไม่กินโควตาข้อความ
+ */
+async function handleMentionTest(ev: LineEvent): Promise<void> {
+  const replyToken = ev.replyToken;
+  const userId = ev.source?.userId;
+  if (!replyToken) return;
+  if (!userId) return say(replyToken, "คำสั่งนี้ต้องพิมพ์ในกลุ่ม");
+
+  const sql = db();
+  const rows = await sql<{ full_name: string; display_name: string | null }[]>`
+    SELECT e.full_name, la.display_name
+    FROM line_accounts la JOIN employees e ON e.id = la.employee_id
+    WHERE la.line_user_id = ${userId} AND la.channel_key = ${CHANNEL_KEY}
+    LIMIT 1
+  `;
+  if (rows.length === 0) return say(replyToken, "ยังไม่ได้ผูกบัญชีในระบบ จึงทดสอบไม่ได้");
+  const name = rows[0].display_name || rows[0].full_name;
+
+  // แบบที่ 2 ประกอบด้วยฟังก์ชันเดียวกับที่ระบบใช้จริง ผลที่เห็นจึงเป็นผลของโค้ดจริง
+  const real = buildMentionText("แบบที่ 2 — เรียกเฉพาะคุณ (แบบที่ระบบใช้จริง)", [{ userId, name }]);
+
+  await replyTo(replyToken, [
+    textMessage("ทดสอบการเรียกชื่อ 3 แบบ — ดูว่าแบบไหนขึ้นสีและเด้งแจ้งเตือน"),
+    {
+      type: "text",
+      text: "@All แบบที่ 1 — เรียกทั้งกลุ่ม",
+      mention: { mentionees: [{ index: 0, length: 4, type: "all" }] },
+    },
+    mentionMessage(real.text, real.mentionees),
+    textMessage(`@${name} แบบที่ 3 — ตัวควบคุม ไม่ได้บอก LINE ว่าเป็นการเรียก`),
+  ]);
 }
 
 /**
