@@ -26,6 +26,7 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       location_note: string | null;
       detail: string;
       urgency: string;
+      created_at: string;
       reporter_name: string;
       reporter_dept: string | null;
       department_id: string;
@@ -36,7 +37,7 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
     }[]
   >`
     SELECT t.id, t.ticket_no, t.reminder_count, t.category_code, t.floor, t.location_note,
-           t.detail, t.urgency, r.full_name AS reporter_name, r.department_name AS reporter_dept,
+           t.detail, t.urgency, t.created_at, r.full_name AS reporter_name, r.department_name AS reporter_dept,
            t.department_id, d.code AS department_code, d.name AS department_name,
            d.line_group_id, d.escalate_to
     FROM tickets t
@@ -70,7 +71,7 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       locationNote: t.location_note,
       detail: t.detail,
       urgency: t.urgency as UrgencyCode,
-      createdAtLabel: thaiDateTime(),
+      createdAtLabel: thaiDateTime(new Date(t.created_at)),
     });
 
     if (t.line_group_id) {

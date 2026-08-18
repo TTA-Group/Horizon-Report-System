@@ -25,6 +25,9 @@ export interface TicketFlexInput {
   assigneeName?: string | null;
   actorName?: string | null;
   cancelReason?: string | null;
+  /** คนที่ทำให้สถานะเปลี่ยนล่าสุด และเวลาแบบสั้น — ใช้เขียนแถบ "ล่าสุด" ใต้แถบขั้นตอน */
+  latestActor?: string | null;
+  latestAtLabel?: string | null;
 }
 
 // สีหัวการ์ดแยกตามฝ่ายที่รับผิดชอบ — ทุกฝ่ายใช้กลุ่มไลน์เดียวกัน สีหัวจึงเป็นตัวบอกตั้งแต่แรกเห็น
@@ -61,6 +64,116 @@ const STATUS_CHIP: Record<StatusCode, string> = {
   closed: "ปิดเรื่องแล้ว",
   cancelled: "ยกเลิกแล้ว",
 };
+
+// สีของแถบขั้นตอน — ขั้นที่ยังไม่ถึงใช้สีจางกลาง ๆ ที่ไม่ชนกับสีของฝ่ายไหนเลย
+const STEP_FUTURE = "#C6CDD6";
+const STEP_LINE = "#E3E8EE";
+const STEP_BAD = "#B3261E";
+
+/** คำต่อท้ายชื่อคนในแถบ "ล่าสุด" ให้อ่านเป็นประโยคได้ */
+const LATEST_VERB: Record<StatusCode, string> = {
+  pending: "ส่งต่อมาเมื่อ",
+  in_progress: "รับเรื่องไว้เมื่อ",
+  completed: "ปิดงานเมื่อ",
+  closed: "ปิดเรื่องเมื่อ",
+  cancelled: "ยกเลิกเมื่อ",
+};
+
+interface Step {
+  label: string;
+  done: boolean;
+  bad?: boolean;
+}
+
+/**
+ * ขั้นตอนที่จะวาดบนแถบ
+ *
+ * เรื่องที่ถูกยกเลิกไม่ได้เดินจนจบเส้นทางปกติ จึงตัดขั้นที่ไม่มีวันเกิดขึ้นทิ้ง แล้วจบด้วยขั้นสีแดง
+ * ถ้าฝืนวาดครบ 4 ขั้นเหมือนเดิม แถบจะอ่านเหมือนงานยังค้างอยู่ทั้งที่จบไปแล้ว
+ */
+function stepsFor(t: TicketFlexInput): Step[] {
+  if (t.status === "cancelled") {
+    return [
+      { label: "แจ้งเรื่อง", done: true },
+      ...(t.assigneeName ? [{ label: "รับเรื่อง", done: true }] : []),
+      { label: "ยกเลิก", done: true, bad: true },
+    ];
+  }
+  const order: StatusCode[] = ["pending", "in_progress", "completed", "closed"];
+  const at = order.indexOf(t.status);
+  return [
+    { label: "แจ้งเรื่อง", done: at >= 0 },
+    { label: "รับเรื่อง", done: at >= 1 },
+    { label: "เสร็จสิ้น", done: at >= 2 },
+    { label: "ปิดเรื่อง", done: at >= 3 },
+  ];
+}
+
+/** จุดกลม ๆ ของหนึ่งขั้น — ทึบเมื่อผ่านมาแล้ว กลวงเมื่อยังไม่ถึง */
+function stepNode(s: Step, accent: string) {
+  const filled = s.bad ? STEP_BAD : accent;
+  return {
+    type: "box",
+    layout: "vertical",
+    flex: 0,
+    width: "12px",
+    height: "12px",
+    cornerRadius: "6px",
+    backgroundColor: s.done ? filled : "#FFFFFF",
+    ...(s.done ? {} : { borderWidth: "2px", borderColor: STEP_FUTURE }),
+    contents: [{ type: "filler" }],
+  };
+}
+
+/** แถบขั้นตอนแนวนอน: จุด — เส้น — จุด พร้อมชื่อขั้นเรียงใต้จุด */
+function stepper(t: TicketFlexInput, accent: string) {
+  const steps = stepsFor(t);
+  const strip: unknown[] = [];
+  steps.forEach((s, i) => {
+    if (i > 0) {
+      strip.push({
+        type: "box",
+        layout: "vertical",
+        height: "2px",
+        backgroundColor: s.done ? (s.bad ? STEP_BAD : accent) : STEP_LINE,
+        contents: [{ type: "filler" }],
+      });
+    }
+    strip.push(stepNode(s, accent));
+  });
+
+  return {
+    type: "box",
+    layout: "vertical",
+    margin: "lg",
+    contents: [
+      { type: "box", layout: "horizontal", alignItems: "center", contents: strip },
+      {
+        type: "box",
+        layout: "horizontal",
+        margin: "sm",
+        contents: steps.map((s, i) => ({
+          type: "text",
+          text: s.label,
+          size: "xxs",
+          flex: 1,
+          align: i === 0 ? "start" : i === steps.length - 1 ? "end" : "center",
+          weight: s.done ? "bold" : "regular",
+          color: s.done ? (s.bad ? STEP_BAD : accent) : STEP_FUTURE,
+        })),
+      },
+    ],
+  };
+}
+
+/** ประโยคบอกความเคลื่อนไหวล่าสุด — เรื่องที่เพิ่งแจ้งยังไม่มีใครทำอะไร จึงย้อนไปที่ผู้แจ้ง */
+function latestLine(t: TicketFlexInput): string {
+  const who = t.latestActor ?? t.actorName ?? t.assigneeName ?? null;
+  if (!who || (t.status === "pending" && !t.latestActor && !t.actorName)) {
+    return `${t.reporterName} แจ้งเรื่องเมื่อ ${t.latestAtLabel ?? t.createdAtLabel}`;
+  }
+  return `${who} ${LATEST_VERB[t.status]} ${t.latestAtLabel ?? t.createdAtLabel}`;
+}
 
 // ใช้ layout horizontal ไม่ใช่ baseline — ช่อง "รายละเอียด" ต้องตัดบรรทัดได้เมื่อข้อความยาว
 // ซึ่ง baseline box ของ LINE ออกแบบมาสำหรับข้อความสั้นบรรทัดเดียว
@@ -165,23 +278,17 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
   const body: unknown[] = [
     { type: "text", text: t.ticketNo, size: "xl", weight: "bold", align: "center", color: "#111111" },
     { type: "text", text: t.categoryLabel, size: "xs", align: "center", color: "#8A94A0", wrap: true },
+    stepper(t, accent),
     {
       type: "box",
-      layout: "horizontal",
-      margin: "md",
-      justifyContent: "center",
+      layout: "vertical",
+      margin: "lg",
+      paddingAll: "10px",
+      cornerRadius: "8px",
+      backgroundColor: "#F1F3F5",
       contents: [
-        {
-          type: "box",
-          layout: "vertical",
-          flex: 0,
-          paddingAll: "6px",
-          paddingStart: "14px",
-          paddingEnd: "14px",
-          cornerRadius: "14px",
-          backgroundColor: "#F1F3F5",
-          contents: [{ type: "text", text: statusLabel, size: "xs", weight: "bold", color: accent, align: "center" }],
-        },
+        { type: "text", text: "ล่าสุด", size: "xxs", color: "#8A94A0" },
+        { type: "text", text: latestLine(t), size: "xs", color: "#111111", wrap: true },
       ],
     },
     { type: "separator", margin: "lg", color: "#EDF0F3" },

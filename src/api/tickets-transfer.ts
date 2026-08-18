@@ -8,7 +8,7 @@ import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
 import { groupMessages } from "./_lib/mentions";
-import { thaiDateTime } from "./_lib/tickets";
+import { thaiDateTime, thaiDateTimeShort } from "./_lib/tickets";
 
 interface Body {
   to_dept?: string;
@@ -85,6 +85,8 @@ export default async (req: Request): Promise<Response> =>
         departmentCode: toDept,
         departmentName: dept[0].name,
         actorName: s.employee.full_name,
+        latestActor: s.employee.full_name,
+        latestAtLabel: thaiDateTimeShort(),
         categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
         reporterName: t.reporter_name,
         reporterDept: t.reporter_dept,
