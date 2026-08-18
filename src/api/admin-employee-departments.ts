@@ -1,6 +1,8 @@
-// PATCH /api/admin/employees/:id/departments — กำหนดฝ่ายและตำแหน่งของพนักงานหนึ่งคน (เฉพาะผู้ดูแล)
+// PATCH /api/admin/employees/:id/departments — กำหนดสถานะของพนักงานหนึ่งคน (เฉพาะผู้ดูแล)
 //
-// body: { department_code, role } โดย role = "head" | "staff" | "" (ค่าว่าง = ถอดออกจากฝ่ายนั้น)
+// body มีสองแบบ
+//   { department_code, role }  role = "head" (หัวหน้าฝ่าย) | "staff" (ผู้รับผิดชอบฝ่าย) | "" (ถอดออกจากฝ่ายนั้น)
+//   { clear_all: true }        ถอดออกจากทุกฝ่าย = กลับเป็นพนักงานทั่วไป
 //
 // เดิมงานนี้ต้องเข้าไปแก้ฐานข้อมูลเอง ซึ่งแปลว่าเวลามีคนย้ายฝ่ายหรือลาออกจริง ๆ ระบบจะค้าง
 // อยู่กับรายชื่อเก่าจนกว่าจะมีคนที่เขียน SQL เป็นมาแก้ให้
@@ -12,6 +14,7 @@ import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 interface Body {
   department_code?: string;
   role?: string | null;
+  clear_all?: boolean;
 }
 
 function employeeIdFromPath(req: Request): string {
@@ -42,38 +45,47 @@ export default async (req: Request): Promise<Response> =>
     if (!id) throw new HttpError(404, "ไม่พบพนักงานคนนี้");
 
     const body = await readJson<Body>(req);
+    const clearAll = body.clear_all === true;
     const code = (body.department_code ?? "").trim().toUpperCase();
     const role = (body.role ?? "").trim();
-    if (!code) throw new HttpError(400, "กรุณาระบุฝ่าย");
-    if (role && role !== "head" && role !== "staff") throw new HttpError(400, "ตำแหน่งไม่ถูกต้อง");
+    if (!clearAll) {
+      if (!code) throw new HttpError(400, "กรุณาระบุฝ่าย");
+      if (role && role !== "head" && role !== "staff") throw new HttpError(400, "ตำแหน่งไม่ถูกต้อง");
+    }
 
     const sql = db();
     const emp = await sql<{ id: string; status: string }[]>`
       SELECT id, status FROM employees WHERE id = ${id} LIMIT 1
     `;
     if (emp.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้");
-    if (role && emp[0].status === "suspended") {
+    if (!clearAll && role && emp[0].status === "suspended") {
       throw new HttpError(400, "พนักงานคนนี้ถูกระงับสิทธิ์อยู่ กรุณาคืนสิทธิ์ก่อนกำหนดฝ่าย");
     }
 
-    const dept = await sql<{ id: string; name: string }[]>`
-      SELECT id, name FROM departments WHERE code = ${code} AND is_active = true LIMIT 1
-    `;
-    if (dept.length === 0) throw new HttpError(404, "ไม่พบฝ่ายนี้ หรือฝ่ายนี้ถูกปิดใช้งานอยู่");
-    const departmentId = dept[0].id;
-
-    if (!role) {
-      await sql`DELETE FROM department_members WHERE department_id = ${departmentId} AND employee_id = ${id}`;
+    if (clearAll) {
+      // สถานะ "พนักงาน" คือไม่ดูแลฝ่ายใดเลย — ถอดออกทุกฝ่ายในครั้งเดียว
+      // ไม่ต้องให้ผู้ดูแลนั่งไล่ถอดทีละฝ่ายและเสี่ยงลืมฝ่ายใดฝ่ายหนึ่งไว้
+      await sql`DELETE FROM department_members WHERE employee_id = ${id}`;
     } else {
-      await sql`
-        INSERT INTO department_members (department_id, employee_id, role)
-        VALUES (${departmentId}, ${id}, ${role})
-        ON CONFLICT (department_id, employee_id) DO UPDATE SET role = EXCLUDED.role
+      const dept = await sql<{ id: string; name: string }[]>`
+        SELECT id, name FROM departments WHERE code = ${code} AND is_active = true LIMIT 1
       `;
+      if (dept.length === 0) throw new HttpError(404, "ไม่พบฝ่ายนี้ หรือฝ่ายนี้ถูกปิดใช้งานอยู่");
+
+      if (!role) {
+        await sql`DELETE FROM department_members WHERE department_id = ${dept[0].id} AND employee_id = ${id}`;
+      } else {
+        await sql`
+          INSERT INTO department_members (department_id, employee_id, role)
+          VALUES (${dept[0].id}, ${id}, ${role})
+          ON CONFLICT (department_id, employee_id) DO UPDATE SET role = EXCLUDED.role
+        `;
+      }
     }
 
     // ปลายทางการเตือนซ้ำต้องเป็นหัวหน้าฝ่ายที่ยังทำงานอยู่เสมอ คำนวณใหม่จากความจริงล่าสุด
     // แทนที่จะไล่แก้เป็นกรณี ๆ ไป — ไม่มีหัวหน้าเหลือก็ปล่อยว่าง แล้วการเตือนขั้นนั้นจะข้ามไปเอง
+    // คำนวณใหม่ทุกฝ่ายไปเลย เพราะการถอดออกทุกฝ่ายกระทบได้หลายฝ่ายพร้อมกัน และมีฝ่ายอยู่ไม่กี่แถว
     await sql`
       UPDATE departments d SET escalate_to = (
         SELECT dm.employee_id
@@ -83,7 +95,6 @@ export default async (req: Request): Promise<Response> =>
         ORDER BY e.employee_code
         LIMIT 1
       )
-      WHERE d.id = ${departmentId}
     `;
 
     // สิทธิ์ของคนคนนี้เพิ่งเปลี่ยน — ล้างแคช session ทันที ไม่งั้นเขาจะยังเห็นคิวงานชุดเดิมอีกนาทีหนึ่ง

@@ -569,9 +569,9 @@ function renderEmployee(e) {
   const unlinkBtn = e.linked ? '<button data-act="unlink">ปลดการผูกบัญชี</button>' : "";
   // ฝ่ายที่รับผิดชอบ — คนที่ไม่ได้ดูแลฝ่ายไหนคือพนักงานทั่วไป ไม่ต้องขึ้นบรรทัดนี้ให้รก
   const deptLine = (e.depts || []).length
-    ? `<div class="meta">ดูแล: ${e.depts.map((d) => esc(d.code) + (d.role === "head" ? " (หัวหน้าฝ่าย)" : "")).join(" · ")}</div>`
+    ? `<div class="meta">ดูแล: ${e.depts.map((d) => esc(d.code) + " (" + esc(ROLE_LABEL[d.role] || d.role) + ")").join(" · ")}</div>`
     : "";
-  const deptBtn = suspended ? "" : '<button data-act="depts">กำหนดฝ่าย</button>';
+  const deptBtn = suspended ? "" : '<button data-act="depts">กำหนดสถานะ</button>';
   return `<div class="card" data-id="${e.id}">
     <div class="cardtop">
       <div>
@@ -585,40 +585,65 @@ function renderEmployee(e) {
   </div>`;
 }
 
-const ROLE_LABEL = { head: "หัวหน้าฝ่าย", staff: "เจ้าหน้าที่" };
+const ROLE_LABEL = { head: "หัวหน้าฝ่าย", staff: "ผู้รับผิดชอบฝ่าย" };
 
 /**
- * กำหนดฝ่ายและตำแหน่งให้พนักงานหนึ่งคน — เลือกฝ่ายก่อน แล้วค่อยเลือกตำแหน่งในฝ่ายนั้น
- * แยกสองจังหวะเพราะบนมือถือการกดทีละอย่างอ่านง่ายกว่าตารางที่ต้องเล็งให้ตรงช่อง
+ * กำหนดสถานะให้พนักงานหนึ่งคน — เลือกสถานะก่อน แล้วค่อยเลือกฝ่าย
+ *
+ * สถานะมีสามอย่างคือ พนักงาน / ผู้รับผิดชอบฝ่าย / หัวหน้าฝ่าย
+ * สองอย่างหลังต้องบอกด้วยว่าฝ่ายไหน ส่วน "พนักงาน" คือไม่ดูแลฝ่ายใดเลย
+ *
+ * แยกเป็นสองจังหวะเพราะบนมือถือการกดทีละอย่างอ่านง่ายกว่าตารางที่ต้องเล็งให้ตรงช่อง
  */
 async function openDeptSheet(id, name, current) {
-  const have = new Map((current || []).map((d) => [d.code, d.role]));
-  const opts = (masters.departments || []).map((d) => ({
-    label: `${d.name} — ${ROLE_LABEL[have.get(d.code)] || "ไม่ได้อยู่ในฝ่ายนี้"}`,
-    value: d.code,
-  }));
-  if (!opts.length) return toast("ยังไม่มีฝ่ายที่เปิดใช้งาน");
+  const mine = current || [];
+  const have = new Map(mine.map((d) => [d.code, d.role]));
+  // สถานะปัจจุบันของคนคนนี้ — เป็นหัวหน้าที่ไหนสักฝ่ายถือว่าเป็นหัวหน้าฝ่าย
+  const now = !mine.length ? "none" : mine.some((d) => d.role === "head") ? "head" : "staff";
+  const mark = (v) => (v === now ? "✓ " : "");
 
-  const code = await openSheet(`กำหนดฝ่ายของ ${name}`, opts);
-  if (!code) return;
+  const status = await openSheet(`กำหนดสถานะของ ${name}`, [
+    { label: `${mark("none")}พนักงาน — ไม่ต้องดูแลฝ่ายใด`, value: "none" },
+    { label: `${mark("staff")}ผู้รับผิดชอบฝ่าย — รับเรื่องของฝ่าย`, value: "staff" },
+    { label: `${mark("head")}หัวหน้าฝ่าย — รับเรื่อง และรับการเตือนเมื่อเรื่องค้าง`, value: "head" },
+  ]);
+  if (!status) return;
 
-  const dept = masters.departments.find((d) => d.code === code);
-  const now = have.get(code);
-  const roleOpts = [
-    { label: "แต่งตั้งเป็นหัวหน้าฝ่าย", value: "head" },
-    { label: "กำหนดเป็นเจ้าหน้าที่", value: "staff" },
-  ].filter((o) => o.value !== now);
-  if (now) roleOpts.push({ label: "ถอดออกจากฝ่ายนี้", value: "none" });
-
-  const role = await openSheet(`${dept ? dept.name : code} — เลือกตำแหน่ง`, roleOpts);
-  if (!role) return;
+  let body = null;
+  if (status === "none") {
+    if (!mine.length) return toast(`${name} เป็นพนักงานอยู่แล้ว`);
+    // ดูแลอยู่หลายฝ่ายก็ให้เลือกได้ว่าจะถอดฝ่ายไหน ไม่ใช่ล้างทิ้งทั้งหมดโดยไม่ถาม
+    if (mine.length > 1) {
+      const pick = await openSheet(`ถอด ${name} ออกจากฝ่ายไหน`, [
+        ...mine.map((d) => ({ label: `${deptName(d.code)} — ${ROLE_LABEL[d.role] || d.role}`, value: d.code })),
+        { label: "ถอดออกจากทุกฝ่าย", value: "__all__" },
+      ]);
+      if (!pick) return;
+      body = pick === "__all__" ? { clear_all: true } : { department_code: pick, role: "" };
+    } else {
+      const ok = await confirmDialog({
+        title: `ให้ ${name} เป็นพนักงาน?`,
+        message: `จะถอดออกจาก ${deptName(mine[0].code)} และจะไม่เห็นคิวงานของฝ่ายอีก เรื่องที่เคยแจ้งไว้ยังอยู่ครบ`,
+        confirmLabel: "เปลี่ยนเป็นพนักงาน",
+        cancelLabel: "ไม่ใช่",
+      });
+      if (!ok) return;
+      body = { clear_all: true };
+    }
+  } else {
+    const opts = (masters.departments || []).map((d) => ({
+      label: `${d.name}${have.get(d.code) ? ` — ปัจจุบัน: ${ROLE_LABEL[have.get(d.code)]}` : ""}`,
+      value: d.code,
+    }));
+    if (!opts.length) return toast("ยังไม่มีฝ่ายที่เปิดใช้งาน");
+    const code = await openSheet(`${ROLE_LABEL[status]} — เลือกฝ่าย`, opts);
+    if (!code) return;
+    body = { department_code: code, role: status };
+  }
 
   try {
-    await api(`/api/admin/employees/${id}/departments`, {
-      method: "PATCH",
-      body: { department_code: code, role: role === "none" ? "" : role },
-    });
-    toast(role === "none" ? "ถอดออกจากฝ่ายเรียบร้อยแล้ว" : `กำหนดเป็น${ROLE_LABEL[role]}เรียบร้อยแล้ว`);
+    await api(`/api/admin/employees/${id}/departments`, { method: "PATCH", body });
+    toast(status === "none" ? "เปลี่ยนเป็นพนักงานเรียบร้อยแล้ว" : `กำหนดเป็น${ROLE_LABEL[status]}เรียบร้อยแล้ว`);
     // แก้สิทธิ์ของตัวเองแล้วต้องโหลด session ใหม่ ไม่งั้นแท็บคิวงานจะยังเป็นชุดเดิม
     if (session.employee && session.employee.id === id) {
       session = await api("/api/auth/session", { method: "POST" });
@@ -627,6 +652,12 @@ async function openDeptSheet(id, name, current) {
   } catch (e) {
     toast(e.message);
   }
+}
+
+/** ชื่อเต็มของฝ่ายจากรหัส — ฝ่ายที่ถูกปิดใช้งานไปแล้วจะไม่มีในรายการ ก็แสดงรหัสไปตรง ๆ */
+function deptName(code) {
+  const d = (masters.departments || []).find((x) => x.code === code);
+  return d ? d.name : code;
 }
 
 /* ---------- detail ---------- */

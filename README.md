@@ -35,7 +35,7 @@ wrangler.toml    การตั้งค่า Worker (assets, nodejs_compat, c
 
 **API** (รายละเอียดใน `spec.md` หัวข้อ 6)
 `/api/auth/*` ยืนยันตัวตนและผูกบัญชี · `/api/tickets*` แจ้งเรื่อง ติดตาม เปลี่ยนสถานะ ส่งต่อฝ่าย ·
-`/api/admin/*` จัดการผู้ใช้งานและกำหนดฝ่าย/ตำแหน่งของเจ้าหน้าที่ · `/api/uploads` ภาพแนบ · `/api/line/webhook` รับ postback จาก LINE
+`/api/admin/*` จัดการผู้ใช้งานและกำหนดสถานะ (พนักงาน / ผู้รับผิดชอบฝ่าย / หัวหน้าฝ่าย) · `/api/uploads` ภาพแนบ · `/api/line/webhook` รับ postback จาก LINE
 
 **คำสั่งในกลุ่มไลน์** — พิมพ์ `groupid` เพื่อขอรหัสกลุ่มสำหรับตั้งค่า `departments.line_group_id`
 (ตอบกลับด้วย reply จึงไม่กินโควตา)

@@ -103,7 +103,6 @@ export default async (req: Request): Promise<Response> =>
         ticketId: created.id,
         ticketNo: created.ticket_no,
         status: "pending",
-        departmentCode: category.deptCode,
         departmentName,
         categoryLabel: category.label,
         reporterName: s.employee.full_name,
