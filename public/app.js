@@ -596,12 +596,27 @@ async function goAdmin() {
   }
 }
 
+/**
+ * ฝ่ายที่ยุบรวมเป็นหัวข้อพับเดียวกัน — เฉพาะหัวข้อที่พับเท่านั้น
+ * ชื่อฝ่ายจริงของแต่ละคนยังขึ้นในบรรทัดใต้ชื่อตามเดิม ข้อมูลในระบบไม่ถูกแก้
+ *
+ * ฝ่ายของบริษัท PMTA แตกย่อยจนเหลือฝ่ายละคนสองคน พับแยกทีละฝ่ายเลยได้แต่หัวข้อเปล่า ๆ
+ * ส่วน Finance & Accounting กับ Corporate Finance & Accounting เป็นงานสายเดียวกัน
+ */
+const DEPT_MERGE = { "Finance & Accounting": "Corporate Finance & Accounting" };
+function deptGroupOf(name) {
+  const dept = (name || "").trim();
+  if (!dept) return NO_DEPT_GROUP;
+  if (dept.startsWith("PM ")) return "PMTA";
+  return DEPT_MERGE[dept] || dept;
+}
+
 /** แบ่งรายชื่อเป็นกลุ่ม — ทีมงานระบบขึ้นก่อน แล้วไล่ฝ่ายตามตัวอักษร คนที่ไม่ระบุฝ่ายไว้ท้ายสุด */
 function groupEmployees(rows) {
   const team = rows.filter((e) => (e.depts || []).length);
   const byDept = new Map();
   rows.forEach((e) => {
-    const key = (e.department_name || "").trim() || NO_DEPT_GROUP;
+    const key = deptGroupOf(e.department_name);
     if (!byDept.has(key)) byDept.set(key, []);
     byDept.get(key).push(e);
   });
