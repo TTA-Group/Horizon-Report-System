@@ -5,7 +5,7 @@ import { db } from "./db";
 import { buildTicketFlex } from "./flex";
 import { pushTo, textMessage } from "./line";
 import { groupMessages } from "./mentions";
-import { thaiDateTime } from "./tickets";
+import { thaiDateTimeShort } from "./tickets";
 
 /**
  * เตือนซ้ำเรื่องที่ค้างเกิน SLA (spec หัวข้อ 5.4)
@@ -71,7 +71,7 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       locationNote: t.location_note,
       detail: t.detail,
       urgency: t.urgency as UrgencyCode,
-      createdAtLabel: thaiDateTime(new Date(t.created_at)),
+      createdAtLabel: thaiDateTimeShort(new Date(t.created_at)),
     });
 
     if (t.line_group_id) {

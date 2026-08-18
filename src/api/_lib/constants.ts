@@ -46,12 +46,16 @@ export const STATUS_LABELS: Record<StatusCode, string> = {
 };
 
 // การเปลี่ยนสถานะที่อนุญาต (spec หัวข้อ 4)
-// เพิ่ม in_progress -> cancelled จาก spec เดิม เพราะการ์ดในกลุ่มมีปุ่มยกเลิกทั้งตอนรอรับเรื่อง
-// และตอนกำลังดำเนินการ (เช่น รับเรื่องไปแล้วถึงรู้ว่าแจ้งซ้ำ หรือหน้างานแก้ไปเองแล้ว)
+//
+// ต่างจาก spec เดิม 2 ข้อ ตามการใช้งานจริง:
+//   - in_progress -> cancelled ได้ เพราะบางทีรับเรื่องไปแล้วถึงรู้ว่าแจ้งซ้ำ หรือหน้างานแก้เองไปแล้ว
+//   - completed คือจุดจบ ไม่มีขั้น "ปิดเรื่อง" ต่อท้ายอีก — การให้คนมากดปิดซ้ำอีกครั้งไม่ได้เพิ่ม
+//     ข้อมูลอะไร มีแต่ทำให้งานที่เสร็จแล้วค้างอยู่ในคิวเพราะยังไม่มีใครมากดปิด
+//     คงค่า closed ไว้ในระบบเพื่อให้เรื่องเก่าที่เคยปิดไปแล้วยังแสดงผลได้ถูกต้อง
 export const STATUS_TRANSITIONS: Record<StatusCode, StatusCode[]> = {
   pending: ["in_progress", "cancelled"],
   in_progress: ["completed", "pending", "cancelled"],
-  completed: ["closed", "in_progress"],
+  completed: ["in_progress"],
   closed: [],
   cancelled: [],
 };

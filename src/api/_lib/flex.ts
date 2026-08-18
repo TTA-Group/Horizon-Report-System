@@ -72,11 +72,11 @@ const STEP_BAD = "#B3261E";
 
 /** คำต่อท้ายชื่อคนในแถบ "ล่าสุด" ให้อ่านเป็นประโยคได้ */
 const LATEST_VERB: Record<StatusCode, string> = {
-  pending: "ส่งต่อมาเมื่อ",
-  in_progress: "รับเรื่องไว้เมื่อ",
-  completed: "ปิดงานเมื่อ",
-  closed: "ปิดเรื่องเมื่อ",
-  cancelled: "ยกเลิกเมื่อ",
+  pending: "ส่งต่อมาโดย",
+  in_progress: "รับเรื่องโดย",
+  completed: "ดำเนินการเสร็จสิ้นโดย",
+  closed: "ปิดเรื่องโดย",
+  cancelled: "ยกเลิกโดย",
 };
 
 interface Step {
@@ -99,13 +99,13 @@ function stepsFor(t: TicketFlexInput): Step[] {
       { label: "ยกเลิก", done: true, bad: true },
     ];
   }
-  const order: StatusCode[] = ["pending", "in_progress", "completed", "closed"];
-  const at = order.indexOf(t.status);
+  // closed เป็นสถานะเก่าที่เลิกใช้แล้ว (ดู STATUS_TRANSITIONS) — เรื่องเก่าที่เคยปิดไว้
+  // ให้แสดงเหมือนเสร็จสิ้น จะได้ไม่มีขั้นที่ไม่มีทางเกิดขึ้นอีกค้างอยู่บนแถบ
+  const done = t.status === "completed" || t.status === "closed";
   return [
-    { label: "แจ้งเรื่อง", done: at >= 0 },
-    { label: "รับเรื่อง", done: at >= 1 },
-    { label: "เสร็จสิ้น", done: at >= 2 },
-    { label: "ปิดเรื่อง", done: at >= 3 },
+    { label: "แจ้งเรื่อง", done: true },
+    { label: "รับเรื่อง", done: done || t.status === "in_progress" },
+    { label: "เสร็จสิ้น", done },
   ];
 }
 
@@ -166,13 +166,28 @@ function stepper(t: TicketFlexInput, accent: string) {
   };
 }
 
-/** ประโยคบอกความเคลื่อนไหวล่าสุด — เรื่องที่เพิ่งแจ้งยังไม่มีใครทำอะไร จึงย้อนไปที่ผู้แจ้ง */
-function latestLine(t: TicketFlexInput): string {
+/**
+ * กล่อง "ล่าสุด" — ชื่อคนบรรทัดหนึ่ง วันเวลาอีกบรรทัดหนึ่ง
+ *
+ * คืน null เมื่อยังไม่มีใครทำอะไรกับเรื่องนี้เลย (เพิ่งแจ้งเข้ามา) เพราะการเขียนว่า
+ * "ผู้แจ้ง แจ้งเรื่องเมื่อ ..." ซ้ำกับชิปวันเวลาด้านบนและแถวผู้แจ้งอยู่แล้ว
+ */
+function latestBox(t: TicketFlexInput): Record<string, unknown> | null {
   const who = t.latestActor ?? t.actorName ?? t.assigneeName ?? null;
-  if (!who || (t.status === "pending" && !t.latestActor && !t.actorName)) {
-    return `${t.reporterName} แจ้งเรื่องเมื่อ ${t.latestAtLabel ?? t.createdAtLabel}`;
-  }
-  return `${who} ${LATEST_VERB[t.status]} ${t.latestAtLabel ?? t.createdAtLabel}`;
+  if (!who) return null;
+  return {
+    type: "box",
+    layout: "vertical",
+    margin: "lg",
+    paddingAll: "10px",
+    cornerRadius: "8px",
+    backgroundColor: "#F1F3F5",
+    contents: [
+      { type: "text", text: LATEST_VERB[t.status], size: "xxs", color: "#8A94A0" },
+      { type: "text", text: who, size: "sm", weight: "bold", color: "#111111", wrap: true },
+      { type: "text", text: t.latestAtLabel ?? t.createdAtLabel, size: "xxs", color: "#8A94A0" },
+    ],
+  };
 }
 
 // ใช้ layout horizontal ไม่ใช่ baseline — ช่อง "รายละเอียด" ต้องตัดบรรทัดได้เมื่อข้อความยาว
@@ -264,10 +279,29 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
   const statusLabel = STATUS_CHIP[t.status] ?? STATUS_LABELS[t.status] ?? t.status;
 
   const rows: unknown[] = [
-    kv("ผู้แจ้ง", `${t.reporterName}${t.reporterDept ? " · " + t.reporterDept : ""}`),
+    // ชื่อผู้แจ้งกับต้นสังกัดแยกคนละบรรทัด ต้นสังกัดตัวเล็กกว่าและเป็นสีเทา
+    // เพราะเป็นข้อมูลประกอบ ไม่ใช่สิ่งที่คนอ่านการ์ดมองหา
+    {
+      type: "box",
+      layout: "horizontal",
+      spacing: "sm",
+      contents: [
+        { type: "text", text: "ผู้แจ้ง", color: "#8A94A0", size: "xs", flex: 3 },
+        {
+          type: "box",
+          layout: "vertical",
+          flex: 7,
+          contents: [
+            { type: "text", text: t.reporterName, color: "#111111", size: "xs", wrap: true },
+            ...(t.reporterDept
+              ? [{ type: "text", text: t.reporterDept, color: "#8A94A0", size: "xxs", wrap: true }]
+              : []),
+          ],
+        },
+      ],
+    },
     kv("สถานที่", `${t.floor}${t.locationNote ? " · " + t.locationNote : ""}`),
     kv("รายละเอียด", t.detail),
-    kv("วันเวลา", t.createdAtLabel),
   ];
   // ชื่อคนที่เพิ่งเปลี่ยนสถานะ — ข้ามเมื่อเป็นคนเดียวกับผู้รับผิดชอบ จะได้ไม่ขึ้นชื่อซ้ำสองที่
   if (t.actorName && t.actorName !== t.assigneeName) {
@@ -275,22 +309,32 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
   }
   if (t.cancelReason) rows.push(kv("เหตุผลที่ยกเลิก", t.cancelReason));
 
+  const latest = latestBox(t);
   const body: unknown[] = [
-    { type: "text", text: t.ticketNo, size: "xl", weight: "bold", align: "center", color: "#111111" },
-    { type: "text", text: t.categoryLabel, size: "xs", align: "center", color: "#8A94A0", wrap: true },
-    stepper(t, accent),
+    // เลขที่เรื่องซ้ายมือ วันเวลาที่แจ้งเป็นชิปมุมขวาบน — วันเวลาเป็นข้อมูลอ้างอิง
+    // ไม่ต้องกินพื้นที่หนึ่งบรรทัดเต็มในรายการข้อมูลด้านล่าง
     {
       type: "box",
-      layout: "vertical",
-      margin: "lg",
-      paddingAll: "10px",
-      cornerRadius: "8px",
-      backgroundColor: "#F1F3F5",
+      layout: "horizontal",
+      alignItems: "center",
       contents: [
-        { type: "text", text: "ล่าสุด", size: "xxs", color: "#8A94A0" },
-        { type: "text", text: latestLine(t), size: "xs", color: "#111111", wrap: true },
+        { type: "text", text: t.ticketNo, size: "lg", weight: "bold", color: "#111111", flex: 1 },
+        {
+          type: "box",
+          layout: "vertical",
+          flex: 0,
+          paddingAll: "4px",
+          paddingStart: "10px",
+          paddingEnd: "10px",
+          cornerRadius: "12px",
+          backgroundColor: "#F1F3F5",
+          contents: [{ type: "text", text: t.createdAtLabel, size: "xxs", color: "#5B6672", align: "center" }],
+        },
       ],
     },
+    { type: "text", text: t.categoryLabel, size: "xs", color: "#8A94A0", wrap: true },
+    stepper(t, accent),
+    ...(latest ? [latest] : []),
     { type: "separator", margin: "lg", color: "#EDF0F3" },
     { type: "box", layout: "vertical", margin: "lg", spacing: "sm", contents: rows },
     assigneeBlock(t, accent),
