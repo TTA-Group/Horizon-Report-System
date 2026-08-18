@@ -34,12 +34,16 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       department_name: string;
       line_group_id: string | null;
       escalate_to: string | null;
+      photos: string[] | null;
     }[]
   >`
     SELECT t.id, t.ticket_no, t.reminder_count, t.category_code, t.floor, t.location_note,
            t.detail, t.urgency, t.created_at, r.full_name AS reporter_name, r.department_name AS reporter_dept,
            t.department_id, d.code AS department_code, d.name AS department_name,
-           d.line_group_id, d.escalate_to
+           d.line_group_id, d.escalate_to,
+           (SELECT array_agg(ta.file_url ORDER BY ta.created_at)
+              FROM ticket_attachments ta
+             WHERE ta.ticket_id = t.id AND ta.file_url IS NOT NULL) AS photos
     FROM tickets t
     JOIN departments d ON d.id = t.department_id
     JOIN employees r ON r.id = t.reporter_id
@@ -72,6 +76,7 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
       detail: t.detail,
       urgency: t.urgency as UrgencyCode,
       createdAtLabel: thaiDateTimeShort(new Date(t.created_at)),
+      photos: t.photos,
     });
 
     if (t.line_group_id) {

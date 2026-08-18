@@ -59,13 +59,17 @@ export default async (req: Request): Promise<Response> =>
         reporter_name: string;
         reporter_dept: string | null;
         assignee_name: string | null;
+        photos: string[] | null;
       }[]
     >`
       SELECT t.status, t.department_id, t.reporter_id, t.ticket_no, t.category_code,
              t.floor, t.location_note, t.detail, t.urgency, t.created_at,
              r.full_name AS reporter_name, r.department_name AS reporter_dept,
              d.code AS department_code, d.name AS department_name, d.line_group_id,
-             a.full_name AS assignee_name
+             a.full_name AS assignee_name,
+             (SELECT array_agg(ta.file_url ORDER BY ta.created_at)
+              FROM ticket_attachments ta
+             WHERE ta.ticket_id = t.id AND ta.file_url IS NOT NULL) AS photos
       FROM tickets t
       JOIN employees r ON r.id = t.reporter_id
       JOIN departments d ON d.id = t.department_id
@@ -152,6 +156,7 @@ export default async (req: Request): Promise<Response> =>
           actorName: s.employee.full_name,
           latestActor: s.employee.full_name,
           latestAtLabel: thaiDateTimeShort(),
+          photos: t.photos,
           cancelReason: to === "cancelled" ? note : null,
         });
         await pushTo(t.line_group_id, [card], { ticketId: id, channel: "group" });
