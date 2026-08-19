@@ -224,10 +224,12 @@ async function confirmFound() {
   const ok = await confirmDialog({
     title: "รหัสพนักงานตรงกับชื่อของคุณหรือไม่",
     message:
-      `${code} · ${$("#f-name").textContent}\n\n` +
-      "เมื่อยืนยันแล้ว รหัสนี้จะถูกล็อกกับบัญชีไลน์ของคุณ ใช้ลงทะเบียนซ้ำอีกไม่ได้ " +
-      "จนกว่าจะให้ฝ่ายทรัพยากรบุคคลปลดสิทธิ์ให้ และหากภายหลังพบว่ารหัสกับชื่อไม่ตรงกัน " +
-      "เรื่องที่แจ้งไว้ทั้งหมดจะถูกลบ",
+      "เมื่อกดยืนยันแล้ว รหัสพนักงานนี้จะถูกล็อกกับบัญชีไลน์ของคุณ\n\n" +
+      "หากพบว่ารหัสกับชื่อไม่ตรงกันโปรดติดต่อฝ่ายบุคคล",
+    note:
+      "*หมายเหตุ:\n" +
+      "• บริษัทฯ มิได้เก็บรวบรวมข้อมูลส่วนบุคคลอื่นของท่านนอกเหนือจากที่ระบุไว้ข้างต้น\n" +
+      "• ระบบผูก LINE เข้ากับรหัสพนักงานเท่านั้น",
     confirmLabel: "ใช่ ยืนยันตัวตน",
     cancelLabel: "ไม่ใช่",
   });
@@ -1045,7 +1047,7 @@ function finishSheet(v) {
 let confirmResolve = null;
 let modalHasInput = false;
 
-function openModal({ title, message = "", confirmLabel = "ยืนยัน", cancelLabel = "ไม่ใช่", input = null }) {
+function openModal({ title, message = "", note = "", confirmLabel = "ยืนยัน", cancelLabel = "ไม่ใช่", input = null }) {
   return new Promise((resolve) => {
     confirmResolve = resolve;
     modalHasInput = !!input;
@@ -1053,6 +1055,10 @@ function openModal({ title, message = "", confirmLabel = "ยืนยัน", c
     const msg = $("#modal-msg");
     msg.textContent = message;
     msg.style.display = message ? "" : "none";
+    // ต้องล้างทุกครั้ง ไม่งั้นหมายเหตุของหน้าต่างก่อนหน้าจะค้างมาโผล่ในหน้าต่างถัดไป
+    const noteEl = $("#modal-note");
+    noteEl.textContent = note;
+    noteEl.style.display = note ? "" : "none";
 
     const field = $("#modal-input");
     if (input) {

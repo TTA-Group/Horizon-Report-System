@@ -247,6 +247,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .modal h3{font-size:18px;font-weight:700;line-height:1.4;letter-spacing:-.01em}
 /* white-space:pre-line ให้ข้อความยืนยันขึ้นบรรทัดใหม่ได้ตามที่เขียนไว้ (ใส่เป็นข้อความล้วน ไม่ใช่ HTML) */
 .modal p{font-size:13px;color:var(--slate);line-height:1.6;margin-top:8px;white-space:pre-line;text-align:left}
+/* หมายเหตุท้ายหน้าต่าง — เล็กและจางกว่าเนื้อความ text-indent ติดลบทำให้บรรทัดที่ตัดขึ้นใหม่
+   เยื้องเข้ามาอยู่ใต้ข้อความ ไม่ไหลกลับไปชิดจุดนำหน้า */
+.modal p.note{font-size:11px;color:#8A94A0;line-height:1.55;margin-top:15px;text-indent:-9px;padding-left:9px}
 .modal input[type=text]{margin-top:14px;text-align:left}
 .modal-actions{display:flex;gap:8px;margin-top:20px}
 .mbtn{flex:1;font-family:inherit;font-size:14px;font-weight:600;padding:12px;border-radius:12px;
@@ -429,6 +432,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <h3 id="modal-title">ยืนยัน</h3>
     <p id="modal-msg"></p>
+    <p id="modal-note" class="note"></p>
     <input type="text" id="modal-input" style="display:none" />
     <div class="modal-actions">
       <button class="mbtn" id="modal-no">ไม่ใช่</button>
