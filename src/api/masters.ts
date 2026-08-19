@@ -2,7 +2,7 @@
 // ต้องล็อกอินก่อน — เป็นระบบภายในองค์กร ไม่ควรเปิดรายชื่อฝ่าย/ชั้นให้คนนอกดูได้
 
 import { getSession } from "./_lib/auth";
-import { CATEGORIES, FLOORS, URGENCIES, companyEmailDomains } from "./_lib/constants";
+import { CATEGORIES, FLOORS, URGENCIES } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { json, methodGuard, run } from "./_lib/http";
 
@@ -21,6 +21,5 @@ export default async (req: Request): Promise<Response> =>
       departments: [...departments],
       floors: FLOORS,
       urgencies: URGENCIES,
-      company_email_domains: companyEmailDomains(),
     });
   });
