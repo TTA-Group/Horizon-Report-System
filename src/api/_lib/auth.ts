@@ -51,9 +51,10 @@ export async function getSession(req: Request): Promise<Session> {
 
   const sql = db();
 
-  const rows = await sql<EmployeeRow[]>`
+  const rows = await sql<(EmployeeRow & { line_display_name: string | null })[]>`
     SELECT e.id, e.employee_code, e.full_name, e.department_id,
-           e.department_name, e.floor, e.email, e.status
+           e.department_name, e.floor, e.email, e.status,
+           la.display_name AS line_display_name
     FROM line_accounts la
     JOIN employees e ON e.id = la.employee_id
     WHERE la.line_user_id = ${profile.sub} AND la.channel_key = ${CHANNEL_KEY}
@@ -72,6 +73,22 @@ export async function getSession(req: Request): Promise<Session> {
     };
   } else {
     const employee = rows[0];
+
+    // ชื่อในไลน์เปลี่ยนได้ตลอดเวลา แต่ระบบเก็บไว้ตอนผูกบัญชีครั้งเดียว หน้าผู้ดูแลจึงค้างชื่อเก่า
+    // ตรงนี้ถือชื่อล่าสุดจาก token อยู่ในมือแล้ว จึงอัปเดตให้เมื่อไม่ตรงกัน (นาน ๆ ครั้งจะเกิดสักที
+    // เพราะผลของ getSession ถูกแคชไว้) ถ้าอัปเดตไม่สำเร็จก็ปล่อยผ่าน — เป็นแค่ชื่อที่โชว์ในหน้า
+    // ผู้ดูแล ไม่ควรทำให้คนคนนั้นเข้าใช้งานระบบไม่ได้
+    if (profile.name && employee.line_display_name !== profile.name) {
+      try {
+        await sql`
+          UPDATE line_accounts SET display_name = ${profile.name}
+          WHERE line_user_id = ${profile.sub} AND channel_key = ${CHANNEL_KEY}
+        `;
+      } catch (e) {
+        console.error("[auth] อัปเดตชื่อไลน์ไม่สำเร็จ", e);
+      }
+    }
+
     const deptRoles = await sql<DeptRole[]>`
       SELECT dm.department_id, d.code, dm.role
       FROM department_members dm
