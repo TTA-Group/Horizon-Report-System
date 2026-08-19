@@ -2,7 +2,7 @@
 // ต้องล็อกอินก่อน — เป็นระบบภายในองค์กร ไม่ควรเปิดรายชื่อฝ่าย/ชั้นให้คนนอกดูได้
 
 import { getSession } from "./_lib/auth";
-import { CATEGORIES, FLOORS, URGENCIES } from "./_lib/constants";
+import { ADMIN_DEPARTMENT_CODE, CATEGORIES, FLOORS, URGENCIES } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { json, methodGuard, run } from "./_lib/http";
 
@@ -18,7 +18,9 @@ export default async (req: Request): Promise<Response> =>
     `;
     return json({
       categories: CATEGORIES.map((c) => ({ code: c.code, label: c.label, dept_code: c.deptCode })),
-      departments: [...departments],
+      // บอกไปด้วยว่าฝ่ายไหนให้สิทธิ์ผู้ดูแล — หน้าจอจะได้เตือนตอนกำหนดคนเข้าฝ่ายนั้น
+      // โดยไม่ต้องเขียนรหัสฝ่ายซ้ำไว้ฝั่งหน้าจอ (แหล่งความจริงอยู่ที่ ADMIN_DEPARTMENT_CODE)
+      departments: departments.map((d) => ({ ...d, grants_admin: d.code === ADMIN_DEPARTMENT_CODE })),
       floors: FLOORS,
       urgencies: URGENCIES,
     });

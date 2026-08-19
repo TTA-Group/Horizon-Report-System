@@ -861,8 +861,12 @@ async function openDeptSheet(id, name, current) {
       body = { clear_all: true };
     }
   } else {
+    // ฝ่ายที่ให้สิทธิ์ผู้ดูแลต้องบอกไว้ตรงนี้ ไม่งั้นการเพิ่มคนเข้าฝ่ายนั้นดูเหมือนงานธรรมดา
+    // ทั้งที่ผลคือคนนั้นเห็นและแก้ข้อมูลพนักงานทั้งองค์กรได้
     const opts = (masters.departments || []).map((d) => ({
-      label: `${d.name}${have.get(d.code) ? ` — ปัจจุบัน: ${ROLE_LABEL[have.get(d.code)]}` : ""}`,
+      label:
+        `${d.name}${d.grants_admin ? " · ให้สิทธิ์ผู้ดูแลระบบ" : ""}` +
+        `${have.get(d.code) ? ` — ปัจจุบัน: ${ROLE_LABEL[have.get(d.code)]}` : ""}`,
       value: d.code,
     }));
     if (!opts.length) return toast("ยังไม่มีฝ่ายที่เปิดใช้งาน");
