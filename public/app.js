@@ -74,8 +74,23 @@ async function api(path, { method = "GET", body } = {}) {
   } catch {
     /* noop */
   }
-  if (!res.ok) throw new Error(data.error || `เกิดข้อผิดพลาด (${res.status})`);
+  if (!res.ok) {
+    // ผู้ดูแลเพิ่งปลดสิทธิ์หรือระงับสิทธิ์ระหว่างที่เปิดแอปค้างไว้ — พาไปหน้าที่ถูกต้องเลย
+    // ไม่ปล่อยให้กดต่อแล้วเจอข้อความปฏิเสธซ้ำ ๆ โดยไม่รู้ว่าเกิดอะไรขึ้น
+    if (data.code === "not_linked" || data.code === "suspended") accessLost(data.code);
+    throw new Error(data.error || `เกิดข้อผิดพลาด (${res.status})`);
+  }
   return data;
+}
+
+/** สิทธิ์ถูกถอนระหว่างใช้งาน — เก็บแถบบน/แถบล่าง แล้วกลับไปหน้าตั้งต้นของกรณีนั้น */
+function accessLost(code) {
+  $("#appbar").style.display = "none";
+  $("#tabbar").style.display = "none";
+  if (code === "suspended") return show("s-suspended");
+  session = { linked: false };
+  $("#empid").value = "";
+  showRegister();
 }
 
 function show(id) {
@@ -694,7 +709,7 @@ async function openEmployeeSheet(id) {
 
   const opts = [];
   if (!suspended) opts.push({ label: "เปลี่ยนสถานะ", value: "depts" });
-  if (e.linked) opts.push({ label: "ปลดการผูกบัญชี LINE", value: "unlink" });
+  if (e.linked) opts.push({ label: "ปลดสิทธิ์ · ต้องลงทะเบียนใหม่", value: "unlink" });
   opts.push(
     suspended
       ? { label: "คืนสิทธิ์การใช้งาน", value: "restore" }
@@ -715,14 +730,16 @@ async function openEmployeeSheet(id) {
 
 async function actUnlink(id, name) {
   const ok = await confirmDialog({
-    title: `ปลดการผูกบัญชีของ ${name}?`,
-    message: "พนักงานต้องยืนยันตัวตนด้วยรหัสพนักงานอีกครั้ง ข้อมูลเรื่องที่เคยแจ้งไว้ยังคงอยู่ครบถ้วน",
-    confirmLabel: "ปลดการผูกบัญชี",
+    title: `ปลดสิทธิ์ ${name}?`,
+    message:
+      "บัญชีไลน์ที่ผูกไว้จะถูกปลดออก ครั้งต่อไปที่เปิดแอปจะกลับไปหน้าลงทะเบียน " +
+      "และต้องยืนยันด้วยรหัสพนักงานอีกครั้ง เรื่องที่เคยแจ้งไว้ยังอยู่ครบ",
+    confirmLabel: "ปลดสิทธิ์",
     cancelLabel: "ไม่ใช่",
   });
   if (!ok) return;
   await api(`/api/admin/employees/${id}/unlink`, { method: "PATCH" });
-  toast("ปลดการผูกบัญชี LINE เรียบร้อยแล้ว");
+  toast("ปลดสิทธิ์เรียบร้อยแล้ว · ต้องลงทะเบียนใหม่ก่อนใช้งาน");
   goAdmin();
 }
 

@@ -2,10 +2,16 @@
 
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /**
+   * รหัสสั้น ๆ ให้หน้าจอแยกกรณีได้โดยไม่ต้องเดาจากข้อความ
+   * ใช้เฉพาะกรณีที่หน้าจอต้องทำอะไรต่อจริง ๆ เช่น พาผู้ใช้กลับไปหน้าลงทะเบียน
+   */
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = "HttpError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -49,7 +55,9 @@ export async function run(fn: () => Promise<Response>): Promise<Response> {
   try {
     return await fn();
   } catch (e) {
-    if (e instanceof HttpError) return json({ error: e.message }, e.status);
+    if (e instanceof HttpError) {
+      return json(e.code ? { error: e.message, code: e.code } : { error: e.message }, e.status);
+    }
     console.error("[unhandled]", e);
     return json({ error: "internal error" }, 500);
   }

@@ -127,8 +127,10 @@ export function invalidateSessionByEmployeeId(employeeId: string): void {
 
 /** ต้องยืนยันตัวตนแล้วและไม่ถูกระงับสิทธิ์ */
 export function requireActive(s: Session): asserts s is Session & { employee: EmployeeRow } {
-  if (!s.linked || !s.employee) throw new HttpError(403, "ยังไม่ได้ยืนยันตัวตน");
-  if (s.employee.status === "suspended") throw new HttpError(403, "บัญชีถูกระงับสิทธิ์");
+  // ติดรหัสไว้ให้หน้าจอรู้ว่าต้องพากลับไปหน้าไหน — ผู้ดูแลอาจปลดสิทธิ์หรือระงับสิทธิ์
+  // ระหว่างที่เจ้าตัวเปิดแอปค้างไว้ ปล่อยให้กดต่อแล้วเจอข้อความปฏิเสธเฉย ๆ จะงงว่าเกิดอะไรขึ้น
+  if (!s.linked || !s.employee) throw new HttpError(403, "ยังไม่ได้ยืนยันตัวตน", "not_linked");
+  if (s.employee.status === "suspended") throw new HttpError(403, "บัญชีถูกระงับสิทธิ์", "suspended");
 }
 
 /** ต้องเป็นผู้ดูแลระบบ */
