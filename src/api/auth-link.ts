@@ -41,7 +41,11 @@ export default async (req: Request): Promise<Response> =>
       WHERE employee_id = ${employeeId} AND channel_key = ${CHANNEL_KEY} LIMIT 1
     `;
     if (already.length > 0) {
-      throw new HttpError(409, "รหัสพนักงานนี้ถูกผูกกับบัญชี LINE อื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล");
+      throw new HttpError(
+        409,
+        "รหัสพนักงานนี้ถูกผูกกับบัญชี LINE อื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล",
+        "already_linked",
+      );
     }
 
     try {
@@ -52,7 +56,11 @@ export default async (req: Request): Promise<Response> =>
     } catch (e) {
       // unique violation — บัญชีไลน์นี้ถูกผูกกับพนักงานคนอื่นไปแล้ว หรือมีคนกดพร้อมกันพอดี
       if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "23505") {
-        throw new HttpError(409, "บัญชีไลน์นี้ถูกผูกไว้กับพนักงานคนอื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล");
+        throw new HttpError(
+          409,
+          "บัญชีไลน์นี้ถูกผูกไว้กับพนักงานคนอื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล",
+          "already_linked",
+        );
       }
       throw e;
     }
