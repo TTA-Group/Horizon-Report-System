@@ -739,12 +739,17 @@ async function openEmployeeSheet(id) {
   if (!e) return;
   const suspended = e.status === "suspended";
   const roles = (e.depts || []).map((d) => `${deptName(d.code)} (${ROLE_LABEL[d.role] || d.role})`).join("<br>");
-  // บัญชีไลน์ที่ผูกไว้ — ชื่อที่โชว์คือชื่อในไลน์ ณ ครั้งล่าสุดที่เจ้าตัวเปิดแอป
-  // ส่วน user ID ไว้ให้ก๊อปไปเทียบตอนไล่ปัญหาว่าข้อความไปไม่ถึงใคร
+  // บัญชีไลน์ที่ผูกไว้ — ชื่อที่โชว์คือชื่อในไลน์จริงของเจ้าตัว (ปรับตามทุกครั้งที่เขาเปิดแอป)
+  // ส่วนรหัสยาว ๆ เก็บไว้ก่อน กดแสดงเมื่อต้องก๊อปไปไล่ปัญหาว่าข้อความไปไม่ถึงใคร
   const line = e.line
-    ? `<div class="kv"><i>ชื่อในไลน์</i><b>${esc(e.line.display_name || "ไม่ทราบชื่อ")}</b></div>
+    ? `<div class="kv"><i>บัญชีไลน์ที่ผูก</i><b>${esc(e.line.display_name || "ไม่ทราบชื่อ")}</b></div>
        <div class="kv"><i>ผูกบัญชีเมื่อ</i><b>${esc(e.line.linked_at || "-")}</b></div>
-       <div class="kv"><i>LINE user ID</i><b class="uid">${esc(e.line.user_id)}</b></div>`
+       <div class="kv"><i>รหัสผู้ใช้ไลน์</i>
+         <span class="uidwrap">
+           <b class="uid" data-uid="${esc(e.line.user_id)}">${UID_MASK}</b>
+           <button class="uidbtn" data-uid-toggle>แสดง</button>
+         </span>
+       </div>`
     : '<div class="kv"><i>บัญชี LINE</i><b>ยังไม่ได้ผูก</b></div>';
   const meta = `
     <div class="sub">${esc(e.employee_code)}${e.department_name ? " · " + esc(e.department_name) : ""}</div>
@@ -884,6 +889,10 @@ function deptName(code) {
   const d = (masters.departments || []).find((x) => x.code === code);
   return d ? d.name : code;
 }
+
+// รหัสผู้ใช้ไลน์เป็นสตริงยาวที่ไม่ได้ใช้ในงานประจำวัน ขึ้นค้างไว้มีแต่ทำให้แผ่นรก
+// ซ่อนไว้ก่อนแล้วให้กดแสดงเมื่อต้องใช้จริง
+const UID_MASK = "••••••••••••";
 
 /* ---------- เพิ่มพนักงานเข้าระบบ (ผู้ดูแล) ---------- */
 
@@ -1277,6 +1286,16 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#n-save").onclick = saveEmployee;
   $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));
   $("#n-floor").onchange = () => revealOther($("#n-floor"), $("#n-floorOther"));
+  // สลับแสดง/ซ่อนรหัสผู้ใช้ไลน์ — ผูกที่กล่องแม่ครั้งเดียว เพราะเนื้อในถูกวาดใหม่ทุกครั้งที่เปิดแผ่น
+  $("#sheet-meta").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-uid-toggle]");
+    if (!btn) return;
+    const val = btn.parentElement.querySelector(".uid");
+    const shown = val.textContent !== UID_MASK;
+    val.textContent = shown ? UID_MASK : val.dataset.uid;
+    btn.textContent = shown ? "แสดง" : "ซ่อน";
+  });
+
   // bottom sheet ยกเลิก
   $("#sheet-cancel").onclick = () => finishSheet(null);
 
