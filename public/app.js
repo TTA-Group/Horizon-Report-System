@@ -712,10 +712,17 @@ async function openEmployeeSheet(id) {
   if (!e) return;
   const suspended = e.status === "suspended";
   const roles = (e.depts || []).map((d) => `${deptName(d.code)} (${ROLE_LABEL[d.role] || d.role})`).join("<br>");
+  // บัญชีไลน์ที่ผูกไว้ — ชื่อที่โชว์คือชื่อในไลน์ ณ ครั้งล่าสุดที่เจ้าตัวเปิดแอป
+  // ส่วน user ID ไว้ให้ก๊อปไปเทียบตอนไล่ปัญหาว่าข้อความไปไม่ถึงใคร
+  const line = e.line
+    ? `<div class="kv"><i>ชื่อในไลน์</i><b>${esc(e.line.display_name || "ไม่ทราบชื่อ")}</b></div>
+       <div class="kv"><i>ผูกบัญชีเมื่อ</i><b>${esc(e.line.linked_at || "-")}</b></div>
+       <div class="kv"><i>LINE user ID</i><b class="uid">${esc(e.line.user_id)}</b></div>`
+    : '<div class="kv"><i>บัญชี LINE</i><b>ยังไม่ได้ผูก</b></div>';
   const meta = `
     <div class="sub">${esc(e.employee_code)}${e.department_name ? " · " + esc(e.department_name) : ""}</div>
     <div class="kv"><i>ชั้นที่ประจำ</i><b>${esc(e.floor || "ไม่ได้ระบุ")}</b></div>
-    <div class="kv"><i>บัญชี LINE</i><b>${e.linked ? "ผูกแล้ว" : "ยังไม่ได้ผูก"}</b></div>
+    ${line}
     <div class="kv"><i>สถานะในระบบ</i><b>${roles || "พนักงาน"}</b></div>
     <div class="kv"><i>แจ้งเรื่องสะสม</i><b>${e.reported_count} รายการ</b></div>
     ${suspended && e.suspend_reason ? `<div class="kv"><i>เหตุผลที่ระงับ</i><b>${esc(e.suspend_reason)}</b></div>` : ""}`;

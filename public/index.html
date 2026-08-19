@@ -234,7 +234,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 #sheet-meta .kv{display:flex;justify-content:space-between;gap:14px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line)}
 #sheet-meta .kv:last-child{border-bottom:0}
 #sheet-meta .kv i{font-style:normal;color:var(--slate)}
-#sheet-meta .kv b{font-weight:500;text-align:right}
+#sheet-meta .kv b{font-weight:500;text-align:right;min-width:0}
+/* LINE user ID เป็นสตริงยาวไม่มีช่องว่าง ต้องยอมให้ตัดกลางคำ ไม่งั้นจะดันแผ่นให้ล้นออกข้าง */
+#sheet-meta .kv b.uid{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:400;
+  color:var(--slate);word-break:break-all;line-height:1.5}
 
 /* หน้าต่างยืนยัน (แทน window.confirm) */
 .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-46%) scale(.96);width:calc(100% - 56px);max-width:340px;
@@ -385,7 +388,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   <section class="screen" id="s-admin">
     <!-- ค้นหากับปุ่มเพิ่มอยู่แถวเดียวกัน เพื่อไม่ให้ปุ่มเต็มความกว้างดันรายชื่อลงไปทั้งหน้าจอ -->
     <div class="adminbar">
-      <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาชื่อหรือรหัสพนักงาน" />
+      <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาชื่อ รหัส หรือชื่อในไลน์" />
       <button class="addmini" id="admin-add">+ เพิ่ม</button>
     </div>
     <div id="admin-new" style="display:none">
