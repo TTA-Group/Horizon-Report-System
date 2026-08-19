@@ -238,6 +238,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 /* LINE user ID เป็นสตริงยาวไม่มีช่องว่าง ต้องยอมให้ตัดกลางคำ ไม่งั้นจะดันแผ่นให้ล้นออกข้าง */
 #sheet-meta .kv b.uid{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:400;
   color:var(--slate);word-break:break-all;line-height:1.5}
+#sheet-meta .uidwrap{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;flex-wrap:wrap}
+#sheet-meta .uidbtn{flex:none;border:1px solid var(--line);background:var(--surface);color:var(--slate);
+  font-family:inherit;font-size:10px;font-weight:600;padding:3px 10px;border-radius:20px;cursor:pointer}
+#sheet-meta .uidbtn:active{transform:translateY(1px)}
 
 /* หน้าต่างยืนยัน (แทน window.confirm) */
 .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-46%) scale(.96);width:calc(100% - 56px);max-width:340px;
