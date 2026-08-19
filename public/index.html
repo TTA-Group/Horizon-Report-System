@@ -245,7 +245,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   box-shadow:0 18px 44px -12px rgba(16,20,24,.45);opacity:0;pointer-events:none;transition:.2s}
 .modal.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
 .modal h3{font-size:18px;font-weight:700;line-height:1.4;letter-spacing:-.01em}
-.modal p{font-size:13px;color:var(--slate);line-height:1.6;margin-top:8px}
+/* white-space:pre-line ให้ข้อความยืนยันขึ้นบรรทัดใหม่ได้ตามที่เขียนไว้ (ใส่เป็นข้อความล้วน ไม่ใช่ HTML) */
+.modal p{font-size:13px;color:var(--slate);line-height:1.6;margin-top:8px;white-space:pre-line;text-align:left}
 .modal input[type=text]{margin-top:14px;text-align:left}
 .modal-actions{display:flex;gap:8px;margin-top:20px}
 .mbtn{flex:1;font-family:inherit;font-size:14px;font-weight:600;padding:12px;border-radius:12px;
@@ -319,10 +320,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     </div>
 
     <div id="reg-notfound" style="display:none">
-      <div class="foundhead alert"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b>ไม่พบรหัสพนักงานนี้ในระบบ</b><span>ระบบใช้ได้เฉพาะพนักงานที่ฝ่ายทรัพยากรบุคคลลงทะเบียนไว้แล้ว</span></div></div>
+      <div class="foundhead alert"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b id="nf-title"></b><span id="nf-sub"></span></div></div>
       <div class="kv2" style="margin-top:16px"><b>รหัสที่กรอก</b><span id="nf-code" style="font-family:'IBM Plex Mono',monospace"></span></div>
-      <p class="tip">ตรวจดูว่าพิมพ์รหัสถูกต้องครบ 5 หลักหรือไม่ ถ้าถูกแล้วแต่ยังไม่พบ
-        กรุณาติดต่อฝ่ายทรัพยากรบุคคลเพื่อเพิ่มข้อมูลของท่านเข้าระบบก่อน แล้วจึงกลับมายืนยันตัวตนอีกครั้ง</p>
+      <p class="tip" id="nf-tip"></p>
       <button class="send" id="btn-notfound-back" style="margin-top:18px">กรอกรหัสใหม่อีกครั้ง</button>
     </div>
   </section>

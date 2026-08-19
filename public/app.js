@@ -78,7 +78,9 @@ async function api(path, { method = "GET", body } = {}) {
     // ผู้ดูแลเพิ่งปลดสิทธิ์หรือระงับสิทธิ์ระหว่างที่เปิดแอปค้างไว้ — พาไปหน้าที่ถูกต้องเลย
     // ไม่ปล่อยให้กดต่อแล้วเจอข้อความปฏิเสธซ้ำ ๆ โดยไม่รู้ว่าเกิดอะไรขึ้น
     if (data.code === "not_linked" || data.code === "suspended") accessLost(data.code);
-    throw new Error(data.error || `เกิดข้อผิดพลาด (${res.status})`);
+    const err = new Error(data.error || `เกิดข้อผิดพลาด (${res.status})`);
+    err.code = data.code;
+    throw err;
   }
   return data;
 }
@@ -163,19 +165,43 @@ function showRegPart(id) {
   });
 }
 
+/** หน้าบอกว่าทำไมลงทะเบียนต่อไม่ได้ — ใช้ทั้งกรณีไม่พบรหัส และกรณีรหัสถูกผูกไปแล้ว */
+function showRegBlocked(code, title, sub, tip) {
+  $("#nf-title").textContent = title;
+  $("#nf-sub").textContent = sub;
+  $("#nf-code").textContent = code;
+  $("#nf-tip").textContent = tip;
+  showRegPart("reg-notfound");
+}
+
+const BLOCKED_NOT_FOUND = {
+  title: "ไม่พบรหัสพนักงานนี้ในระบบ",
+  sub: "ระบบใช้ได้เฉพาะพนักงานที่ฝ่ายทรัพยากรบุคคลลงทะเบียนไว้แล้ว",
+  tip:
+    "ตรวจดูว่าพิมพ์รหัสถูกต้องครบ 5 หลักหรือไม่ ถ้าถูกแล้วแต่ยังไม่พบ " +
+    "กรุณาติดต่อฝ่ายทรัพยากรบุคคลเพื่อเพิ่มข้อมูลของท่านเข้าระบบก่อน แล้วจึงกลับมายืนยันตัวตนอีกครั้ง",
+};
+
+const BLOCKED_ALREADY_LINKED = {
+  title: "รหัสนี้ลงทะเบียนไปแล้ว",
+  sub: "รหัสพนักงานหนึ่งรหัสผูกกับบัญชีไลน์ได้เพียงบัญชีเดียว",
+  tip:
+    "ถ้านี่เป็นรหัสของท่านเองและเพิ่งเปลี่ยนมือถือหรือเปลี่ยนบัญชีไลน์ " +
+    "กรุณาติดต่อฝ่ายทรัพยากรบุคคลให้ปลดสิทธิ์ของบัญชีเดิมก่อน แล้วจึงกลับมาลงทะเบียนใหม่",
+};
+
 async function checkEmp() {
   const code = $("#empid").value.trim();
   if (!code) return toast("กรุณากรอกรหัสพนักงาน");
   if (!/^\d{5}$/.test(code)) return toast("รหัสพนักงานต้องเป็นตัวเลข 5 หลัก");
   try {
     const r = await api("/api/auth/verify-employee", { method: "POST", body: { employee_code: code } });
-    if (!r.found) {
-      // ระบบเปิดให้เฉพาะคนที่ฝ่ายบุคคลลงทะเบียนไว้แล้ว — ไม่มีทางกรอกข้อมูลเข้ามาเอง
-      $("#nf-code").textContent = code;
-      showRegPart("reg-notfound");
-      return;
+    // ระบบเปิดให้เฉพาะคนที่ฝ่ายบุคคลลงทะเบียนไว้แล้ว — ไม่มีทางกรอกข้อมูลเข้ามาเอง
+    if (!r.found) return showRegBlocked(code, BLOCKED_NOT_FOUND.title, BLOCKED_NOT_FOUND.sub, BLOCKED_NOT_FOUND.tip);
+    // เคยขึ้นเป็นข้อความลอยที่หายไปใน 3 วินาที ทั้งที่เป็นเหตุที่ไปต่อไม่ได้ จึงทำเป็นหน้าเต็มเหมือนกัน
+    if (r.already_linked) {
+      return showRegBlocked(code, BLOCKED_ALREADY_LINKED.title, BLOCKED_ALREADY_LINKED.sub, BLOCKED_ALREADY_LINKED.tip);
     }
-    if (r.already_linked) return toast("รหัสพนักงานนี้ผูกกับบัญชี LINE อื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล");
     const e = r.employee;
     $("#f-id").textContent = e.employee_code;
     $("#f-name").textContent = e.full_name;
@@ -189,14 +215,33 @@ async function checkEmp() {
   }
 }
 
+/**
+ * ถามย้ำก่อนผูกบัญชี — เพราะผูกแล้วรหัสจะถูกล็อกกับบัญชีไลน์นี้ ปลดได้เฉพาะฝ่ายบุคคล
+ * และเรื่องที่แจ้งไว้จะไปผูกกับชื่อคนอื่นถ้ากรอกรหัสของคนอื่น จึงต้องให้เจ้าตัวยืนยันเองก่อน
+ */
 async function confirmFound() {
   const code = $("#reg-found").dataset.code;
+  const ok = await confirmDialog({
+    title: "รหัสพนักงานตรงกับชื่อของคุณหรือไม่",
+    message:
+      `${code} · ${$("#f-name").textContent}\n\n` +
+      "เมื่อยืนยันแล้ว รหัสนี้จะถูกล็อกกับบัญชีไลน์ของคุณ ใช้ลงทะเบียนซ้ำอีกไม่ได้ " +
+      "จนกว่าจะให้ฝ่ายทรัพยากรบุคคลปลดสิทธิ์ให้ และหากภายหลังพบว่ารหัสกับชื่อไม่ตรงกัน " +
+      "เรื่องที่แจ้งไว้ทั้งหมดจะถูกลบ",
+    confirmLabel: "ใช่ ยืนยันตัวตน",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
   try {
     await api("/api/auth/link", { method: "POST", body: { employee_code: code } });
     session = await api("/api/auth/session", { method: "POST" });
     toast("ยืนยันตัวตนเรียบร้อยแล้ว");
     enterApp();
   } catch (e) {
+    // มีคนผูกรหัสนี้ตัดหน้าไประหว่างที่ยังค้างหน้ายืนยันอยู่
+    if (e.code === "already_linked") {
+      return showRegBlocked(code, BLOCKED_ALREADY_LINKED.title, BLOCKED_ALREADY_LINKED.sub, BLOCKED_ALREADY_LINKED.tip);
+    }
     toast(e.message);
   }
 }
