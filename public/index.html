@@ -318,20 +318,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       <button class="ghost" id="btn-not-me">ข้อมูลไม่ถูกต้อง</button>
     </div>
 
-    <div id="reg-manual" style="display:none">
-      <div class="foundhead alert"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b>ไม่พบรหัสพนักงานนี้ในระบบ</b><span>กรุณาระบุข้อมูลเพื่อยืนยันตัวตน</span></div></div>
-      <p class="tip" style="margin:10px 0 16px">ท่านสามารถเริ่มใช้งานได้ทันทีหลังกรอกข้อมูลครบถ้วน</p>
-      <div class="block"><label class="q">รหัสพนักงาน</label><input type="text" id="m-id" inputmode="numeric" maxlength="5" style="font-family:'IBM Plex Mono',monospace" /></div>
-      <div class="block"><label class="q">ชื่อ–สกุล <span>*</span></label><input type="text" id="m-name" placeholder="ชื่อ นามสกุล" /></div>
-      <div class="block"><label class="q">ฝ่าย/แผนก <span>*</span></label>
-        <select id="m-dept"></select></div>
-      <div class="block"><label class="q">ชั้นที่ปฏิบัติงาน</label>
-        <select id="m-floor"><option value="">เลือกชั้น</option>
-          <option>ชั้น 15</option><option>ชั้น 12A</option><option>ชั้น 9</option><option>ชั้น 8</option>
-          <option>ชั้น 7</option><option>ชั้น 5</option><option>ชั้นลอย</option></select></div>
-      <div class="block"><label class="q" id="m-mail-label">อีเมลบริษัท</label><input type="text" id="m-mail" inputmode="email" placeholder="xxxx@thoresen.com" /></div>
-      <button class="send" id="btn-manual">บันทึกข้อมูลและเริ่มใช้งาน</button>
-      <button class="ghost" id="btn-manual-back">ย้อนกลับ</button>
+    <div id="reg-notfound" style="display:none">
+      <div class="foundhead alert"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b>ไม่พบรหัสพนักงานนี้ในระบบ</b><span>ระบบใช้ได้เฉพาะพนักงานที่ฝ่ายทรัพยากรบุคคลลงทะเบียนไว้แล้ว</span></div></div>
+      <div class="kv2" style="margin-top:16px"><b>รหัสที่กรอก</b><span id="nf-code" style="font-family:'IBM Plex Mono',monospace"></span></div>
+      <p class="tip">ตรวจดูว่าพิมพ์รหัสถูกต้องครบ 5 หลักหรือไม่ ถ้าถูกแล้วแต่ยังไม่พบ
+        กรุณาติดต่อฝ่ายทรัพยากรบุคคลเพื่อเพิ่มข้อมูลของท่านเข้าระบบก่อน แล้วจึงกลับมายืนยันตัวตนอีกครั้ง</p>
+      <button class="send" id="btn-notfound-back" style="margin-top:18px">กรอกรหัสใหม่อีกครั้ง</button>
     </div>
   </section>
 

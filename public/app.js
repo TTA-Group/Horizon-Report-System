@@ -143,7 +143,7 @@ function showRegister() {
   showRegPart("reg-input");
 }
 function showRegPart(id) {
-  ["reg-input", "reg-found", "reg-manual"].forEach((x) => {
+  ["reg-input", "reg-found", "reg-notfound"].forEach((x) => {
     $("#" + x).style.display = x === id ? "block" : "none";
   });
 }
@@ -155,14 +155,9 @@ async function checkEmp() {
   try {
     const r = await api("/api/auth/verify-employee", { method: "POST", body: { employee_code: code } });
     if (!r.found) {
-      $("#m-id").value = code;
-      // ถ้าองค์กรกำหนดโดเมนอีเมลไว้ อีเมลจะกลายเป็นช่องบังคับ (ใช้ยืนยันว่าเป็นคนในองค์กร)
-      const domains = (await getMasters().catch(() => null))?.company_email_domains || [];
-      if (domains.length) {
-        $("#m-mail-label").innerHTML = 'อีเมลบริษัท <span>*</span>';
-        $("#m-mail").placeholder = "xxxx@" + domains[0];
-      }
-      showRegPart("reg-manual");
+      // ระบบเปิดให้เฉพาะคนที่ฝ่ายบุคคลลงทะเบียนไว้แล้ว — ไม่มีทางกรอกข้อมูลเข้ามาเอง
+      $("#nf-code").textContent = code;
+      showRegPart("reg-notfound");
       return;
     }
     if (r.already_linked) return toast("รหัสพนักงานนี้ผูกกับบัญชี LINE อื่นแล้ว กรุณาติดต่อฝ่ายทรัพยากรบุคคล");
@@ -185,36 +180,6 @@ async function confirmFound() {
     await api("/api/auth/link", { method: "POST", body: { employee_code: code } });
     session = await api("/api/auth/session", { method: "POST" });
     toast("ยืนยันตัวตนเรียบร้อยแล้ว");
-    enterApp();
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-async function submitManual() {
-  const body = {
-    employee_code: $("#m-id").value.trim().toUpperCase(),
-    full_name: $("#m-name").value.trim(),
-    department_name: $("#m-dept").value,
-    floor: $("#m-floor").value,
-    email: $("#m-mail").value.trim(),
-  };
-  if (!body.full_name || !body.department_name) return toast("กรุณากรอกชื่อ–นามสกุล และเลือกฝ่าย/แผนก");
-
-  // ผู้ที่ไม่มีรหัสในระบบต้องยืนยันด้วยอีเมลบริษัท (เซิร์ฟเวอร์ตรวจซ้ำอีกชั้นเสมอ)
-  const domains = (await getMasters().catch(() => null))?.company_email_domains || [];
-  if (domains.length) {
-    const label = "@" + domains.join(" หรือ @");
-    if (!body.email) return toast(`กรุณากรอกอีเมลบริษัท (${label})`);
-    const at = body.email.lastIndexOf("@");
-    const domain = at > 0 ? body.email.slice(at + 1).toLowerCase() : "";
-    if (!domains.includes(domain)) return toast(`กรุณาใช้อีเมลบริษัท (${label}) เท่านั้น`);
-  }
-
-  try {
-    await api("/api/auth/link", { method: "POST", body });
-    session = await api("/api/auth/session", { method: "POST" });
-    toast("บันทึกข้อมูลเรียบร้อยแล้ว สามารถเริ่มใช้งานได้ทันที");
     enterApp();
   } catch (e) {
     toast(e.message);
@@ -1128,8 +1093,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#btn-check").onclick = checkEmp;
   $("#btn-confirm-found").onclick = confirmFound;
   $("#btn-not-me").onclick = () => showRegPart("reg-input");
-  $("#btn-manual").onclick = submitManual;
-  $("#btn-manual-back").onclick = () => showRegPart("reg-input");
+  $("#btn-notfound-back").onclick = () => showRegPart("reg-input");
   $("#sendBtn").onclick = submitTicket;
 
   // เลือก "ชั้นอื่น" แล้วค่อยเผยช่องให้พิมพ์ — ไม่งั้นฟอร์มจะรกด้วยช่องที่แทบไม่ได้ใช้
@@ -1245,8 +1209,6 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#n-save").onclick = saveEmployee;
   $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));
   $("#n-floor").onchange = () => revealOther($("#n-floor"), $("#n-floorOther"));
-  // รายการฝ่าย/แผนกของหน้าผูกบัญชี สร้างจากชุดเดียวกับฟอร์มเพิ่มพนักงาน
-  fillSelect($("#m-dept"), "เลือกฝ่าย/แผนก", ORG_DEPTS, null);
   // bottom sheet ยกเลิก
   $("#sheet-cancel").onclick = () => finishSheet(null);
 
