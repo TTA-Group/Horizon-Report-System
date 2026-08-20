@@ -8,6 +8,7 @@ import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { CATEGORY_BY_CODE, STATUS_LABELS, type StatusCode } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
+import { thaiDateShort } from "./_lib/tickets";
 import { handleTicketsDepartment, handleTicketsMine } from "./_lib/ticket-lists";
 
 function ticketIdFromPath(req: Request): string {
@@ -48,13 +49,19 @@ export default async (req: Request): Promise<Response> => {
         acknowledged_at: string | null;
         completed_at: string | null;
         closed_at: string | null;
+        due_at: string | null;
+        due_label: string | null;
+        assessment: string | null;
+        assessed_at: string | null;
+        waiting_parts: boolean;
       }[]
     >`
       SELECT t.id, t.ticket_no, t.category_code, t.department_id,
              d.code AS dept_code, d.name AS dept_name,
              t.floor, t.location_note, t.detail, t.urgency, t.status,
              t.reporter_id, r.full_name AS reporter_name, a.full_name AS assignee_name,
-             t.created_at, t.acknowledged_at, t.completed_at, t.closed_at
+             t.created_at, t.acknowledged_at, t.completed_at, t.closed_at,
+             t.due_at, t.due_label, t.assessment, t.assessed_at, t.waiting_parts
       FROM tickets t
       JOIN departments d ON d.id = t.department_id
       JOIN employees r ON r.id = t.reporter_id
@@ -97,6 +104,16 @@ export default async (req: Request): Promise<Response> => {
       acknowledged_at: t.acknowledged_at,
       completed_at: t.completed_at,
       closed_at: t.closed_at,
+      // ผลตรวจสอบหลังรับเรื่อง — ผู้แจ้งเปิดดูย้อนหลังได้ ไม่ต้องเลื่อนหาข้อความเก่าในแชท
+      assessment: t.assessed_at
+        ? {
+            note: t.assessment,
+            due_label: t.due_label,
+            due_at: t.due_at,
+            due_date_label: t.due_at ? thaiDateShort(new Date(t.due_at)) : null,
+            waiting_parts: t.waiting_parts,
+          }
+        : null,
       timeline: events.map((e) => ({
         from_status: e.from_status,
         to_status: e.to_status,

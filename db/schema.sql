@@ -88,6 +88,15 @@ CREATE TABLE tickets (
   closed_at       TIMESTAMPTZ,
   reminder_count  INT NOT NULL DEFAULT 0,
   last_remind_at  TIMESTAMPTZ,
+  -- ผลตรวจสอบหลังรับเรื่อง (spec เพิ่มเติม: ผู้แจ้งต้องรู้ว่าเสียอะไรและจะเสร็จเมื่อไหร่)
+  due_at          TIMESTAMPTZ,           -- กำหนดเสร็จที่ผู้รับผิดชอบแจ้งไว้
+  due_label       VARCHAR(40),           -- คำที่เลือก เช่น 'ภายใน 3 วัน' ไว้แสดงคู่กับวันที่
+  assessment      TEXT,                  -- อาการที่พบ (NULL = ติ๊กว่าไม่มีคำอธิบายเพิ่มเติม)
+  assessed_at     TIMESTAMPTZ,           -- ครบทั้งกำหนดเสร็จและอาการแล้วเมื่อไหร่
+  waiting_parts   BOOLEAN NOT NULL DEFAULT false, -- รออะไหล่/ผู้รับเหมา ทวงทุก 7 วัน
+  due_changes     INT NOT NULL DEFAULT 0,         -- เลื่อนกำหนดมากี่ครั้ง (เกิน 3 ครั้งแจ้งหัวหน้า)
+  progress_remind_count  INT NOT NULL DEFAULT 0,  -- ทวงหลังรับเรื่องไปกี่ครั้ง
+  last_progress_remind_at TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

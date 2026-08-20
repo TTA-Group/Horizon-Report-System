@@ -8,16 +8,23 @@ import {
   adminCodes,
   CATEGORY_BY_CODE,
   CHANNEL_KEY,
+  DUE_BY_KEY,
   STATUS_LABELS,
   STATUS_TRANSITIONS,
   type StatusCode,
   type UrgencyCode,
 } from "./_lib/constants";
 import { db } from "./_lib/db";
-import { buildTicketFlex, type TicketFlexInput } from "./_lib/flex";
+import {
+  assessmentAskCard,
+  buildTicketFlex,
+  dueAskCard,
+  waitDateCard,
+  type TicketFlexInput,
+} from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
-import { shortName, thaiDateTimeShort } from "./_lib/tickets";
+import { dueFromOption, dueFromPickedDate, shortName, thaiDateShort, thaiDateTimeShort } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
 
 interface LineSource {
@@ -30,7 +37,7 @@ interface LineEvent {
   type: string;
   replyToken?: string;
   source?: LineSource;
-  postback?: { data: string };
+  postback?: { data: string; params?: { date?: string; time?: string; datetime?: string } };
   message?: { type: string; text?: string };
 }
 
@@ -77,7 +84,7 @@ export default async (req: Request): Promise<Response> =>
     return json({ ok: true });
   });
 
-const OWN_ACTIONS = new Set(["ack", "complete", "transfer", "cancel"]);
+const OWN_ACTIONS = new Set(["ack", "complete", "transfer", "cancel", "assess", "due", "duedate", "note", "nonote", "progress", "partsok"]);
 
 /**
  * เป็น event ที่เกิดจากระบบนี้เองหรือไม่
@@ -93,7 +100,7 @@ function isOwnEvent(ev: LineEvent): boolean {
   if (ev.type === "message" && ev.message?.type === "text") {
     const text = (ev.message.text ?? "").trim();
     const cmd = text.toLowerCase();
-    return cmd === "groupid" || CANCEL_RE.test(text);
+    return cmd === "groupid" || CANCEL_RE.test(text) || NOTE_RE.test(text) || PROGRESS_RE.test(text);
   }
   return false;
 }
@@ -131,12 +138,17 @@ async function forwardToCoexisting(rawBody: string, signature: string | null): P
 // รูปแบบข้อความยกเลิก — ตรงกับ fillInText ของปุ่ม "ยกเลิกเรื่อง" ที่เติมให้ล่วงหน้าในแป้นพิมพ์
 // เก็บเลขที่เรื่องไว้ในตัวข้อความเอง ระบบจึงไม่ต้องจำว่าใครกำลังยกเลิกเรื่องไหนค้างอยู่
 const CANCEL_RE = /^ยกเลิก\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\s*([\s\S]*)$/;
+// ข้อความที่พิมพ์ต่อท้ายปุ่ม — ข้อความตั้งต้นถูกเติมให้แล้ว ผู้ใช้พิมพ์แค่ส่วนหลังโคลอน
+const NOTE_RE = /^ผลตรวจ\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\s*([\s\S]*)$/;
+const PROGRESS_RE = /^อัปเดต\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\s*([\s\S]*)$/;
 
 async function handleMessage(ev: LineEvent): Promise<void> {
   if (ev.message?.type !== "text") return;
   const text = (ev.message.text ?? "").trim();
   if (text.toLowerCase() === "groupid") return handleGroupIdRequest(ev);
   if (CANCEL_RE.test(text)) return handleCancelMessage(ev, text);
+  if (NOTE_RE.test(text)) return handleNoteMessage(ev, text);
+  if (PROGRESS_RE.test(text)) return handleProgressMessage(ev, text);
 }
 
 /**
@@ -185,6 +197,117 @@ async function handleCancelMessage(ev: LineEvent, text: string): Promise<void> {
 
   await replyCard(replyToken, cardFor(t, { status: "cancelled", cancelReason: reason, actorName: actor.full_name, ...justNow(actor.full_name) }));
   await tellReporter(t.reporter_line_user_id, `เรื่อง ${t.ticket_no} ถูกยกเลิก\nเหตุผล: ${reason}`, t.id);
+}
+
+/**
+ * เจ้าหน้าที่พิมพ์อาการที่พบต่อท้ายปุ่ม "แจ้งผลตรวจสอบ"
+ *
+ * ถือว่าตรวจสอบครบก็ต่อเมื่อมีทั้งกำหนดเสร็จและคำตอบเรื่องอาการ ถ้ายังไม่ได้เลือกกำหนดเสร็จ
+ * ให้ย้อนไปถามก่อน ไม่บันทึกครึ่ง ๆ กลาง ๆ ไว้แล้วปล่อยให้เข้าใจว่าทำครบแล้ว
+ */
+async function handleNoteMessage(ev: LineEvent, text: string): Promise<void> {
+  const m = NOTE_RE.exec(text);
+  const userId = ev.source?.userId;
+  if (!m || !userId) return;
+  const note = m[2].trim();
+  const res = await loadTicketForActor(ev, m[1].toUpperCase());
+  if (!res) return;
+  const { actor, t } = res;
+  if (!note) return say(ev.replyToken, `กรุณาพิมพ์อาการที่พบต่อท้ายด้วย เช่น\nผลตรวจ ${t.ticket_no}: พาวเวอร์ซัพพลายเสีย`);
+  if (!t.due_at) return replyMessage(ev.replyToken, dueAskCard(t.id, t.ticket_no));
+  await saveAssessment(ev, actor, t, note);
+}
+
+/** เจ้าหน้าที่พิมพ์ความคืบหน้าต่อท้ายปุ่ม "อัปเดตความคืบหน้า" — บันทึกและส่งถึงผู้แจ้ง */
+async function handleProgressMessage(ev: LineEvent, text: string): Promise<void> {
+  const m = PROGRESS_RE.exec(text);
+  const userId = ev.source?.userId;
+  if (!m || !userId) return;
+  const note = m[2].trim();
+  const res = await loadTicketForActor(ev, m[1].toUpperCase());
+  if (!res) return;
+  const { actor, t } = res;
+  if (!note) return say(ev.replyToken, `กรุณาพิมพ์ความคืบหน้าต่อท้ายด้วย เช่น\nอัปเดต ${t.ticket_no}: สั่งอะไหล่แล้ว รอของ`);
+
+  const sql = db();
+  await sql`
+    WITH upd AS (
+      UPDATE tickets SET last_progress_remind_at = now(), updated_at = now() WHERE id = ${t.id} RETURNING id
+    )
+    INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+    SELECT id, ${t.status}, ${t.status}, ${actor.id}, ${"อัปเดต: " + note} FROM upd
+  `;
+  await replyCard(ev.replyToken, cardFor(t, justNow(actor.full_name)));
+  await tellReporter(
+    t.reporter_line_user_id,
+    `อัปเดตเรื่อง ${t.ticket_no}\n${note}\nโดย ${shortName(actor.full_name)}`,
+    t.id,
+  );
+}
+
+/** ด่านตรวจชุดเดียวกันของทุกคำสั่งที่พิมพ์: ต้องผูกบัญชี ไม่ถูกระงับ และเป็นเจ้าหน้าที่ของฝ่ายนั้น */
+async function loadTicketForActor(
+  ev: LineEvent,
+  ticketNo: string,
+): Promise<{ actor: ActorRow; t: TicketRow } | null> {
+  const userId = ev.source?.userId;
+  if (!userId) return null;
+  const res = await loadContext(userId, { ticketNo });
+  if (!res.ok) {
+    if (res.reason === "no-actor") await say(ev.replyToken, "กรุณายืนยันตัวตนในระบบก่อนใช้งานคำสั่งนี้");
+    else await say(ev.replyToken, `ไม่พบเรื่องเลขที่ ${ticketNo}`);
+    return null;
+  }
+  if (res.actor.status === "suspended") {
+    await say(ev.replyToken, "บัญชีของคุณถูกระงับสิทธิ์การใช้งาน");
+    return null;
+  }
+  if (!canAct(res.actor, res.isMember)) {
+    await say(ev.replyToken, "คุณไม่ใช่เจ้าหน้าที่ของฝ่ายที่รับผิดชอบเรื่องนี้");
+    return null;
+  }
+  return { actor: res.actor, t: res.t };
+}
+
+/**
+ * บันทึกผลตรวจสอบให้ครบ แล้วแจ้งผู้แจ้งข้อความเดียวที่บอกทั้งอาการและกำหนดเสร็จ
+ * note = null คือติ๊กว่าไม่มีคำอธิบายเพิ่มเติม
+ */
+async function saveAssessment(ev: LineEvent, actor: ActorRow, t: TicketRow, note: string | null): Promise<void> {
+  const sql = db();
+  await sql`
+    WITH upd AS (
+      UPDATE tickets SET assessment = ${note}, assessed_at = now(),
+        last_progress_remind_at = NULL, progress_remind_count = 0, updated_at = now()
+      WHERE id = ${t.id} RETURNING id
+    )
+    INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+    SELECT id, ${t.status}, ${t.status}, ${actor.id}, ${"แจ้งผลตรวจสอบ" + (note ? ": " + note : "")} FROM upd
+  `;
+
+  const when = [t.due_label, t.due_at ? thaiDateShort(new Date(t.due_at)) : null].filter(Boolean).join(" · ");
+  const fresh: Partial<TicketFlexInput> = {
+    assessed: true,
+    assessment: note,
+    ...justNow(actor.full_name),
+  };
+  await replyCard(ev.replyToken, cardFor(t, fresh));
+  await tellReporter(
+    t.reporter_line_user_id,
+    [
+      `${t.ticket_no} ตรวจสอบแล้ว`,
+      note ? `อาการ: ${note}` : null,
+      `${t.waiting_parts ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ"}: ${when}`,
+      `ผู้รับผิดชอบ: ${shortName(t.assignee_name ?? actor.full_name)}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    t.id,
+  );
+}
+
+async function replyMessage(replyToken: string | undefined, msg: LineMessage): Promise<void> {
+  if (replyToken) await replyTo(replyToken, [msg]);
 }
 
 /**
@@ -237,6 +360,11 @@ interface TicketRow {
   last_actor_name: string | null;
   last_at: string | null;
   photos: string[] | null;
+  due_at: string | null;
+  due_label: string | null;
+  assessment: string | null;
+  assessed_at: string | null;
+  waiting_parts: boolean;
 }
 
 interface ActorRow {
@@ -277,6 +405,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
            t.id AS ticket_pk, t.status AS ticket_status, t.department_id, t.reporter_id,
            t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency,
            t.created_at, t.assignee_id,
+           t.due_at, t.due_label, t.assessment, t.assessed_at, t.waiting_parts,
            r.full_name AS reporter_name, r.department_name AS reporter_dept,
            d.code AS department_code, d.name AS department_name,
            a.full_name AS assignee_name,
@@ -346,6 +475,11 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
       last_actor_name: row.last_actor_name as string | null,
       last_at: row.last_at as string | null,
       photos: (row.photos as string[] | null) ?? null,
+      due_at: row.due_at as string | null,
+      due_label: row.due_label as string | null,
+      assessment: row.assessment as string | null,
+      assessed_at: row.assessed_at as string | null,
+      waiting_parts: row.waiting_parts === true,
     },
   };
 }
@@ -380,6 +514,11 @@ function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMe
     latestActor: t.last_actor_name,
     latestAtLabel: t.last_at ? thaiDateTimeShort(new Date(t.last_at)) : null,
     photos: t.photos,
+    assessed: t.assessed_at !== null,
+    dueLabel: t.due_label,
+    dueDateLabel: t.due_at ? thaiDateShort(new Date(t.due_at)) : null,
+    waitingParts: t.waiting_parts,
+    assessment: t.assessment,
     ...overrides,
   });
 }
@@ -427,6 +566,30 @@ async function tellReporter(lineUserId: string | null, text: string, ticketId: s
   await pushTo(lineUserId, [textMessage(text)], { ticketId, channel: "user" });
 }
 
+/**
+ * บันทึกกำหนดเสร็จ พร้อมนับจำนวนครั้งที่เลื่อน
+ *
+ * นับเฉพาะตอนที่เคยมีกำหนดอยู่แล้ว การตั้งครั้งแรกไม่ใช่การเลื่อน — ตัวเลขนี้ใช้ตัดสินว่า
+ * งานไหนเลื่อนจนผิดปกติแล้วควรให้หัวหน้าฝ่ายรู้
+ */
+async function setDue(t: TicketRow, actor: ActorRow, due: Date, label: string, waiting: boolean): Promise<void> {
+  const sql = db();
+  await sql`
+    WITH upd AS (
+      UPDATE tickets
+      SET due_at = ${due}, due_label = ${label}, waiting_parts = ${waiting},
+          due_changes = due_changes + CASE WHEN due_at IS NULL THEN 0 ELSE 1 END,
+          last_progress_remind_at = NULL, updated_at = now()
+      WHERE id = ${t.id} RETURNING id
+    )
+    INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+    SELECT id, ${t.status}, ${t.status}, ${actor.id}, ${`กำหนดเสร็จ ${label} (${thaiDateShort(due)})`} FROM upd
+  `;
+  t.due_at = due.toISOString();
+  t.due_label = label;
+  t.waiting_parts = waiting;
+}
+
 async function handlePostback(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   const replyToken = ev.replyToken;
@@ -437,9 +600,9 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   const ticketId = data.get("ticket");
   if (!action || !ticketId || !UUID_RE.test(ticketId)) return;
 
-  // ปุ่ม "ยกเลิกเรื่อง" ไม่ทำอะไรตอนกด — หน้าที่ของมันคือเปิดแป้นพิมพ์พร้อมข้อความตั้งต้น
-  // การยกเลิกจริงเกิดตอนผู้กดพิมพ์เหตุผลแล้วส่งออกมา (ดู handleCancelMessage)
-  if (action === "cancel") return;
+  // ปุ่มที่หน้าที่คือเปิดแป้นพิมพ์พร้อมข้อความตั้งต้นเท่านั้น งานจริงเกิดตอนผู้กดพิมพ์แล้วส่งออกมา
+  // (ดู handleCancelMessage / handleNoteMessage / handleProgressMessage)
+  if (action === "cancel" || action === "note" || action === "progress") return;
 
   const res = await loadContext(userId, { id: ticketId });
   if (!res.ok) {
@@ -520,6 +683,67 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       ticketId,
     );
     return;
+  }
+
+  // กด "แจ้งผลตรวจสอบ" — ตอบการ์ดถามกำหนดเสร็จกลับไป (ตอบกลับ ไม่กินโควตา)
+  if (action === "assess") {
+    if (t.status !== "in_progress") return replyStale(replyToken, `เรื่อง ${t.ticket_no} ไม่ได้อยู่ระหว่างดำเนินการ`, t);
+    if (!t.due_at) return replyMessage(replyToken, dueAskCard(t.id, t.ticket_no));
+    return replyMessage(replyToken, assessmentAskCard(t.id, t.ticket_no));
+  }
+
+  // เลือกกรอบเวลาจากชิป — "รออะไหล่" กับ "เลือกวันเอง" ต้องไปเลือกวันจากปฏิทินต่อ
+  if (action === "due") {
+    if (t.status !== "in_progress") return replyStale(replyToken, `เรื่อง ${t.ticket_no} ไม่ได้อยู่ระหว่างดำเนินการ`, t);
+    const opt = DUE_BY_KEY.get(data.get("v") ?? "");
+    if (!opt) return;
+    if (opt.special === "wait") return replyMessage(replyToken, waitDateCard(t.id, t.ticket_no));
+    const due = dueFromOption(opt);
+    if (!due) return replyMessage(replyToken, waitDateCard(t.id, t.ticket_no));
+    await setDue(t, actor, due, opt.label, false);
+    return replyMessage(replyToken, assessmentAskCard(t.id, t.ticket_no));
+  }
+
+  // เลือกวันจากปฏิทินของไลน์ — ทั้งกรณีเลือกวันเองและกรณีรออะไหล่
+  if (action === "duedate") {
+    const picked = dueFromPickedDate(ev.postback.params?.date ?? "");
+    if (!picked) return say(replyToken, "วันที่ไม่ถูกต้อง กรุณาเลือกใหม่");
+    const waiting = data.get("mode") === "wait";
+    const label = waiting ? "รออะไหล่ / ผู้รับเหมา" : "ตามวันที่กำหนด";
+    await setDue(t, actor, picked, label, waiting);
+    // เลื่อนวันจากข้อความทวงงานรออะไหล่ — แจ้งผลไปแล้ว ไม่ต้องถามอาการซ้ำ
+    if (t.assessed_at) {
+      await replyCard(replyToken, cardFor(t, { dueDateLabel: thaiDateShort(picked), dueLabel: label, waitingParts: waiting, ...justNow(actor.full_name) }));
+      return tellReporter(
+        t.reporter_line_user_id,
+        `${t.ticket_no} เลื่อนกำหนดเป็น ${thaiDateShort(picked)}\nโดย ${shortName(actor.full_name)}`,
+        t.id,
+      );
+    }
+    return replyMessage(replyToken, assessmentAskCard(t.id, t.ticket_no));
+  }
+
+  // ติ๊กว่าไม่มีคำอธิบายเพิ่มเติม — ถือว่าตอบเรื่องอาการแล้ว
+  if (action === "nonote") {
+    if (t.assessed_at) return replyCard(replyToken, cardFor(t));
+    if (!t.due_at) return replyMessage(replyToken, dueAskCard(t.id, t.ticket_no));
+    return saveAssessment(ev, actor, t, null);
+  }
+
+  // งานรออะไหล่ ของมาแล้ว — เลิกทวงทุก 7 วัน แล้วให้เลือกกำหนดเสร็จใหม่
+  if (action === "partsok") {
+    const sql2 = db();
+    await sql2`
+      WITH upd AS (
+        UPDATE tickets SET waiting_parts = false, due_at = NULL, due_label = NULL,
+          last_progress_remind_at = NULL, updated_at = now()
+        WHERE id = ${t.id} RETURNING id
+      )
+      INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
+      SELECT id, ${t.status}, ${t.status}, ${actor.id}, 'อะไหล่มาแล้ว เริ่มดำเนินการ' FROM upd
+    `;
+    await tellReporter(t.reporter_line_user_id, `${t.ticket_no} อะไหล่มาแล้ว เริ่มดำเนินการ`, t.id);
+    return replyMessage(replyToken, dueAskCard(t.id, t.ticket_no));
   }
 
   if (action === "transfer") {

@@ -67,3 +67,34 @@ export function shortName(full: string | null | undefined): string {
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${[...parts[1]][0]}.`;
 }
+
+/** วันที่แบบไทยสั้น ๆ เช่น "21 ส.ค." — ใช้คู่กับคำอย่าง "ภายใน 3 วัน" บนการ์ด */
+export function thaiDateShort(d: Date): string {
+  const th = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return `${th.getUTCDate()} ${TH_MONTHS[th.getUTCMonth()]}`;
+}
+
+/**
+ * แปลงกรอบเวลาที่เลือกเป็นเวลาจริง
+ *
+ * ตัวเลือกที่นับเป็นวันไปจบที่ 18:00 ตามเวลาไทยของวันนั้น (สิ้นวันทำงาน) ไม่ใช่เที่ยงคืน
+ * เพราะงานที่บอกว่า "เสร็จพรุ่งนี้" แล้วมาทวงตอนเที่ยงคืนไม่ได้ช่วยอะไรใคร
+ * คืน null สำหรับตัวเลือกที่ต้องให้ผู้ใช้เลือกวันเอง
+ */
+export function dueFromOption(opt: { hours?: number; days?: number; special?: string }, now = new Date()): Date | null {
+  if (opt.hours) return new Date(now.getTime() + opt.hours * 60 * 60 * 1000);
+  if (opt.special === "pick" || opt.special === "wait") return null;
+
+  const days = opt.special === "endOfDay" ? 0 : (opt.days ?? 0);
+  const th = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const at = Date.UTC(th.getUTCFullYear(), th.getUTCMonth(), th.getUTCDate() + days, 18, 0) - 7 * 60 * 60 * 1000;
+  // เลือก "ภายในวันนี้" ตอนเย็นแล้ว 18:00 ผ่านไปแล้ว — ให้เวลาอีก 2 ชั่วโมงแทนที่จะเลยกำหนดทันที
+  return new Date(Math.max(at, now.getTime() + (days === 0 ? 2 * 60 * 60 * 1000 : 0)));
+}
+
+/** วันที่จากปฏิทินของไลน์ ("2026-08-21") -> 18:00 ตามเวลาไทยของวันนั้น */
+export function dueFromPickedDate(date: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return null;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 18, 0) - 7 * 60 * 60 * 1000);
+}

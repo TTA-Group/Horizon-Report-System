@@ -6,7 +6,7 @@
 // ลำดับการอ่านของการ์ด: ฝ่ายไหน (หัวการ์ด) -> ด่วนแค่ไหน (แถบสี) -> เรื่องอะไร -> ใครรับผิดชอบ -> ทำอะไรต่อ
 
 import type { LineMessage } from "./line";
-import { STATUS_LABELS, type StatusCode, type UrgencyCode } from "./constants";
+import { DUE_BY_KEY, DUE_ROWS, STATUS_LABELS, type StatusCode, type UrgencyCode } from "./constants";
 
 export interface TicketFlexInput {
   ticketId: string;
@@ -29,6 +29,12 @@ export interface TicketFlexInput {
   latestAtLabel?: string | null;
   /** URL รูปภาพแนบ (สาธารณะ) — แสดงเป็นรูปย่อให้กดดูได้จากในกลุ่ม */
   photos?: string[] | null;
+  /** ผลตรวจสอบหลังรับเรื่อง — ยังไม่ครบถือว่ายังไม่ผ่านขั้น "ตรวจสอบ" */
+  assessed?: boolean;
+  dueLabel?: string | null;
+  dueDateLabel?: string | null;
+  waitingParts?: boolean;
+  assessment?: string | null;
 }
 
 // สีหัวการ์ด — ใช้เขียวเดียวกับปุ่มท้ายการ์ด (สีเขียวของ LINE) ทั้งใบจึงเป็นสีเดียวกันหมด
@@ -91,9 +97,12 @@ function stepsFor(t: TicketFlexInput): Step[] {
   // closed เป็นสถานะเก่าที่เลิกใช้แล้ว (ดู STATUS_TRANSITIONS) — เรื่องเก่าที่เคยปิดไว้
   // ให้แสดงเหมือนเสร็จสิ้น จะได้ไม่มีขั้นที่ไม่มีทางเกิดขึ้นอีกค้างอยู่บนแถบ
   const done = t.status === "completed" || t.status === "closed";
+  const acked = done || t.status === "in_progress";
+  // เรื่องที่จบไปแล้วถือว่าผ่านขั้นตรวจสอบมาแล้วเสมอ — เรื่องเก่าก่อนมีขั้นนี้จะได้ไม่ค้างเป็นจุดกลวง
   return [
     { label: "แจ้งเรื่อง", done: true },
-    { label: "รับเรื่อง", done: done || t.status === "in_progress" },
+    { label: "รับเรื่อง", done: acked },
+    { label: "ตรวจสอบ", done: done || t.assessed === true },
     { label: "เสร็จสิ้น", done },
   ];
 }
@@ -197,6 +206,19 @@ function kv(label: string, value: string) {
   };
 }
 
+/** เหมือน kv แต่เน้นค่าเป็นสีเขียวตัวหนา ใช้กับกำหนดเสร็จซึ่งเป็นข้อมูลที่คนอ่านมองหาก่อน */
+function kvHighlight(label: string, value: string) {
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    contents: [
+      { type: "text", text: label, color: "#8A94A0", size: "sm", flex: 3 },
+      { type: "text", text: value || "-", wrap: true, color: STEP_DONE, size: "sm", weight: "bold", flex: 7 },
+    ],
+  };
+}
+
 /** ปุ่ม "ยกเลิกเรื่อง" — เปิดแป้นพิมพ์พร้อมข้อความตั้งต้น ให้ผู้กดพิมพ์เหตุผลต่อท้ายแล้วส่ง */
 function cancelButton(t: TicketFlexInput) {
   return {
@@ -230,13 +252,47 @@ function primaryButton(label: string, action: string, t: TicketFlexInput) {
 }
 
 /** ปุ่มท้ายการ์ดตามสถานะ — สถานะที่จบแล้วไม่มีปุ่ม เหลือไว้เป็นบันทึกในกลุ่มเฉย ๆ */
+function secondaryButton(label: string, action: string, t: TicketFlexInput) {
+  return {
+    type: "button",
+    style: "secondary",
+    height: "sm",
+    action: { type: "postback", label, data: `action=${action}&ticket=${t.ticketId}` },
+  };
+}
+
+/**
+ * ปุ่มท้ายการ์ดตามสถานะ — สถานะที่จบแล้วไม่มีปุ่ม เหลือไว้เป็นบันทึกในกลุ่มเฉย ๆ
+ *
+ * ระหว่างดำเนินการ ปุ่มหลักขึ้นกับว่าแจ้งผลตรวจสอบแล้วหรือยัง เพราะการแจ้งผลคือสิ่งที่ค้างอยู่
+ * ถ้ายังไม่ได้ทำ — เอาปุ่มนั้นขึ้นก่อน แล้วปุ่มเสร็จสิ้นค่อยเป็นรอง
+ */
 function footerFor(t: TicketFlexInput): Record<string, unknown> | null {
   let buttons: unknown[];
   if (t.status === "pending") buttons = [primaryButton("รับเรื่อง", "ack", t), cancelButton(t)];
-  else if (t.status === "in_progress") buttons = [primaryButton("ดำเนินการเสร็จสิ้น", "complete", t), cancelButton(t)];
-  else return null;
+  else if (t.status === "in_progress") {
+    buttons = t.assessed
+      ? [primaryButton("ดำเนินการเสร็จสิ้น", "complete", t), progressButton(t), cancelButton(t)]
+      : [primaryButton("แจ้งผลตรวจสอบ", "assess", t), secondaryButton("ดำเนินการเสร็จสิ้น", "complete", t), cancelButton(t)];
+  } else return null;
 
   return { type: "box", layout: "vertical", spacing: "sm", contents: buttons };
+}
+
+/** ปุ่มอัปเดตความคืบหน้า — เปิดแป้นพิมพ์พร้อมข้อความตั้งต้น เหมือนปุ่มยกเลิก */
+function progressButton(t: TicketFlexInput) {
+  return {
+    type: "button",
+    style: "secondary",
+    height: "sm",
+    action: {
+      type: "postback",
+      label: "อัปเดตความคืบหน้า",
+      data: `action=progress&ticket=${t.ticketId}`,
+      inputOption: "openKeyboard",
+      fillInText: `อัปเดต ${t.ticketNo}: `,
+    },
+  };
 }
 
 /**
@@ -336,6 +392,13 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
   // (เช่น A รับเรื่องไว้ แต่ B เป็นคนกดปิดงาน) ถ้าเป็นคนเดียวกัน กล่อง "ล่าสุด" บอกไปแล้ว
   const who = latestWho(t);
   if (t.assigneeName && t.assigneeName !== who) rows.push(kv("ผู้รับผิดชอบ", t.assigneeName));
+
+  // ผลตรวจสอบ — ขึ้นเน้นสีเขียวเพราะเป็นคำตอบที่ผู้แจ้งรอฟังมากที่สุด
+  if (t.dueLabel) {
+    const when = [t.dueLabel, t.dueDateLabel].filter(Boolean).join(" · ");
+    rows.push(kvHighlight(t.waitingParts ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ", when));
+  }
+  if (t.assessment) rows.push(kv("อาการที่พบ", t.assessment));
   if (t.cancelReason) rows.push(kv("เหตุผลที่ยกเลิก", t.cancelReason));
 
   const latest = latestBox(t);
@@ -417,4 +480,144 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
       ...(footer ? { footer } : {}),
     },
   };
+}
+
+/* ───────────────── การ์ดถาม–ตอบระหว่างแจ้งผลตรวจสอบ ─────────────────
+ * ทั้งหมดนี้ส่งด้วยการ "ตอบกลับ" หลังผู้ใช้กดปุ่มหรือพิมพ์ จึงไม่กินโควตาข้อความของ OA
+ */
+
+const CHIP_TONE = {
+  green: { border: "#06C755", text: "#04A045" },
+  amber: { border: "#E39B0C", text: "#8A5B00" },
+  grey: { border: "#B6C0CA", text: "#424A54" },
+};
+
+/**
+ * ชิปหนึ่งอัน — ใช้ box ที่มี action แทน button เพราะปุ่มของ Flex สูงคงที่และกินพื้นที่มาก
+ * เอามาเรียงเป็นตารางไม่ได้ ส่วน box กำหนดขนาดเองได้ จึงทำเป็นชิปเล็ก ๆ หลายอันต่อแถวได้
+ */
+function chip(label: string, action: Record<string, unknown>, tone: keyof typeof CHIP_TONE = "green") {
+  const c = CHIP_TONE[tone];
+  return {
+    type: "box",
+    layout: "vertical",
+    flex: 0,
+    paddingAll: "7px",
+    paddingStart: "12px",
+    paddingEnd: "12px",
+    cornerRadius: "16px",
+    borderWidth: "1px",
+    borderColor: c.border,
+    action,
+    contents: [{ type: "text", text: label, size: "xxs", weight: "bold", color: c.text, align: "center" }],
+  };
+}
+
+function chipRow(chips: unknown[]) {
+  return { type: "box", layout: "horizontal", spacing: "xs", margin: "sm", contents: chips };
+}
+
+function bubble(contents: unknown[]): LineMessage {
+  return {
+    type: "flex",
+    altText: "กรุณาตอบกลับในแอปไลน์",
+    contents: { type: "bubble", size: "kilo", body: { type: "box", layout: "vertical", contents } },
+  } as unknown as LineMessage;
+}
+
+/** ถามกำหนดเสร็จ — ชิปเรียงตาม DUE_ROWS เพราะ Flex ตัดบรรทัดให้เองไม่ได้ */
+export function dueAskCard(ticketId: string, ticketNo: string): LineMessage {
+  const rows = DUE_ROWS.map((keys) =>
+    chipRow(
+      keys.map((k) => {
+        const o = DUE_BY_KEY.get(k);
+        if (!o) return { type: "filler" };
+        if (o.special === "pick") {
+          return chip(
+            `📅 ${o.chip}`,
+            { type: "datetimepicker", label: o.chip, data: `action=duedate&ticket=${ticketId}&mode=pick`, mode: "date" },
+            "grey",
+          );
+        }
+        const tone = o.special === "wait" ? "amber" : "green";
+        return chip(o.chip, { type: "postback", label: o.chip, data: `action=due&ticket=${ticketId}&v=${k}` }, tone);
+      }),
+    ),
+  );
+  return bubble([
+    { type: "text", text: `${ticketNo} · คาดว่าจะเสร็จเมื่อไหร่`, size: "sm", weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "เลือกกรอบเวลาที่ใกล้เคียงที่สุด ระบบจะแจ้งผู้แจ้งให้เอง", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    ...rows,
+  ]);
+}
+
+/** รออะไหล่ — บังคับเลือกวันจากปฏิทิน ข้ามไม่ได้ */
+export function waitDateCard(ticketId: string, ticketNo: string): LineMessage {
+  return bubble([
+    { type: "text", text: `${ticketNo} · รออะไหล่ / ผู้รับเหมา`, size: "sm", weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "ระบุวันที่คาดว่าจะแก้ไขได้ (บังคับ)", size: "xxs", color: "#B3261E", wrap: true, margin: "xs" },
+    chipRow([
+      chip(
+        "📅 เลือกวันที่",
+        { type: "datetimepicker", label: "เลือกวันที่", data: `action=duedate&ticket=${ticketId}&mode=wait`, mode: "date" },
+        "amber",
+      ),
+    ]),
+    { type: "text", text: "ระบบจะถามความคืบหน้าทุก 7 วันจนกว่าจะดำเนินการต่อ", size: "xxs", color: "#8A94A0", wrap: true, margin: "md" },
+  ]);
+}
+
+/** ขอคำอธิบายอาการ — พิมพ์เอง หรือติ๊กว่าไม่มีคำอธิบายเพิ่มเติม */
+export function assessmentAskCard(ticketId: string, ticketNo: string): LineMessage {
+  return bubble([
+    { type: "text", text: `${ticketNo} · พบอะไรบ้าง`, size: "sm", weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "พิมพ์ต่อท้ายข้อความที่เตรียมไว้แล้วส่ง", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    chipRow([
+      chip(
+        "✎ พิมพ์อาการที่พบ",
+        {
+          type: "postback",
+          label: "พิมพ์อาการที่พบ",
+          data: `action=note&ticket=${ticketId}`,
+          inputOption: "openKeyboard",
+          fillInText: `ผลตรวจ ${ticketNo}: `,
+        },
+        "green",
+      ),
+    ]),
+    chipRow([
+      chip("☑ ไม่มีคำอธิบายเพิ่มเติม", { type: "postback", label: "ไม่มีคำอธิบาย", data: `action=nonote&ticket=${ticketId}` }, "grey"),
+    ]),
+  ]);
+}
+
+/** ทวงงานรออะไหล่ — ตอบได้จากปุ่มในข้อความเลย ไม่ต้องเปิดแอป */
+export function partsFollowUpCard(ticketId: string, ticketNo: string): LineMessage {
+  return bubble([
+    { type: "text", text: `${ticketNo} · อะไหล่มาหรือยัง`, size: "sm", weight: "bold", color: "#111111", wrap: true },
+    chipRow([
+      chip("ของมาแล้ว เริ่มงาน", { type: "postback", label: "ของมาแล้ว", data: `action=partsok&ticket=${ticketId}` }),
+      chip(
+        "📅 เลื่อนวัน",
+        { type: "datetimepicker", label: "เลื่อนวัน", data: `action=duedate&ticket=${ticketId}&mode=wait`, mode: "date" },
+        "grey",
+      ),
+    ]),
+  ]);
+}
+
+/** ทวงงานที่เลยกำหนด — ให้เลื่อนกำหนดหรือปิดงานได้จากในข้อความเลย */
+export function overdueCard(ticketId: string, ticketNo: string): LineMessage {
+  return bubble([
+    { type: "text", text: `${ticketNo} · เลยกำหนดแล้ว`, size: "sm", weight: "bold", color: "#B3261E", wrap: true },
+    { type: "text", text: "อัปเดตกำหนดใหม่ หรือปิดงานถ้าเสร็จแล้ว", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    chipRow([
+      chip("ดำเนินการเสร็จสิ้น", { type: "postback", label: "เสร็จสิ้น", data: `action=complete&ticket=${ticketId}` }),
+      chip(
+        "📅 เลื่อนกำหนด",
+        { type: "datetimepicker", label: "เลื่อนกำหนด", data: `action=duedate&ticket=${ticketId}&mode=pick`, mode: "date" },
+        "grey",
+      ),
+    ]),
+  ]);
 }
