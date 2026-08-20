@@ -10,6 +10,9 @@ import { db } from "./db";
 import { HttpError, json, methodGuard, run } from "./http";
 import { thaiDateShort } from "./tickets";
 
+/** สถานะที่ถือว่าเรื่องจบแล้ว — ไม่มีอะไรให้ทำต่อ เหลือไว้เป็นประวัติ */
+const DONE_STATUSES = new Set<string>(["completed", "closed", "cancelled"]);
+
 interface TicketRow {
   id: string;
   ticket_no: string;
@@ -105,6 +108,10 @@ export async function handleTicketsDepartment(req: Request): Promise<Response> {
     const deptCode = (params.get("dept") ?? "").trim().toUpperCase();
     const status = (params.get("status") ?? "").trim();
     const assigneeMe = params.get("assignee") === "me";
+    // group แยก "งานที่ยังต้องทำ" ออกจาก "งานที่จบไปแล้ว" — งานที่ปิดไปแล้วเป็นประวัติ
+    // ไม่ใช่สิ่งที่ต้องเห็นตอนไล่ดูว่าเหลืออะไรต้องทำ ปนกันแล้วรายการยาวขึ้นเรื่อย ๆ จนหาของจริงไม่เจอ
+    const group = (params.get("group") ?? "").trim();
+    if (group && group !== "active" && group !== "done") throw new HttpError(400, "กลุ่มงานไม่ถูกต้อง");
 
     const sql = db();
 
@@ -123,6 +130,17 @@ export async function handleTicketsDepartment(req: Request): Promise<Response> {
     if (status && !(status in STATUS_TRANSITIONS)) throw new HttpError(400, "สถานะไม่ถูกต้อง");
     const statusFilter = status ? sql`AND t.status = ${status}` : sql``;
     const assigneeFilter = assigneeMe ? sql`AND t.assignee_id = ${s.employee.id}` : sql``;
+    const groupFilter =
+      group === "active"
+        ? sql`AND t.status IN ('pending', 'in_progress')`
+        : group === "done"
+          ? sql`AND t.status IN ('completed', 'closed', 'cancelled')`
+          : sql``;
+    // งานที่จบแล้วเรียงตามเวลาที่จบ ใหม่สุดขึ้นก่อน — ความเร่งด่วนไม่มีความหมายกับงานที่ปิดไปแล้ว
+    const order =
+      group === "done"
+        ? sql`ORDER BY COALESCE(t.completed_at, t.closed_at, t.updated_at) DESC`
+        : sql`ORDER BY CASE t.urgency WHEN 'critical' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END, t.created_at DESC`;
 
     const rows = await sql<
       {
@@ -142,17 +160,19 @@ export async function handleTicketsDepartment(req: Request): Promise<Response> {
         due_at: string | null;
         due_label: string | null;
         waiting_parts: boolean;
+        finished_at: string | null;
       }[]
     >`
       SELECT t.id, t.ticket_no, t.category_code, t.floor, t.location_note, t.detail,
              t.urgency, t.status, t.created_at, t.assessed_at, t.due_at, t.due_label, t.waiting_parts,
+             COALESCE(t.completed_at, t.closed_at, t.updated_at) AS finished_at,
              r.full_name AS reporter_name, r.department_name AS reporter_dept,
              a.full_name AS assignee_name
       FROM tickets t
       JOIN employees r ON r.id = t.reporter_id
       LEFT JOIN employees a ON a.id = t.assignee_id
-      WHERE t.department_id = ${departmentId} ${statusFilter} ${assigneeFilter}
-      ORDER BY CASE t.urgency WHEN 'critical' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END, t.created_at DESC
+      WHERE t.department_id = ${departmentId} ${statusFilter} ${assigneeFilter} ${groupFilter}
+      ${order}
       LIMIT 100
     `;
 
@@ -177,6 +197,9 @@ export async function handleTicketsDepartment(req: Request): Promise<Response> {
         due_label: t.due_label,
         due_date_label: t.due_at ? thaiDateShort(new Date(t.due_at)) : null,
         waiting_parts: t.waiting_parts,
+        // วันที่จบงาน — มีความหมายเฉพาะกับงานที่ปิดไปแล้ว งานที่ยังทำอยู่ค่านี้คือเวลาที่แก้ไขล่าสุด
+        finished_date_label:
+          DONE_STATUSES.has(t.status) && t.finished_at ? thaiDateShort(new Date(t.finished_at)) : null,
       })),
     });
   });

@@ -563,6 +563,13 @@ function renderQueueDepts() {
     .join("");
 }
 
+const QUEUE_EMPTY = {
+  "": "ไม่มีรายการ",
+  pending: "ไม่มีเรื่องที่รอรับ",
+  me: "ไม่มีงานที่ค้างอยู่",
+  done: "ยังไม่มีงานที่จบ",
+};
+
 async function goQueue() {
   setTab("queue");
   show("s-queue");
@@ -571,11 +578,20 @@ async function goQueue() {
   const params = new URLSearchParams();
   if (queueDept) params.set("dept", queueDept);
   if (queueFilter === "pending") params.set("status", "pending");
-  if (queueFilter === "me") params.set("assignee", "me");
+  // งานของตัวเองแยกเป็นสองหน้า: ที่ยังต้องทำ กับที่จบไปแล้ว — งานที่ปิดแล้วเป็นประวัติ
+  // ไม่ควรมาปนกับรายการที่ใช้ไล่ดูว่าเหลืออะไรต้องทำ
+  if (queueFilter === "me") {
+    params.set("assignee", "me");
+    params.set("group", "active");
+  }
+  if (queueFilter === "done") {
+    params.set("assignee", "me");
+    params.set("group", "done");
+  }
   try {
     const r = await api("/api/tickets/department?" + params.toString());
     if (!r.tickets.length) {
-      list.innerHTML = '<div class="empty">ไม่มีรายการ</div>';
+      list.innerHTML = `<div class="empty">${QUEUE_EMPTY[queueFilter] || "ไม่มีรายการ"}</div>`;
       return;
     }
     queueRows = r.tickets;
@@ -600,9 +616,12 @@ function renderQueueCard(t, deptCode) {
   }
   const tag = t.urgency === "critical" ? " · เร่งด่วนมาก" : t.urgency === "urgent" ? " · เร่งด่วน" : "";
   const when = [t.due_label, t.due_date_label].filter(Boolean).join(" · ");
-  const due = when
-    ? `<div class="meta" style="color:var(--green-deep);font-weight:600">${t.waiting_parts ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ"} ${esc(when)}</div>`
-    : "";
+  // งานที่จบแล้วสนใจว่าจบเมื่อไหร่ ส่วนงานที่ยังทำอยู่สนใจว่าจะเสร็จเมื่อไหร่
+  const due = t.finished_date_label
+    ? `<div class="meta">${t.status === "cancelled" ? "ยกเลิกเมื่อ" : "จบเมื่อ"} ${esc(t.finished_date_label)}</div>`
+    : when
+      ? `<div class="meta" style="color:var(--green-deep);font-weight:600">${t.waiting_parts ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ"} ${esc(when)}</div>`
+      : "";
   return `<div class="card clickable" data-id="${t.id}" data-dept="${esc(deptCode || "")}">
     <div class="cardtop">
       <div>
@@ -626,7 +645,7 @@ async function doStatus(id, to, okMsg, note) {
   try {
     await api(`/api/tickets/${id}/status`, { method: "PATCH", body: { to_status: to, note } });
     toast(okMsg || "อัปเดตสถานะเรียบร้อยแล้ว");
-    goQueue();
+    routeTab("queue");
   } catch (e) {
     toast(e.message);
   }
@@ -642,7 +661,7 @@ async function openTransferSheet(id, currentDeptCode) {
   try {
     await api(`/api/tickets/${id}/transfer`, { method: "PATCH", body: { to_dept: to } });
     toast("ส่งต่อเรื่องเรียบร้อยแล้ว");
-    goQueue();
+    routeTab("queue");
   } catch (e) {
     toast(e.message);
   }
@@ -1233,11 +1252,15 @@ async function saveAssess() {
   }
 }
 
-/** ออกจากหน้าแจ้งผล — กลับไปคิวงานถ้ามีสิทธิ์ ไม่งั้นกลับหน้าแรก */
+/**
+ * ออกจากหน้าแจ้งผล — กลับไปหน้าคิวงานถ้ามีสิทธิ์ ไม่งั้นกลับหน้าแรก
+ *
+ * ผ่าน routeTab ไม่ใช่ goQueue ตรง ๆ เพื่อให้ปุ่มย้อนกลับหายไปและแท็บล่างสว่างให้ถูกอันด้วย
+ * ไม่งั้นหน้าคิวงานจะมีลูกศรย้อนกลับค้างอยู่ทั้งที่ไม่ได้เปิดมาจากหน้าไหน
+ */
 function backFromAssess() {
   assessCtx = null;
-  if (activeDepts().length) return goQueue();
-  goForm();
+  routeTab(activeDepts().length ? "queue" : "form");
 }
 
 async function openProgress(t) {
@@ -1253,7 +1276,7 @@ async function openProgress(t) {
   try {
     await api(`/api/tickets/${t.id}/progress`, { method: "POST", body: { note } });
     toast("ส่งอัปเดตเรียบร้อยแล้ว");
-    if (activeDepts().length) goQueue();
+    if (activeDepts().length) routeTab("queue");
   } catch (e) {
     toast(e.message);
   }
@@ -1268,8 +1291,8 @@ async function completeTicket(t) {
   try {
     await api(`/api/tickets/${t.id}/status`, { method: "PATCH", body: { to_status: "completed" } });
     toast("ปรับสถานะเป็นดำเนินการแล้วเสร็จ");
-    if (activeDepts().length) goQueue();
-    else goMine();
+    if (activeDepts().length) routeTab("queue");
+    else routeTab("mine");
   } catch (e) {
     if (e.code === "need_assessment") return openAssess(t, true);
     toast(e.message);
