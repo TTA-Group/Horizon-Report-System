@@ -30,7 +30,7 @@ export interface CategoryDef {
 export const CATEGORIES: CategoryDef[] = [
   { code: "IT", label: "IT Support / Help Desk", deptCode: "IT", prefix: "IT" },
   { code: "FAC", label: "ระบบปรับอากาศ ประปา ไฟฟ้า", deptCode: "ADM", prefix: "ADM" },
-  { code: "CLN", label: "งานแม่บ้านและความสะอาด", deptCode: "ADM", prefix: "CLN" },
+  { code: "CLN", label: "ห้องน้ำ แม่บ้าน และความสะอาด", deptCode: "ADM", prefix: "CLN" },
   { code: "GEN", label: "เรื่องอื่น ๆ", deptCode: "GEN", prefix: "GEN" },
 ];
 export const CATEGORY_BY_CODE = new Map(CATEGORIES.map((c) => [c.code, c]));

@@ -94,7 +94,7 @@ Cloudflare จะ build และ deploy อัตโนมัติเมื่
 |---|---|---|
 | `IT` IT Support / Help Desk | IT / IT Helpdesk | `IT-` |
 | `FAC` ระบบปรับอากาศ ประปา ไฟฟ้า | ADMIN | `ADM-` |
-| `CLN` งานแม่บ้านและความสะอาด | ADMIN | `CLN-` |
+| `CLN` ห้องน้ำ แม่บ้าน และความสะอาด | ADMIN | `CLN-` |
 | `GEN` เรื่องอื่น ๆ | OTHER | `GEN-` |
 
 หมวด `CLN` ส่งเข้าฝ่าย ADMIN ต่างจาก `spec.md` หัวข้อ 4 ที่แยกเป็นฝ่าย CLN — เพราะหน้างานจริง
