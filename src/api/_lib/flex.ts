@@ -38,6 +38,31 @@ export interface TicketFlexInput {
   assessment?: string | null;
 }
 
+/**
+ * ขนาดตัวหนังสือบนการ์ดทุกใบ
+ *
+ * Flex รับเป็นพิกเซลได้ ไม่ต้องใช้คำสำเร็จรูป (xxs=11 xs=13 sm=14 md=16 lg=19) ซึ่งกระโดด
+ * ทีละ 2-3px และเล็กสุดหยุดแค่ 11 — ชุดนี้เล็กกว่าค่ามาตรฐานราว 1-2px ทั้งใบ
+ * การ์ดมีข้อมูลหลายชั้นในพื้นที่แคบ ตัวหนังสือที่เล็กลงคือที่ว่างที่เพิ่มขึ้นรอบตัวหนังสือ
+ * โดยไม่ต้องตัดข้อมูลอะไรออก
+ *
+ * เก็บไว้ที่เดียวเพราะขนาดต้องเท่ากันทุกใบ ถ้ากระจายอยู่ตามที่ต่าง ๆ จะเพี้ยนทีละนิดจนไม่เป็นชุดเดียวกัน
+ */
+const FS = {
+  /** เลขที่เรื่องบนใบเต็ม — ตัวใหญ่สุดของการ์ด */
+  no: "17px",
+  /** เลขที่เรื่องบนใบย่อ */
+  noSm: "15px",
+  /** ชื่อฝ่ายบนหัวใบเต็ม และข้อความเตือนที่ต้องสะดุดตา */
+  head: "14px",
+  /** ข้อความหลัก — รายละเอียด ชื่อคน หัวข้อการ์ดถามตอบ */
+  body: "13px",
+  /** ป้ายกำกับ ชื่อช่อง สถานที่ */
+  label: "12px",
+  /** ป้ายเล็กสุด — แถบขั้นตอน วันเวลา คำอธิบายประกอบ */
+  tiny: "10px",
+};
+
 // สีหัวการ์ด — ใช้เขียวเดียวกับปุ่มท้ายการ์ด (สีเขียวของ LINE) ทั้งใบจึงเป็นสีเดียวกันหมด
 const CARD_COLOR = "#06C755";
 
@@ -154,7 +179,7 @@ function stepper(t: TicketFlexInput, margin = "lg") {
         contents: steps.map((s, i) => ({
           type: "text",
           text: s.label,
-          size: "xxs",
+          size: FS.tiny,
           flex: 1,
           align: i === 0 ? "start" : i === steps.length - 1 ? "end" : "center",
           weight: s.done ? "bold" : "regular",
@@ -186,9 +211,9 @@ function latestBox(t: TicketFlexInput, margin = "lg"): Record<string, unknown> |
     cornerRadius: "8px",
     backgroundColor: "#F1F3F5",
     contents: [
-      { type: "text", text: LATEST_VERB[t.status], size: "xxs", color: "#8A94A0" },
-      { type: "text", text: who, size: "sm", weight: "bold", color: "#111111", wrap: true },
-      { type: "text", text: t.latestAtLabel ?? t.createdAtLabel, size: "xxs", color: "#8A94A0" },
+      { type: "text", text: LATEST_VERB[t.status], size: FS.tiny, color: "#8A94A0" },
+      { type: "text", text: who, size: FS.body, weight: "bold", color: "#111111", wrap: true },
+      { type: "text", text: t.latestAtLabel ?? t.createdAtLabel, size: FS.tiny, color: "#8A94A0" },
     ],
   };
 }
@@ -201,8 +226,8 @@ function kv(label: string, value: string) {
     layout: "horizontal",
     spacing: "sm",
     contents: [
-      { type: "text", text: label, color: "#8A94A0", size: "sm", flex: 3 },
-      { type: "text", text: value || "-", wrap: true, color: "#111111", size: "sm", flex: 7 },
+      { type: "text", text: label, color: "#8A94A0", size: FS.label, flex: 3 },
+      { type: "text", text: value || "-", wrap: true, color: "#111111", size: FS.body, flex: 7 },
     ],
   };
 }
@@ -214,8 +239,8 @@ function kvHighlight(label: string, value: string) {
     layout: "horizontal",
     spacing: "sm",
     contents: [
-      { type: "text", text: label, color: "#8A94A0", size: "sm", flex: 3 },
-      { type: "text", text: value || "-", wrap: true, color: STEP_DONE, size: "sm", weight: "bold", flex: 7 },
+      { type: "text", text: label, color: "#8A94A0", size: FS.label, flex: 3 },
+      { type: "text", text: value || "-", wrap: true, color: STEP_DONE, size: FS.body, weight: "bold", flex: 7 },
     ],
   };
 }
@@ -288,7 +313,7 @@ function photoBlock(urls: string[]) {
       {
         type: "text",
         text: more > 0 ? `รูปภาพแนบ · แตะเพื่อดูขนาดเต็ม (อีก ${more} รูปดูในแอป)` : "รูปภาพแนบ · แตะเพื่อดูขนาดเต็ม",
-        size: "xxs",
+        size: FS.tiny,
         color: "#8A94A0",
         wrap: true,
       },
@@ -325,8 +350,8 @@ function unassignedBlock() {
     borderWidth: "1px",
     borderColor: "#E7B7B1",
     contents: [
-      { type: "text", text: "ผู้รับผิดชอบ", size: "xs", color: "#8A94A0" },
-      { type: "text", text: "ยังไม่มีผู้รับผิดชอบ", size: "lg", weight: "bold", color: "#B3261E", wrap: true },
+      { type: "text", text: "ผู้รับผิดชอบ", size: FS.tiny, color: "#8A94A0" },
+      { type: "text", text: "ยังไม่มีผู้รับผิดชอบ", size: FS.head, weight: "bold", color: "#B3261E", wrap: true },
     ],
   };
 }
@@ -344,15 +369,15 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
       layout: "horizontal",
       spacing: "sm",
       contents: [
-        { type: "text", text: "ผู้แจ้ง", color: "#8A94A0", size: "xs", flex: 3 },
+        { type: "text", text: "ผู้แจ้ง", color: "#8A94A0", size: FS.label, flex: 3 },
         {
           type: "box",
           layout: "vertical",
           flex: 7,
           contents: [
-            { type: "text", text: t.reporterName, color: "#111111", size: "xs", wrap: true },
+            { type: "text", text: t.reporterName, color: "#111111", size: FS.label, wrap: true },
             ...(t.reporterDept
-              ? [{ type: "text", text: t.reporterDept, color: "#8A94A0", size: "xxs", wrap: true }]
+              ? [{ type: "text", text: t.reporterDept, color: "#8A94A0", size: FS.tiny, wrap: true }]
               : []),
           ],
         },
@@ -383,7 +408,7 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
       layout: "horizontal",
       alignItems: "center",
       contents: [
-        { type: "text", text: t.ticketNo, size: "lg", weight: "bold", color: "#111111", flex: 1 },
+        { type: "text", text: t.ticketNo, size: FS.no, weight: "bold", color: "#111111", flex: 1 },
         {
           type: "box",
           layout: "vertical",
@@ -393,11 +418,11 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
           paddingEnd: "10px",
           cornerRadius: "12px",
           backgroundColor: "#F1F3F5",
-          contents: [{ type: "text", text: t.createdAtLabel, size: "xxs", color: "#5B6672", align: "center" }],
+          contents: [{ type: "text", text: t.createdAtLabel, size: FS.tiny, color: "#5B6672", align: "center" }],
         },
       ],
     },
-    { type: "text", text: t.categoryLabel, size: "xs", color: "#8A94A0", wrap: true },
+    { type: "text", text: t.categoryLabel, size: FS.label, color: "#8A94A0", wrap: true },
     stepper(t),
     ...(latest ? [latest] : []),
     { type: "separator", margin: "lg", color: "#EDF0F3" },
@@ -413,7 +438,9 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
     altText: `[${t.ticketNo}] ${t.departmentName} · ${statusLabel} · ${t.detail.slice(0, 40)}`,
     contents: {
       type: "bubble",
-      size: "mega",
+      // ขนาดเดียวกับใบย่อ — การ์ดของเรื่องเดียวกันที่กว้างไม่เท่ากันทำให้บทสนทนาในกลุ่มดูขรุขระ
+      // ความต่างระหว่างสองใบควรมาจากปริมาณข้อมูล ไม่ใช่ความกว้างของฟอง
+      size: "kilo",
       // สองแถบซ้อนกันอยู่ใน header เดียว (ตัด padding ของ header ออกให้แถบลูกกินเต็มความกว้าง)
       // แถบบน = ฝ่ายที่รับผิดชอบ · แถบล่าง = ระดับความเร่งด่วน
       header: {
@@ -427,7 +454,7 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
             paddingAll: "14px",
             backgroundColor: CARD_COLOR,
             contents: [
-              { type: "text", text: t.departmentName, color: "#FFFFFF", size: "md", weight: "bold", wrap: true },
+              { type: "text", text: t.departmentName, color: "#FFFFFF", size: FS.head, weight: "bold", wrap: true },
             ],
           },
           {
@@ -440,7 +467,7 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
                 type: "text",
                 text: urgency.note ? `${urgency.label} · ${urgency.note}` : urgency.label,
                 color: "#FFFFFF",
-                size: "xs",
+                size: FS.label,
                 weight: "bold",
                 align: "center",
                 wrap: true,
@@ -520,7 +547,7 @@ function statusPill(status: StatusCode) {
       {
         type: "text",
         text: STATUS_CHIP[status] ?? STATUS_LABELS[status] ?? status,
-        size: "xxs",
+        size: FS.tiny,
         weight: "bold",
         color: tone.fg,
         align: "center",
@@ -559,13 +586,13 @@ function compactKv(label: string, value: string, margin: string, valueColor?: st
     spacing: "sm",
     margin,
     contents: [
-      { type: "text", text: label, color: "#8A94A0", size: "xs", flex: 0 },
+      { type: "text", text: label, color: "#8A94A0", size: FS.label, flex: 0 },
       {
         type: "text",
         text: value || "-",
         wrap: true,
         color: valueColor ?? "#111111",
-        size: "xs",
+        size: FS.body,
         weight: valueColor ? "bold" : "regular",
         flex: 1,
       },
@@ -584,14 +611,14 @@ export function buildCompactFlex(t: TicketFlexInput): LineMessage {
       layout: "horizontal",
       alignItems: "center",
       contents: [
-        { type: "text", text: t.ticketNo, size: "md", weight: "bold", color: "#111111", flex: 1 },
+        { type: "text", text: t.ticketNo, size: FS.noSm, weight: "bold", color: "#111111", flex: 1 },
         statusPill(t.status),
       ],
     },
     // เรื่องที่แจ้งเป็นหัวเรื่องของใบนี้ ไม่ใช่แถวข้อมูลแถวหนึ่ง — จำกัด 2 บรรทัดกันเรื่องที่พิมพ์มายาว
     // ดันให้การ์ดสูงเท่าใบเต็ม รายละเอียดครบยังอ่านได้ในแอปและบนการ์ดใบแรกที่ยังอยู่ในกลุ่ม
-    { type: "text", text: t.detail, size: "sm", weight: "bold", color: "#111111", wrap: true, maxLines: 2, margin: "sm" },
-    { type: "text", text: where, size: "xs", color: "#5B6672", wrap: true, margin: "xs" },
+    { type: "text", text: t.detail, size: FS.body, weight: "bold", color: "#111111", wrap: true, maxLines: 2, margin: "sm" },
+    { type: "text", text: where, size: FS.label, color: "#5B6672", wrap: true, margin: "xs" },
     stepper(t, "md"),
   ];
 
@@ -628,8 +655,8 @@ export function buildCompactFlex(t: TicketFlexInput): LineMessage {
         backgroundColor: urgency.color,
         alignItems: "center",
         contents: [
-          { type: "text", text: t.departmentName, color: "#FFFFFF", size: "xs", weight: "bold", wrap: true, flex: 1 },
-          { type: "text", text: urgency.label, color: "#FFFFFF", size: "xxs", weight: "bold", align: "end", flex: 0 },
+          { type: "text", text: t.departmentName, color: "#FFFFFF", size: FS.label, weight: "bold", wrap: true, flex: 1 },
+          { type: "text", text: urgency.label, color: "#FFFFFF", size: FS.tiny, weight: "bold", align: "end", flex: 0 },
         ],
       },
       body: { type: "box", layout: "vertical", paddingAll: "14px", contents: body },
@@ -665,7 +692,7 @@ function chip(label: string, action: Record<string, unknown>, tone: keyof typeof
     borderWidth: "1px",
     borderColor: c.border,
     action,
-    contents: [{ type: "text", text: label, size: "xxs", weight: "bold", color: c.text, align: "center" }],
+    contents: [{ type: "text", text: label, size: FS.tiny, weight: "bold", color: c.text, align: "center" }],
   };
 }
 
@@ -701,8 +728,8 @@ export function dueAskCard(ticketId: string, ticketNo: string): LineMessage {
     ),
   );
   return bubble([
-    { type: "text", text: `${ticketNo} · คาดว่าจะเสร็จเมื่อไหร่`, size: "sm", weight: "bold", color: "#111111", wrap: true },
-    { type: "text", text: "เลือกกรอบเวลาที่ใกล้เคียงที่สุด ระบบจะแจ้งผู้แจ้งให้เอง", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    { type: "text", text: `${ticketNo} · คาดว่าจะเสร็จเมื่อไหร่`, size: FS.body, weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "เลือกกรอบเวลาที่ใกล้เคียงที่สุด ระบบจะแจ้งผู้แจ้งให้เอง", size: FS.tiny, color: "#8A94A0", wrap: true, margin: "xs" },
     ...rows,
   ]);
 }
@@ -710,8 +737,8 @@ export function dueAskCard(ticketId: string, ticketNo: string): LineMessage {
 /** รออะไหล่ — บังคับเลือกวันจากปฏิทิน ข้ามไม่ได้ */
 export function waitDateCard(ticketId: string, ticketNo: string): LineMessage {
   return bubble([
-    { type: "text", text: `${ticketNo} · รออะไหล่ / ผู้รับเหมา`, size: "sm", weight: "bold", color: "#111111", wrap: true },
-    { type: "text", text: "ระบุวันที่คาดว่าจะแก้ไขได้ (บังคับ)", size: "xxs", color: "#B3261E", wrap: true, margin: "xs" },
+    { type: "text", text: `${ticketNo} · รออะไหล่ / ผู้รับเหมา`, size: FS.body, weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "ระบุวันที่คาดว่าจะแก้ไขได้ (บังคับ)", size: FS.tiny, color: "#B3261E", wrap: true, margin: "xs" },
     chipRow([
       chip(
         "📅 เลือกวันที่",
@@ -719,15 +746,15 @@ export function waitDateCard(ticketId: string, ticketNo: string): LineMessage {
         "amber",
       ),
     ]),
-    { type: "text", text: "ระบบจะถามความคืบหน้าทุก 7 วันจนกว่าจะดำเนินการต่อ", size: "xxs", color: "#8A94A0", wrap: true, margin: "md" },
+    { type: "text", text: "ระบบจะถามความคืบหน้าทุก 7 วันจนกว่าจะดำเนินการต่อ", size: FS.tiny, color: "#8A94A0", wrap: true, margin: "md" },
   ]);
 }
 
 /** ขอคำอธิบายอาการ — พิมพ์เอง หรือติ๊กว่าไม่มีคำอธิบายเพิ่มเติม */
 export function assessmentAskCard(ticketId: string, ticketNo: string): LineMessage {
   return bubble([
-    { type: "text", text: `${ticketNo} · พบอะไรบ้าง`, size: "sm", weight: "bold", color: "#111111", wrap: true },
-    { type: "text", text: "พิมพ์ต่อท้ายข้อความที่เตรียมไว้แล้วส่ง", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    { type: "text", text: `${ticketNo} · พบอะไรบ้าง`, size: FS.body, weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "พิมพ์ต่อท้ายข้อความที่เตรียมไว้แล้วส่ง", size: FS.tiny, color: "#8A94A0", wrap: true, margin: "xs" },
     chipRow([
       chip(
         "✎ พิมพ์อาการที่พบ",
@@ -750,7 +777,7 @@ export function assessmentAskCard(ticketId: string, ticketNo: string): LineMessa
 /** ทวงงานรออะไหล่ — ตอบได้จากปุ่มในข้อความเลย ไม่ต้องเปิดแอป */
 export function partsFollowUpCard(ticketId: string, ticketNo: string): LineMessage {
   return bubble([
-    { type: "text", text: `${ticketNo} · อะไหล่มาหรือยัง`, size: "sm", weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: `${ticketNo} · อะไหล่มาหรือยัง`, size: FS.body, weight: "bold", color: "#111111", wrap: true },
     chipRow([
       chip("ของมาแล้ว เริ่มงาน", { type: "postback", label: "ของมาแล้ว", data: `action=partsok&ticket=${ticketId}` }),
       chip(
@@ -771,8 +798,8 @@ export function partsFollowUpCard(ticketId: string, ticketNo: string): LineMessa
 export function needAssessCard(ticketId: string, ticketNo: string): LineMessage {
   const uri = liffUri(ticketId, "complete");
   return bubble([
-    { type: "text", text: `${ticketNo} · ยังไม่ได้แจ้งผลตรวจสอบ`, size: "sm", weight: "bold", color: "#111111", wrap: true },
-    { type: "text", text: "กรอกอาการที่พบสั้น ๆ แล้วระบบจะปิดงานให้ในขั้นตอนเดียว", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    { type: "text", text: `${ticketNo} · ยังไม่ได้แจ้งผลตรวจสอบ`, size: FS.body, weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "กรอกอาการที่พบสั้น ๆ แล้วระบบจะปิดงานให้ในขั้นตอนเดียว", size: FS.tiny, color: "#8A94A0", wrap: true, margin: "xs" },
     chipRow([
       uri
         ? chip("แจ้งผลแล้วปิดงานในแอป", { type: "uri", label: "เปิดในแอป", uri })
@@ -784,8 +811,8 @@ export function needAssessCard(ticketId: string, ticketNo: string): LineMessage 
 /** ทวงงานที่เลยกำหนด — ให้เลื่อนกำหนดหรือปิดงานได้จากในข้อความเลย */
 export function overdueCard(ticketId: string, ticketNo: string): LineMessage {
   return bubble([
-    { type: "text", text: `${ticketNo} · เลยกำหนดแล้ว`, size: "sm", weight: "bold", color: "#B3261E", wrap: true },
-    { type: "text", text: "อัปเดตกำหนดใหม่ หรือปิดงานถ้าเสร็จแล้ว", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    { type: "text", text: `${ticketNo} · เลยกำหนดแล้ว`, size: FS.body, weight: "bold", color: "#B3261E", wrap: true },
+    { type: "text", text: "อัปเดตกำหนดใหม่ หรือปิดงานถ้าเสร็จแล้ว", size: FS.tiny, color: "#8A94A0", wrap: true, margin: "xs" },
     chipRow([
       chip("ดำเนินการเสร็จสิ้น", { type: "postback", label: "เสร็จสิ้น", data: `action=complete&ticket=${ticketId}` }),
       chip(
