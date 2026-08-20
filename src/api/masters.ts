@@ -2,7 +2,7 @@
 // ต้องล็อกอินก่อน — เป็นระบบภายในองค์กร ไม่ควรเปิดรายชื่อฝ่าย/ชั้นให้คนนอกดูได้
 
 import { getSession } from "./_lib/auth";
-import { ADMIN_DEPARTMENT_CODE, CATEGORIES, FLOORS, URGENCIES } from "./_lib/constants";
+import { ADMIN_DEPARTMENT_CODE, CATEGORIES, DUE_OPTIONS, FLOORS, URGENCIES } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { json, methodGuard, run } from "./_lib/http";
 
@@ -23,5 +23,8 @@ export default async (req: Request): Promise<Response> =>
       departments: departments.map((d) => ({ ...d, grants_admin: d.code === ADMIN_DEPARTMENT_CODE })),
       floors: FLOORS,
       urgencies: URGENCIES,
+      // ตัวเลือกกำหนดเสร็จของหน้าแจ้งผลตรวจสอบ — ให้หน้าจอกับการ์ดในไลน์ใช้ชุดเดียวกัน
+      // ไม่ต้องเขียนรายการซ้ำสองที่แล้วเผลอแก้ไม่ตรงกัน
+      due_options: DUE_OPTIONS.map((d) => ({ key: d.key, chip: d.chip, label: d.label, special: d.special ?? null })),
     });
   });

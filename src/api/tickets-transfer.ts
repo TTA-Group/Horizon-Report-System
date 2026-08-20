@@ -2,12 +2,10 @@
 // เปลี่ยน department_id คงสถานะ pending แล้ว push เข้ากลุ่มฝ่ายใหม่
 
 import { getSession, isMemberOf, requireActive } from "./_lib/auth";
-import { CATEGORY_BY_CODE, CHANNEL_KEY, type UrgencyCode } from "./_lib/constants";
 import { db } from "./_lib/db";
-import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { pushTo, textMessage } from "./_lib/line";
-import { thaiDateTimeShort } from "./_lib/tickets";
+import { pushTo } from "./_lib/line";
+import { groupCard, justNow, loadCardRow, tellReporter } from "./_lib/ticket-card";
 
 interface Body {
   to_dept?: string;
@@ -32,34 +30,8 @@ export default async (req: Request): Promise<Response> =>
     if (!toDept) throw new HttpError(400, "กรุณาระบุฝ่ายปลายทาง");
 
     const sql = db();
-    const rows = await sql<
-      {
-        status: string;
-        department_id: string;
-        category_code: string;
-        floor: string;
-        location_note: string | null;
-        detail: string;
-        urgency: string;
-        ticket_no: string;
-        created_at: string;
-        reporter_id: string;
-        reporter_name: string;
-        reporter_dept: string | null;
-        photos: string[] | null;
-      }[]
-    >`
-      SELECT t.status, t.department_id, t.category_code, t.floor, t.location_note, t.detail,
-             t.urgency, t.ticket_no, t.created_at, t.reporter_id,
-             r.full_name AS reporter_name, r.department_name AS reporter_dept,
-             (SELECT array_agg(ta.file_url ORDER BY ta.created_at)
-              FROM ticket_attachments ta
-             WHERE ta.ticket_id = t.id AND ta.file_url IS NOT NULL) AS photos
-      FROM tickets t JOIN employees r ON r.id = t.reporter_id
-      WHERE t.id = ${id} LIMIT 1
-    `;
-    if (rows.length === 0) throw new HttpError(404, "ไม่พบเรื่องนี้");
-    const t = rows[0];
+    const t = await loadCardRow(id);
+    if (!t) throw new HttpError(404, "ไม่พบเรื่องนี้");
 
     if (!isMemberOf(s, t.department_id)) throw new HttpError(403, "ไม่มีสิทธิ์ส่งต่อเรื่องของฝ่ายนี้");
 
@@ -80,41 +52,19 @@ export default async (req: Request): Promise<Response> =>
       VALUES (${id}, ${t.status}, 'pending', ${s.employee.id}, ${"ส่งต่อไปฝ่าย " + dept[0].name})
     `;
 
-    // แจ้งกลุ่มฝ่ายใหม่
+    // แจ้งกลุ่มฝ่ายใหม่ — ส่งต่อฝ่ายแล้วเรื่องกลับไปรอรับใหม่เสมอ จึงเป็นการ์ดใบเต็มให้แย่งกันกดรับ
     if (dept[0].line_group_id) {
-      const flex = buildTicketFlex({
-        ticketId: id,
-        ticketNo: t.ticket_no,
-        status: "pending", // ส่งต่อฝ่ายแล้วเรื่องกลับไปรอรับใหม่เสมอ
+      const flex = groupCard(t, {
+        status: "pending",
         departmentName: dept[0].name,
+        assigneeName: null,
         actorName: s.employee.full_name,
-        latestActor: s.employee.full_name,
-        latestAtLabel: thaiDateTimeShort(),
-        photos: t.photos,
-        categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
-        reporterName: t.reporter_name,
-        reporterDept: t.reporter_dept,
-        floor: t.floor,
-        locationNote: t.location_note,
-        detail: t.detail,
-        urgency: t.urgency as UrgencyCode,
-        createdAtLabel: thaiDateTimeShort(new Date(t.created_at)),
+        ...justNow(s.employee.full_name),
       });
       await pushTo(dept[0].line_group_id, [flex], { ticketId: id, channel: "group" });
     }
 
-    // แจ้งผู้แจ้ง
-    const reporter = await sql<{ line_user_id: string }[]>`
-      SELECT line_user_id FROM line_accounts
-      WHERE employee_id = ${t.reporter_id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
-    `;
-    if (reporter.length > 0) {
-      await pushTo(
-        reporter[0].line_user_id,
-        [textMessage(`เรื่อง ${t.ticket_no} ถูกส่งต่อไปยัง ${dept[0].name} แล้ว`)],
-        { ticketId: id, channel: "user" },
-      );
-    }
+    await tellReporter(t, `เรื่อง ${t.ticket_no} ถูกส่งต่อไปยัง ${dept[0].name} แล้ว`);
 
     return json({ ok: true, id, department_id: dept[0].id, status: "pending" });
   });

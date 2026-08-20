@@ -2,19 +2,11 @@
 // รองรับการกดรับพร้อมกัน: ใช้ conditional update กันรับซ้ำ
 
 import { getSession, isMemberOf, requireActive } from "./_lib/auth";
-import {
-  CATEGORY_BY_CODE,
-  CHANNEL_KEY,
-  STATUS_LABELS,
-  STATUS_TRANSITIONS,
-  type StatusCode,
-  type UrgencyCode,
-} from "./_lib/constants";
+import { STATUS_LABELS, STATUS_TRANSITIONS, type StatusCode } from "./_lib/constants";
 import { db } from "./_lib/db";
-import { buildTicketFlex } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { pushTo, textMessage } from "./_lib/line";
-import { assertTransition, shortName, thaiDateTimeShort } from "./_lib/tickets";
+import { groupCard, justNow, loadCardRow, pushGroupCard, tellReporter } from "./_lib/ticket-card";
+import { assertTransition, shortName } from "./_lib/tickets";
 
 interface Body {
   to_status?: string;
@@ -40,44 +32,8 @@ export default async (req: Request): Promise<Response> =>
     if (!(to in STATUS_TRANSITIONS)) throw new HttpError(400, "สถานะปลายทางไม่ถูกต้อง");
     const note = (body.note ?? "").trim() || null;
 
-    const sql = db();
-    const rows = await sql<
-      {
-        status: StatusCode;
-        department_id: string;
-        department_code: string;
-        department_name: string;
-        line_group_id: string | null;
-        reporter_id: string;
-        ticket_no: string;
-        category_code: string;
-        floor: string;
-        location_note: string | null;
-        detail: string;
-        urgency: string;
-        created_at: string;
-        reporter_name: string;
-        reporter_dept: string | null;
-        assignee_name: string | null;
-        photos: string[] | null;
-      }[]
-    >`
-      SELECT t.status, t.department_id, t.reporter_id, t.ticket_no, t.category_code,
-             t.floor, t.location_note, t.detail, t.urgency, t.created_at,
-             r.full_name AS reporter_name, r.department_name AS reporter_dept,
-             d.code AS department_code, d.name AS department_name, d.line_group_id,
-             a.full_name AS assignee_name,
-             (SELECT array_agg(ta.file_url ORDER BY ta.created_at)
-              FROM ticket_attachments ta
-             WHERE ta.ticket_id = t.id AND ta.file_url IS NOT NULL) AS photos
-      FROM tickets t
-      JOIN employees r ON r.id = t.reporter_id
-      JOIN departments d ON d.id = t.department_id
-      LEFT JOIN employees a ON a.id = t.assignee_id
-      WHERE t.id = ${id} LIMIT 1
-    `;
-    if (rows.length === 0) throw new HttpError(404, "ไม่พบเรื่องนี้");
-    const t = rows[0];
+    const t = await loadCardRow(id);
+    if (!t) throw new HttpError(404, "ไม่พบเรื่องนี้");
 
     // เจ้าหน้าที่ของฝ่ายทำได้ทุกอย่าง ส่วนผู้แจ้งเองยกเลิกเรื่องของตัวเองได้ เฉพาะตอนที่ยังไม่มีคนรับ
     // (แจ้งผิด/แจ้งซ้ำแล้วอยากถอน — ถ้ามีคนรับไปแล้วต้องให้เจ้าหน้าที่จัดการ)
@@ -88,6 +44,15 @@ export default async (req: Request): Promise<Response> =>
 
     const from = t.status;
     assertTransition(from, to);
+
+    // ปิดงานทั้งที่ยังไม่เคยแจ้งผลตรวจสอบ — ส่งรหัสกลับให้หน้าจอพาไปกรอกก่อนแล้วปิดให้ในคราวเดียว
+    // (ดู /api/tickets/:id/assess พารามิเตอร์ then_complete) เรื่องที่เปิดแล้วปิดโดยไม่มีใครรู้ว่า
+    // เกิดอะไรขึ้นคือช่องโหว่ที่ตั้งใจอุด
+    if (to === "completed" && !t.assessed_at) {
+      throw new HttpError(409, "กรุณาแจ้งผลตรวจสอบก่อนปิดงาน", "need_assessment");
+    }
+
+    const sql = db();
     const me = s.employee.id;
 
     // อัปเดตแบบมีเงื่อนไข status=from เพื่อกันการชนกัน (โดยเฉพาะการกดรับพร้อมกัน)
@@ -115,54 +80,35 @@ export default async (req: Request): Promise<Response> =>
       VALUES (${id}, ${from}, ${to}, ${me}, ${note})
     `;
 
+    t.status = to;
+    if (to === "in_progress") t.assignee_name = s.employee.full_name;
+    if (to === "pending") t.assignee_name = null;
+
     // การแจ้งเตือนทั้งหมดอยู่หลังบันทึกสำเร็จแล้ว ถ้าส่งข้อความไม่ผ่านก็ไม่ควรทำให้ผู้ใช้
     // เห็นว่าเปลี่ยนสถานะไม่สำเร็จทั้งที่บันทึกลงระบบไปแล้ว
     try {
       // แจ้งผู้แจ้งเมื่อสถานะเปลี่ยน (spec หัวข้อ 5.3)
       // ข้ามกรณีผู้แจ้งเป็นคนกดเอง — เขาเห็นผลบนหน้าจออยู่แล้ว การส่งซ้ำเปลืองโควตาข้อความเปล่า ๆ
       if (!isOwnerCancelling) {
-        const reporter = await sql<{ line_user_id: string }[]>`
-          SELECT line_user_id FROM line_accounts
-          WHERE employee_id = ${t.reporter_id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
-        `;
-        if (reporter.length > 0) {
-          const label = STATUS_LABELS[to] ?? to;
-          // บอกชื่อผู้รับผิดชอบด้วยตอนมีคนรับเรื่อง ให้ตรงกับตอนกดปุ่มจากการ์ดในกลุ่ม
-          // ไม่งั้นผู้แจ้งจะรู้ชื่อคนรับผิดชอบบ้างไม่รู้บ้าง ขึ้นอยู่กับว่าเจ้าหน้าที่กดจากที่ไหน
-          const who = to === "in_progress" ? `\nผู้รับผิดชอบ: ${shortName(s.employee.full_name)}` : "";
-          await pushTo(
-            reporter[0].line_user_id,
-            [textMessage(`อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${label}${who}${note ? "\nหมายเหตุ: " + note : ""}`)],
-            { ticketId: id, channel: "user" },
-          );
-        }
+        // บอกชื่อผู้รับผิดชอบด้วยตอนมีคนรับเรื่อง ให้ตรงกับตอนกดปุ่มจากการ์ดในกลุ่ม
+        // ไม่งั้นผู้แจ้งจะรู้ชื่อคนรับผิดชอบบ้างไม่รู้บ้าง ขึ้นอยู่กับว่าเจ้าหน้าที่กดจากที่ไหน
+        const who = to === "in_progress" ? `\nผู้รับผิดชอบ: ${shortName(s.employee.full_name)}` : "";
+        await tellReporter(
+          t,
+          `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS[to] ?? to}${who}${note ? "\nหมายเหตุ: " + note : ""}`,
+        );
       }
 
       // อัปเดตการ์ดในกลุ่มด้วย แม้การเปลี่ยนสถานะจะเกิดจากหน้าแอปไม่ใช่ปุ่มในกลุ่ม
       // ไม่อย่างนั้นกลุ่มจะค้างอยู่ที่การ์ดใบเก่า และไม่มีใครรู้ว่าใครเป็นคนรับผิดชอบต่อ
-      if (t.line_group_id) {
-        const card = buildTicketFlex({
-          ticketId: id,
-          ticketNo: t.ticket_no,
-          status: to,
-          departmentName: t.department_name,
-          categoryLabel: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
-          reporterName: t.reporter_name,
-          reporterDept: t.reporter_dept,
-          floor: t.floor,
-          locationNote: t.location_note,
-          detail: t.detail,
-          urgency: t.urgency as UrgencyCode,
-          createdAtLabel: thaiDateTimeShort(new Date(t.created_at)),
-          assigneeName: to === "in_progress" ? s.employee.full_name : to === "pending" ? null : t.assignee_name,
+      await pushGroupCard(
+        t,
+        groupCard(t, {
           actorName: s.employee.full_name,
-          latestActor: s.employee.full_name,
-          latestAtLabel: thaiDateTimeShort(),
-          photos: t.photos,
           cancelReason: to === "cancelled" ? note : null,
-        });
-        await pushTo(t.line_group_id, [card], { ticketId: id, channel: "group" });
-      }
+          ...justNow(s.employee.full_name),
+        }),
+      );
     } catch (e) {
       console.error("[tickets-status] notify failed", e);
     }

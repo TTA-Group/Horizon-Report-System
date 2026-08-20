@@ -2,7 +2,7 @@
 
 import { CATEGORY_BY_CODE, CHANNEL_KEY, type UrgencyCode } from "./constants";
 import { db } from "./db";
-import { buildTicketFlex, overdueCard, partsFollowUpCard } from "./flex";
+import { buildCompactFlex, buildTicketFlex, overdueCard, partsFollowUpCard } from "./flex";
 import { multicastTo, pushTo, textMessage } from "./line";
 import { departmentStaffLineIds } from "./staff";
 import { thaiDateShort, thaiDateTimeShort } from "./tickets";
@@ -210,7 +210,9 @@ export async function runProgressReminders(): Promise<{ checked: number; notifie
       WHERE id = ${t.id}
     `;
 
-    const card = buildTicketFlex({
+    // ใบย่อ — คนที่ได้รับข้อความทวงคือผู้รับผิดชอบเองกับหัวหน้าฝ่าย ทั้งคู่รู้จักเรื่องนี้อยู่แล้ว
+    // ไม่ต้องส่งรูปกับชื่อผู้แจ้งซ้ำ และปุ่มบนใบย่อพาไปกรอกในแอปได้เลย
+    const card = buildCompactFlex({
       ticketId: t.id,
       ticketNo: t.ticket_no,
       status: "in_progress",
