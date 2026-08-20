@@ -60,6 +60,9 @@ let sheetPick = null; // ตัวรับค่าเมื่อเลือ�
 let deepLink = null; // เรื่องที่ถูกกดมาจากปุ่มบนการ์ดในไลน์ { ticket, todo }
 let assessCtx = null; // เรื่องที่กำลังแจ้งผลตรวจสอบอยู่ { t, thenComplete }
 let dueKey = null; // กรอบเวลาที่เลือกไว้ในหน้าแจ้งผล
+let reportDept = ""; // ฝ่ายที่กำลังดูรายงาน (รหัสฝ่าย · ว่าง = ฝ่ายแรกที่มีสิทธิ์)
+let reportPeriod = { period: "week", offset: 1 }; // ค่าเริ่มต้น: สัปดาห์ที่แล้ว ซึ่งเป็นช่วงที่จบแล้ว
+let reportData = null; // ผลรอบล่าสุด ใช้ตอนกดปุ่มเปิด/คัดลอกลิงก์
 let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น ไม่ต้องรอ session ก่อน
 
 /* ---------- helpers ---------- */
@@ -319,6 +322,10 @@ async function enterApp() {
   if (session.is_admin) {
     $('.tabbar button[data-tab="admin"]').style.display = "";
   }
+  // สรุปงานเป็นเอกสารของฝ่ายบริหาร (มีตารางผลงานรายบุคคล) จึงเปิดให้หัวหน้าฝ่ายกับผู้ดูแลเท่านั้น
+  if (session.is_admin || (session.dept_roles || []).some((r) => r.role === "head")) {
+    $('.tabbar button[data-tab="report"]').style.display = "";
+  }
   // กดปุ่มมาจากการ์ดในไลน์ — ไปที่เรื่องนั้นเลย ไม่ต้องให้เลื่อนหาเองในรายการ
   const link = deepLink;
   deepLink = null;
@@ -531,6 +538,7 @@ function routeTab(tab) {
   if (tab === "form") goForm();
   else if (tab === "mine") goMine();
   else if (tab === "queue") goQueue();
+  else if (tab === "report") goReport();
   else if (tab === "admin") goAdmin();
 }
 
@@ -664,6 +672,141 @@ async function openTransferSheet(id, currentDeptCode) {
     routeTab("queue");
   } catch (e) {
     toast(e.message);
+  }
+}
+
+/* ---------- สรุปงาน (หัวหน้าฝ่าย / ผู้ดูแล) ---------- */
+
+/**
+ * หน้านี้เป็นแค่หน้าปกของรายงาน — ตัวเลขหลักไม่กี่ตัวให้ดูจากมือถือได้ทันที
+ * ส่วนรายงานฉบับเต็ม (รายชื่องานค้าง ผลงานรายบุคคล กราฟ) อยู่ในไฟล์ที่เปิดจากปุ่มด้านล่าง
+ * เพราะตารางยาว ๆ อ่านบนจอมือถือไม่ไหว และปลายทางจริงคือเอาไปเสนอผู้บริหาร
+ */
+async function goReport() {
+  setTab("report");
+  show("s-report");
+  const body = $("#rp-body");
+  body.innerHTML = '<div class="empty">กำลังสรุปข้อมูล…</div>';
+  const params = new URLSearchParams({ period: reportPeriod.period, offset: String(reportPeriod.offset) });
+  if (reportDept) params.set("dept", reportDept);
+  try {
+    reportData = await api("/api/reports/summary?" + params.toString());
+    reportDept = reportData.department_code;
+    renderReportFilters();
+    body.innerHTML = renderReportBody(reportData);
+  } catch (e) {
+    $("#rp-depts").innerHTML = "";
+    $("#rp-periods").innerHTML = "";
+    body.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function renderReportFilters() {
+  const depts = reportData.departments || [];
+  const dw = $("#rp-depts");
+  // ฝ่ายเดียวไม่ต้องขึ้นชิปให้เลือก เพราะไม่มีอะไรให้สลับ
+  dw.style.display = depts.length > 1 ? "flex" : "none";
+  dw.innerHTML = depts
+    .map((d) => `<button class="chip" data-rd="${esc(d.code)}" aria-pressed="${d.code === reportDept}">${esc(d.name)}</button>`)
+    .join("");
+  $("#rp-periods").innerHTML = (reportData.period_options || [])
+    .map((o) => {
+      const on = o.period === reportPeriod.period && o.offset === reportPeriod.offset;
+      return `<button class="chip" data-rp="${esc(o.period)}:${o.offset}" aria-pressed="${on}">${esc(o.label)}</button>`;
+    })
+    .join("");
+}
+
+function rtile(value, label, tone) {
+  return `<div class="rt ${tone || ""}"><div class="v">${esc(value)}</div><div class="l">${esc(label)}</div></div>`;
+}
+
+function hoursText(h) {
+  if (h === null || h === undefined) return "—";
+  if (h < 1) return Math.round(h * 60) + " นาที";
+  if (h < 48) return h.toFixed(1) + " ชม.";
+  const d = Math.floor(h / 24);
+  const rest = Math.round(h - d * 24);
+  return rest ? `${d} วัน ${rest} ชม.` : `${d} วัน`;
+}
+
+function renderReportBody(r) {
+  const open = r.now.pending + r.now.in_progress;
+  const onTime = r.kpi.due_closed ? Math.round((r.kpi.on_time / r.kpi.due_closed) * 100) + "%" : "—";
+  const alerts = [];
+  if (r.now.overdue > 0) alerts.push(`เลยกำหนดแล้ว ${r.now.overdue}`);
+  if (r.now.pending > 0) alerts.push(`ยังไม่มีผู้รับ ${r.now.pending}`);
+  const people = (r.people || []).filter((p) => p.closed > 0 || p.open > 0);
+
+  return `
+    <div class="lede"><b>${esc(r.department_name)}</b> · ${esc(r.period_title)} ${esc(r.range_label)}<br>
+      แจ้งเข้ามา ${r.flow.created} เรื่อง ปิดจบไปแล้ว ${r.flow.completed} เรื่อง ยังค้างอยู่ ${open} เรื่อง${
+        alerts.length ? `<br>ในจำนวนนี้ ${esc(alerts.join(" และ "))} เรื่อง` : ""
+      }</div>
+
+    <div class="section">เกิดอะไรขึ้นในช่วงนี้</div>
+    <div class="rtiles">
+      ${rtile(r.flow.created, "เรื่องที่แจ้งเข้ามา")}
+      ${rtile(r.flow.completed, "ปิดจบไปแล้ว", "good")}
+    </div>
+
+    <div class="section">ค้างอยู่ ณ วันนี้</div>
+    <div class="rtiles">
+      ${rtile(open, "งานที่ยังไม่จบ", open ? "warn" : "good")}
+      ${rtile(r.now.pending, "ยังไม่มีผู้รับเรื่อง", r.now.pending ? "bad" : "")}
+      ${rtile(r.now.overdue, "เลยกำหนดที่แจ้งไว้", r.now.overdue ? "bad" : "")}
+      ${rtile(r.now.not_assessed, "รับแล้วยังไม่แจ้งผล", r.now.not_assessed ? "warn" : "")}
+    </div>
+
+    <div class="section">ตัวชี้วัด</div>
+    <div class="rtiles">
+      ${rtile(hoursText(r.kpi.ack_hours), "เวลาเฉลี่ยกว่าจะมีคนรับ")}
+      ${rtile(hoursText(r.kpi.close_hours), "เวลาเฉลี่ยจนปิดงาน")}
+      ${rtile(onTime, "ปิดได้ทันกำหนด", r.kpi.due_closed && r.kpi.on_time / r.kpi.due_closed >= 0.8 ? "good" : r.kpi.due_closed ? "warn" : "")}
+      ${rtile(r.kpi.oldest_open_days ? r.kpi.oldest_open_days + " วัน" : "—", "เรื่องที่ค้างนานที่สุด", r.kpi.oldest_open_days >= 30 ? "bad" : "")}
+    </div>
+
+    ${
+      people.length
+        ? `<div class="section">ผลงานรายบุคคล</div>
+    <div class="card">${people
+      .map(
+        (p) =>
+          `<div class="rrow"><span>${esc(p.name)}</span><span class="rn">ปิดได้ ${p.closed} · ค้าง ${p.open}${
+            p.overdue ? " · เลยกำหนด " + p.overdue : ""
+          }</span></div>`,
+      )
+      .join("")}</div>`
+        : ""
+    }
+
+    <button class="send" id="rp-open">เปิดรายงานฉบับเต็ม</button>
+    <button class="ghost" id="rp-copy">คัดลอกลิงก์รายงาน</button>
+    <p class="tip">รายงานฉบับเต็มมีรายชื่องานค้างทุกเรื่อง ผลงานรายบุคคล และปุ่มบันทึกเป็น PDF
+      ลิงก์เปิดได้โดยไม่ต้องล็อกอิน ส่งต่อให้ผู้บริหารได้เลย และหมดอายุใน 14 วัน</p>`;
+}
+
+/** เปิดรายงานในเบราว์เซอร์ของเครื่อง ไม่ใช่ในหน้าต่างของไลน์ — จะได้สั่งพิมพ์และแชร์ต่อได้ */
+function openReport() {
+  if (!reportData) return;
+  if (window.liff && liff.openWindow) liff.openWindow({ url: reportData.share_url, external: true });
+  else window.open(reportData.share_url, "_blank");
+}
+
+async function copyReportLink() {
+  if (!reportData) return;
+  try {
+    await navigator.clipboard.writeText(reportData.share_url);
+    toast("คัดลอกลิงก์แล้ว นำไปวางในอีเมลหรือแชทได้เลย");
+  } catch {
+    // เบราว์เซอร์ในไลน์บางเวอร์ชันไม่ให้เขียนคลิปบอร์ด — แสดงลิงก์ให้กดค้างคัดลอกเองแทน
+    openModal({
+      title: "ลิงก์รายงาน",
+      message: reportData.share_url,
+      note: "กดค้างที่ลิงก์เพื่อคัดลอก",
+      confirmLabel: "ปิด",
+      cancelLabel: "ยกเลิก",
+    });
   }
 }
 
@@ -1538,6 +1681,25 @@ window.addEventListener("DOMContentLoaded", () => {
     queueFilter = b.dataset.f;
     $$("#queue-filters .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     goQueue();
+  });
+
+  // สรุปงาน: เลือกฝ่าย เลือกช่วงเวลา และปุ่มเปิด/คัดลอกลิงก์
+  $("#rp-depts").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-rd]");
+    if (!b) return;
+    reportDept = b.dataset.rd;
+    goReport();
+  });
+  $("#rp-periods").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-rp]");
+    if (!b) return;
+    const [period, offset] = b.dataset.rp.split(":");
+    reportPeriod = { period, offset: Number(offset) };
+    goReport();
+  });
+  $("#rp-body").addEventListener("click", (e) => {
+    if (e.target.closest("#rp-open")) openReport();
+    else if (e.target.closest("#rp-copy")) copyReportLink();
   });
 
   // ผู้ดูแล: พับ/คลี่ฝ่าย · แตะแถวเพื่อเปิดแผ่นจัดการ · สลับไปหน้าผู้ถูกระงับสิทธิ์
