@@ -873,6 +873,19 @@ async function openDeptSheet(id, name, current) {
     const code = await openSheet(`${ROLE_LABEL[status]} — เลือกฝ่าย`, opts);
     if (!code) return;
     body = { department_code: code, role: status };
+
+    // ดูแลฝ่ายอื่นอยู่แล้ว ต้องถามว่าย้ายหรือดูแลเพิ่ม — ถ้าเดาเอาว่า "เพิ่ม" เสมอ คนที่ตั้งใจ
+    // จะย้ายฝ่ายจะกลายเป็นดูแลสองฝ่ายเงียบ ๆ แล้วรับคิวงานกับการเตือนของฝ่ายเดิมต่อไป
+    const others = mine.filter((d) => d.code !== code);
+    if (others.length) {
+      const keep = others.map((d) => deptName(d.code)).join(" และ ");
+      const choice = await openSheet(`${deptName(code)} — ฝ่ายเดิมเอาอย่างไร`, [
+        { label: `ย้ายมาที่ ${deptName(code)} อย่างเดียว`, value: "move" },
+        { label: `ดูแลเพิ่ม โดยยังอยู่ ${keep} ด้วย`, value: "add" },
+      ]);
+      if (!choice) return;
+      if (choice === "move") body.replace = true;
+    }
   }
 
   try {
