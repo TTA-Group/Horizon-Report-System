@@ -3,12 +3,14 @@
 
 import { requireCron } from "./_lib/cron";
 import { json, methodGuard, run } from "./_lib/http";
-import { runReminders } from "./_lib/jobs";
+import { runProgressReminders, runReminders } from "./_lib/jobs";
 
 export default async (req: Request): Promise<Response> =>
   run(async () => {
     methodGuard(req, "POST");
     requireCron(req);
-    const result = await runReminders();
-    return json({ ok: true, ...result });
+    // สองรอบในงานเดียว: เรื่องที่ยังไม่มีผู้รับ และเรื่องที่รับไปแล้วแต่ยังไม่จบ
+    const waiting = await runReminders();
+    const inProgress = await runProgressReminders();
+    return json({ ok: true, waiting, in_progress: inProgress });
   });

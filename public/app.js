@@ -1007,6 +1007,18 @@ async function openDetail(id, fromTab) {
   }
 }
 
+/**
+ * ผลตรวจสอบหลังรับเรื่อง — กำหนดเสร็จเน้นสีเขียว เพราะเป็นคำตอบที่ผู้แจ้งเปิดมาหาก่อนอย่างอื่น
+ * เรื่องที่ยังไม่ได้แจ้งผลจะไม่มีบล็อกนี้เลย ไม่ต้องขึ้นช่องว่างให้รก
+ */
+function renderAssessment(a) {
+  if (!a) return "";
+  const when = [a.due_label, a.due_date_label].filter(Boolean).join(" · ");
+  return `
+    <div class="dkv"><b>${a.waiting_parts ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ"}</b><span class="due">${esc(when || "-")}</span></div>
+    ${a.note ? `<div class="dkv"><b>อาการที่พบ</b><span>${esc(a.note)}</span></div>` : ""}`;
+}
+
 function renderDetail(t) {
   const steps = (t.timeline || [])
     .map(
@@ -1028,6 +1040,7 @@ function renderDetail(t) {
       <div class="dkv"><b>สถานที่</b><span>${esc(t.floor)}${t.location_note ? " · " + esc(t.location_note) : ""}</span></div>
       <div class="dkv"><b>รายละเอียด</b><span>${esc(t.detail)}</span></div>
       ${t.assignee_name ? `<div class="dkv"><b>ผู้รับผิดชอบ</b><span>${esc(t.assignee_name)}</span></div>` : ""}
+      ${renderAssessment(t.assessment)}
     </div>
     ${shots ? `<div style="margin-top:10px">${shots}</div>` : ""}
     <div class="rail">${steps}</div>

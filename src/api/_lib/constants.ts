@@ -46,6 +46,46 @@ export const URGENCIES: { code: UrgencyCode; label: string; note: string }[] = [
 ];
 export const URGENCY_CODES = new Set<string>(URGENCIES.map((u) => u.code));
 
+/**
+ * กรอบเวลาที่ผู้รับผิดชอบเลือกได้ตอนแจ้งผลตรวจสอบ
+ *
+ * ต้องเป็นตัวเลือกให้กด ไม่ใช่ช่องให้พิมพ์ เพราะระบบต้องเอาไปเทียบเวลาจริงเพื่อทวงเมื่อเลยกำหนด
+ * ข้อความอย่าง "ประมาณอาทิตย์หน้า" ระบบไม่รู้ว่าคือวันไหน จึงทวงต่อไม่ได้
+ *
+ * chip = คำบนปุ่ม (สั้นให้พอดีแถว) · label = คำที่เก็บและแสดงบนการ์ด (เต็มความหมาย)
+ * งานทั้งหมดที่นับเป็นวันไปจบที่ 18:00 ของวันนั้นตามเวลาไทย คือสิ้นวันทำงาน
+ */
+export interface DueOption {
+  key: string;
+  chip: string;
+  label: string;
+  hours?: number;
+  days?: number;
+  /** endOfDay = 18:00 วันนี้ · pick = ให้เลือกวันจากปฏิทิน · wait = รออะไหล่ (บังคับเลือกวัน) */
+  special?: "endOfDay" | "pick" | "wait";
+}
+
+export const DUE_OPTIONS: DueOption[] = [
+  { key: "h1", chip: "1 ชั่วโมง", label: "ภายใน 1 ชั่วโมง", hours: 1 },
+  { key: "d0", chip: "วันนี้", label: "ภายในวันนี้", special: "endOfDay" },
+  { key: "d1", chip: "พรุ่งนี้", label: "ภายในพรุ่งนี้", days: 1 },
+  { key: "d3", chip: "3 วัน", label: "ภายใน 3 วัน", days: 3 },
+  { key: "d7", chip: "7 วัน", label: "ภายใน 7 วัน", days: 7 },
+  { key: "d14", chip: "14 วัน", label: "ภายใน 14 วัน", days: 14 },
+  { key: "d30", chip: "30 วัน", label: "ภายใน 30 วัน", days: 30 },
+  { key: "pick", chip: "เลือกวันเอง", label: "ตามวันที่กำหนด", special: "pick" },
+  { key: "wait", chip: "รออะไหล่ / ผู้รับเหมา", label: "รออะไหล่ / ผู้รับเหมา", special: "wait" },
+];
+export const DUE_BY_KEY = new Map(DUE_OPTIONS.map((d) => [d.key, d]));
+
+/** แถวของชิปบนการ์ดถามกำหนดเสร็จ — Flex ตัดบรรทัดเองไม่ได้ ต้องจัดแถวมาให้ */
+export const DUE_ROWS: string[][] = [
+  ["h1", "d0", "d1"],
+  ["d3", "d7", "d14", "d30"],
+  ["pick"],
+  ["wait"],
+];
+
 export const STATUS_LABELS: Record<StatusCode, string> = {
   pending: "รอรับเรื่อง",
   in_progress: "กำลังดำเนินการ",
