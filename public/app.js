@@ -48,6 +48,7 @@ let session = null;
 let picked = null; // ปุ่มหมวดที่เลือก
 let pendingFiles = []; // ไฟล์แนบที่บีบอัดแล้ว { base64, type }
 let queueDept = null; // ฝ่ายที่กำลังดูในหน้าคิวงาน (รหัสฝ่าย)
+let queueRows = []; // รายการคิวรอบล่าสุด — ปุ่มบนการ์ดต้องใช้ข้อมูลของเรื่อง ไม่ใช่แค่รหัส
 let queueFilter = ""; // ตัวกรองคิวงาน: "" | "pending" | "me"
 let adminQ = ""; // คำค้นหน้าผู้ดูแล
 let adminView = "active"; // หน้าที่กำลังดูในผู้ดูแล: "active" (พนักงานปัจจุบัน) | "suspended" (ถูกระงับสิทธิ์)
@@ -56,6 +57,9 @@ let adminView = "active"; // หน้าที่กำลังดูในผ
 const adminEmployeeIndex = new Map();
 let detailReturnTab = "mine"; // แท็บที่จะกลับไปหลังปิดหน้ารายละเอียด
 let sheetPick = null; // ตัวรับค่าเมื่อเลือกจาก bottom sheet
+let deepLink = null; // เรื่องที่ถูกกดมาจากปุ่มบนการ์ดในไลน์ { ticket, todo }
+let assessCtx = null; // เรื่องที่กำลังแจ้งผลตรวจสอบอยู่ { t, thenComplete }
+let dueKey = null; // กรอบเวลาที่เลือกไว้ในหน้าแจ้งผล
 let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น ไม่ต้องรอ session ก่อน
 
 /* ---------- helpers ---------- */
@@ -134,6 +138,7 @@ async function boot() {
     // ยิงข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น) คู่ขนานไปกับการขอ session — ทั้งคู่ต้องใช้ token
     // จึงเริ่มได้ทันทีที่ได้ token ไม่ต้องรอให้ session เสร็จก่อน
     mastersPromise = api("/api/masters").catch(() => null);
+    deepLink = readDeepLink();
     session = await api("/api/auth/session", { method: "POST" });
     routeBySession();
   } catch (e) {
@@ -146,6 +151,46 @@ async function boot() {
 async function getMasters() {
   if (!masters) masters = (await mastersPromise) || (await api("/api/masters"));
   return masters;
+}
+
+/**
+ * เรื่องที่ถูกกดมาจากปุ่มบนการ์ดในไลน์
+ *
+ * ปุ่มบนการ์ดเป็นลิงก์ liff.line.me/<id>?ticket=...&do=... ไลน์ส่งพารามิเตอร์ต่อมาที่หน้านี้ตรง ๆ
+ * ยกเว้นบางเส้นทางที่ห่อไว้ใน liff.state อีกชั้น จึงต้องรองรับทั้งสองแบบ ไม่งั้นกดจากบางที่แล้วเปิดมาเจอ
+ * หน้าแรกเปล่า ๆ เหมือนปุ่มเสีย
+ */
+function readDeepLink() {
+  const direct = new URLSearchParams(location.search);
+  const state = direct.get("liff.state");
+  const p = state ? new URLSearchParams(state.startsWith("?") ? state.slice(1) : state) : direct;
+  const ticket = (p.get("ticket") || "").trim();
+  if (!ticket) return null;
+  return { ticket, todo: (p.get("do") || "").trim() };
+}
+
+/**
+ * เปิดหน้าที่ตรงกับปุ่มที่กดมา
+ *
+ * ปุ่มในกลุ่มไลน์ซ่อนรายคนไม่ได้ ทุกคนในกลุ่มจึงกดได้ — คนที่ไม่ใช่เจ้าหน้าที่ของฝ่ายจะได้หน้ารายละเอียด
+ * แบบดูอย่างเดียว ไม่ใช่ข้อความว่าไม่มีสิทธิ์ เพราะการเปิดดูสถานะเรื่องไม่ใช่เรื่องต้องห้าม
+ */
+async function openDeepLink(link) {
+  let t;
+  try {
+    t = await api(`/api/tickets/${encodeURIComponent(link.ticket)}`);
+  } catch (e) {
+    toast(e.message);
+    return goForm();
+  }
+  const live = t.can_act && t.status === "in_progress";
+  if (live && link.todo === "assess") return openAssess(t, false);
+  if (live && link.todo === "progress") return openProgress(t);
+  if (live && link.todo === "complete") {
+    if (!t.assessment) return openAssess(t, true);
+    return completeTicket(t);
+  }
+  showDetail(t, "mine");
 }
 
 function routeBySession() {
@@ -274,6 +319,10 @@ async function enterApp() {
   if (session.is_admin) {
     $('.tabbar button[data-tab="admin"]').style.display = "";
   }
+  // กดปุ่มมาจากการ์ดในไลน์ — ไปที่เรื่องนั้นเลย ไม่ต้องให้เลื่อนหาเองในรายการ
+  const link = deepLink;
+  deepLink = null;
+  if (link) return openDeepLink(link);
   goForm();
 }
 
@@ -478,6 +527,7 @@ function renderTicketCard(t) {
 /* ---------- routing ---------- */
 function routeTab(tab) {
   $("#backbtn").style.display = "none";
+  assessCtx = null; // ออกจากหน้าแจ้งผลด้วยการกดแท็บ ก็ถือว่าเลิกกรอก
   if (tab === "form") goForm();
   else if (tab === "mine") goMine();
   else if (tab === "queue") goQueue();
@@ -528,6 +578,7 @@ async function goQueue() {
       list.innerHTML = '<div class="empty">ไม่มีรายการ</div>';
       return;
     }
+    queueRows = r.tickets;
     list.innerHTML = r.tickets.map((t) => renderQueueCard(t, queueDept)).join("");
   } catch (e) {
     list.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
@@ -540,22 +591,35 @@ function renderQueueCard(t, deptCode) {
     actions =
       '<button class="fill" data-act="claim">รับเรื่อง</button><button data-act="transfer">ส่งต่อฝ่าย</button><button data-act="cancel">ยกเลิก</button>';
   } else if (t.status === "in_progress") {
-    actions = '<button class="fill" data-act="complete">แล้วเสร็จ</button><button data-act="transfer">ส่งต่อฝ่าย</button>';
+    // งานที่ยังไม่แจ้งผลคือสิ่งที่ค้างอยู่จริง เอาปุ่มนั้นขึ้นก่อน แล้วปุ่มปิดงานค่อยเป็นรอง
+    actions = t.assessed
+      ? '<button class="fill" data-act="complete">แล้วเสร็จ</button><button data-act="progress">อัปเดต</button><button data-act="transfer">ส่งต่อฝ่าย</button>'
+      : '<button class="fill" data-act="assess">แจ้งผลตรวจสอบ</button><button data-act="complete">แล้วเสร็จ</button><button data-act="transfer">ส่งต่อฝ่าย</button>';
   } else if (t.status === "completed") {
     actions = ""; // ดำเนินการเสร็จสิ้นคือจุดจบของงานแล้ว ไม่มีขั้นปิดเรื่องต่อ
   }
   const tag = t.urgency === "critical" ? " · เร่งด่วนมาก" : t.urgency === "urgent" ? " · เร่งด่วน" : "";
+  const when = [t.due_label, t.due_date_label].filter(Boolean).join(" · ");
+  const due = when
+    ? `<div class="meta" style="color:var(--green-deep);font-weight:600">${t.waiting_parts ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ"} ${esc(when)}</div>`
+    : "";
   return `<div class="card clickable" data-id="${t.id}" data-dept="${esc(deptCode || "")}">
     <div class="cardtop">
       <div>
         <div class="tid">${esc(t.ticket_no)}${tag}</div>
         <div class="ttl">${esc(t.detail)}</div>
         <div class="meta">${esc(t.reporter_name)}${t.reporter_dept ? " · " + esc(t.reporter_dept) : ""} · ${esc(t.floor)}${t.location_note ? " · " + esc(t.location_note) : ""}</div>
+        ${due}
       </div>
       <span class="pill ${PILL[t.status] || "p-closed"}">${esc(t.status_label)}</span>
     </div>
     ${actions ? `<div class="actions">${actions}</div>` : ""}
   </div>`;
+}
+
+/** เรื่องในคิวรอบล่าสุดจากรหัส — ปุ่มแจ้งผล/ปิดงานต้องใช้เลขที่และรายละเอียดไปขึ้นหัวหน้าจอ */
+function queueTicket(id) {
+  return queueRows.find((t) => t.id === id) || { id };
 }
 
 async function doStatus(id, to, okMsg, note) {
@@ -993,6 +1057,8 @@ async function saveEmployee() {
 }
 
 /* ---------- detail ---------- */
+let detailTicket = null; // เรื่องที่กำลังเปิดอยู่ ใช้ตอนกดปุ่มดำเนินการบนหน้านี้
+
 async function openDetail(id, fromTab) {
   detailReturnTab = fromTab || "mine";
   show("s-detail");
@@ -1000,11 +1066,19 @@ async function openDetail(id, fromTab) {
   const body = $("#detailBody");
   body.innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   try {
-    const t = await api(`/api/tickets/${id}`);
-    body.innerHTML = renderDetail(t);
+    showDetail(await api(`/api/tickets/${id}`), detailReturnTab);
   } catch (e) {
     body.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
+}
+
+/** แสดงเรื่องที่โหลดมาแล้ว — ใช้ตอนเปิดจากลิงก์ในไลน์ซึ่งอ่านข้อมูลไปก่อนแล้ว ไม่ต้องยิงซ้ำ */
+function showDetail(t, fromTab) {
+  detailTicket = t;
+  detailReturnTab = fromTab || "mine";
+  show("s-detail");
+  $("#backbtn").style.display = "block";
+  $("#detailBody").innerHTML = renderDetail(t);
 }
 
 /**
@@ -1044,7 +1118,162 @@ function renderDetail(t) {
     </div>
     ${shots ? `<div style="margin-top:10px">${shots}</div>` : ""}
     <div class="rail">${steps}</div>
+    ${detailActions(t)}
   </div>`;
+}
+
+/**
+ * ปุ่มดำเนินการบนหน้ารายละเอียด
+ *
+ * นี่คือปลายทางของปุ่มบนการ์ดในไลน์ ถ้าหน้านี้ไม่มีปุ่มให้กดต่อ คนที่กดมาจะเจอทางตัน
+ * ผู้แจ้ง (ไม่ใช่เจ้าหน้าที่ฝ่าย) ไม่มีปุ่มชุดนี้ เพราะหน้านี้ของเขาคือหน้าติดตามสถานะ
+ */
+function detailActions(t) {
+  if (!t.can_act) return "";
+  if (t.status === "pending") {
+    return '<div class="actions"><button class="fill" data-d="claim">รับเรื่อง</button>' +
+      '<button data-d="transfer">ส่งต่อฝ่าย</button></div>';
+  }
+  if (t.status !== "in_progress") return "";
+  // สองแถว — คำบนปุ่มของหน้านี้ยาวกว่าหน้าคิวงาน เพราะต้องตรงกับปุ่มที่เพิ่งกดมาจากการ์ดในไลน์
+  // ยัดสามปุ่มแถวเดียวแล้วคำจะขึ้นบรรทัดใหม่กลางปุ่มจนอ่านสะดุด
+  const first = t.assessment
+    ? '<button class="fill" data-d="complete">ดำเนินการเสร็จสิ้น</button><button data-d="progress">อัปเดตความคืบหน้า</button>'
+    : '<button class="fill" data-d="assess">แจ้งผลตรวจสอบ</button><button data-d="complete">ดำเนินการเสร็จสิ้น</button>';
+  return `<div class="actions">${first}</div>
+    <div class="actions"><button data-d="transfer">ส่งต่อฝ่ายอื่น</button></div>`;
+}
+
+/* ---------- แจ้งผลตรวจสอบ ---------- */
+
+/**
+ * หน้าแจ้งผลตรวจสอบ — อาการที่พบ + กรอบเวลาที่คาดว่าจะเสร็จ
+ *
+ * thenComplete = มาจากปุ่ม "ดำเนินการเสร็จสิ้น" ของเรื่องที่ยังไม่เคยแจ้งผล ระบบพามากรอกก่อน
+ * แล้วบันทึกกับปิดงานให้ในครั้งเดียว จะได้ไม่ต้องกดสองรอบ
+ */
+function openAssess(t, thenComplete) {
+  assessCtx = { t, thenComplete: !!thenComplete };
+  dueKey = null;
+  show("s-assess");
+  $("#backbtn").style.display = "block";
+  $("#as-title").textContent = thenComplete ? "แจ้งผลก่อนปิดงาน" : "แจ้งผลตรวจสอบ";
+  $("#as-head").innerHTML = `<div class="tid">${esc(t.ticket_no)}</div>
+    <div class="ttl">${esc(t.detail)}</div>
+    <div class="meta">${esc(t.floor)}${t.location_note ? " · " + esc(t.location_note) : ""}</div>`;
+  $("#as-note").value = t.assessment && t.assessment.note ? t.assessment.note : "";
+  $("#as-nonote").checked = false;
+  $("#as-date").value = "";
+  $("#as-save").textContent = thenComplete ? "บันทึกแล้วปิดงาน" : "บันทึกผลตรวจสอบ";
+  renderDueChips();
+  syncDueExtras();
+}
+
+function dueOptions() {
+  return (masters && masters.due_options) || [];
+}
+
+function renderDueChips() {
+  $("#as-due").innerHTML = dueOptions()
+    .map(
+      (o) =>
+        `<button data-due="${esc(o.key)}" data-special="${esc(o.special || "")}" aria-pressed="${o.key === dueKey}">${esc(o.chip)}</button>`,
+    )
+    .join("");
+}
+
+/** ตัวเลือกที่ต้องระบุวันเอง (เลือกวันเอง / รออะไหล่) จะเผยช่องวันที่กับคำอธิบายเพิ่ม */
+function syncDueExtras() {
+  const opt = dueOptions().find((o) => o.key === dueKey);
+  const needDate = !!opt && (opt.special === "pick" || opt.special === "wait");
+  const date = $("#as-date");
+  date.style.display = needDate ? "" : "none";
+  if (needDate && !date.min) date.min = new Date().toISOString().slice(0, 10);
+  const note = $("#as-duenote");
+  if (opt && opt.special === "wait") {
+    note.textContent = "งานรออะไหล่ต้องระบุวันที่ให้ชัดเจน ระบบจะถามความคืบหน้าทุก 7 วันจนกว่าจะดำเนินการต่อ";
+    note.className = "duenote warn";
+    note.style.display = "";
+  } else if (needDate) {
+    note.textContent = "เลือกวันที่คาดว่าจะแก้ไขเสร็จ ระบบนับถึงเวลา 18:00 ของวันนั้น";
+    note.className = "duenote";
+    note.style.display = "";
+  } else {
+    note.style.display = "none";
+  }
+}
+
+async function saveAssess() {
+  const ctx = assessCtx;
+  if (!ctx) return;
+  const opt = dueOptions().find((o) => o.key === dueKey);
+  if (!opt) return toast("กรุณาเลือกกรอบเวลาที่คาดว่าจะเสร็จ");
+  const needDate = opt.special === "pick" || opt.special === "wait";
+  const dueDate = $("#as-date").value;
+  if (needDate && !dueDate) return toast("กรุณาเลือกวันที่คาดว่าจะเสร็จ");
+
+  const noNote = $("#as-nonote").checked;
+  const note = $("#as-note").value.trim();
+  if (!noNote && !note) return toast("กรุณาระบุอาการที่พบ หรือติ๊กว่าไม่มีคำอธิบายเพิ่มเติม");
+
+  const btn = $("#as-save");
+  btn.disabled = true;
+  try {
+    await api(`/api/tickets/${ctx.t.id}/assess`, {
+      method: "POST",
+      body: { due_key: dueKey, due_date: dueDate || undefined, note, no_note: noNote, then_complete: ctx.thenComplete },
+    });
+    toast(ctx.thenComplete ? "บันทึกและปิดงานเรียบร้อยแล้ว" : "แจ้งผลตรวจสอบเรียบร้อยแล้ว");
+    assessCtx = null;
+    backFromAssess();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** ออกจากหน้าแจ้งผล — กลับไปคิวงานถ้ามีสิทธิ์ ไม่งั้นกลับหน้าแรก */
+function backFromAssess() {
+  assessCtx = null;
+  if (activeDepts().length) return goQueue();
+  goForm();
+}
+
+async function openProgress(t) {
+  const note = await promptDialog({
+    title: "อัปเดตความคืบหน้า",
+    message: `${t.ticket_no} · ระบบจะแจ้งผู้แจ้งให้ทราบด้วย`,
+    placeholder: "เช่น ถอดล้างคอยล์แล้ว รอทดสอบพรุ่งนี้เช้า",
+    confirmLabel: "ส่งอัปเดต",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (note === null) return;
+  if (!note) return toast("กรุณาระบุความคืบหน้า");
+  try {
+    await api(`/api/tickets/${t.id}/progress`, { method: "POST", body: { note } });
+    toast("ส่งอัปเดตเรียบร้อยแล้ว");
+    if (activeDepts().length) goQueue();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+/**
+ * ปิดงาน — เรื่องที่ยังไม่เคยแจ้งผลตรวจสอบจะถูกพาไปกรอกก่อนแล้วปิดให้ในคราวเดียว
+ * (เซิร์ฟเวอร์ตอบรหัส need_assessment มาบอก) เรื่องที่เปิดแล้วปิดโดยไม่มีใครรู้ว่าเกิดอะไรขึ้น
+ * คือช่องโหว่ที่ตั้งใจอุด
+ */
+async function completeTicket(t) {
+  try {
+    await api(`/api/tickets/${t.id}/status`, { method: "PATCH", body: { to_status: "completed" } });
+    toast("ปรับสถานะเป็นดำเนินการแล้วเสร็จ");
+    if (activeDepts().length) goQueue();
+    else goMine();
+  } catch (e) {
+    if (e.code === "need_assessment") return openAssess(t, true);
+    toast(e.message);
+  }
 }
 
 /* ---------- bottom sheet ---------- */
@@ -1208,8 +1437,11 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#file").onchange = (e) => onPickFiles(e.target);
   $$(".tabbar button").forEach((b) => (b.onclick = () => routeTab(b.dataset.tab)));
 
-  // ปุ่มย้อนกลับจากหน้ารายละเอียด
-  $("#backbtn").onclick = () => routeTab(detailReturnTab);
+  // ปุ่มย้อนกลับจากหน้ารายละเอียดและหน้าแจ้งผล
+  $("#backbtn").onclick = () => {
+    if (assessCtx) return backFromAssess();
+    routeTab(detailReturnTab);
+  };
 
   // หน้า "เรื่องที่แจ้ง": ปุ่มยกเลิก + แตะการ์ดเพื่อดูรายละเอียด
   $("#mineList").addEventListener("click", async (e) => {
@@ -1247,7 +1479,9 @@ window.addEventListener("DOMContentLoaded", () => {
       const id = card.dataset.id;
       const act = btn.dataset.act;
       if (act === "claim") doStatus(id, "in_progress", "รับเรื่องเรียบร้อยแล้ว");
-      else if (act === "complete") doStatus(id, "completed", "ปรับสถานะเป็นดำเนินการแล้วเสร็จ");
+      else if (act === "complete") completeTicket(queueTicket(id));
+      else if (act === "assess") openAssess(queueTicket(id), false);
+      else if (act === "progress") openProgress(queueTicket(id));
       else if (act === "transfer") openTransferSheet(id, card.dataset.dept);
       else if (act === "cancel") {
         // ยกเลิกงานของคนอื่นต้องบอกเหตุผลได้เสมอ — เหตุผลถูกบันทึกลงประวัติ ส่งให้ผู้แจ้ง
@@ -1324,6 +1558,37 @@ window.addEventListener("DOMContentLoaded", () => {
     const shown = val.textContent !== UID_MASK;
     val.textContent = shown ? UID_MASK : val.dataset.uid;
     btn.textContent = shown ? "แสดง" : "ซ่อน";
+  });
+
+  // หน้าแจ้งผลตรวจสอบ
+  $("#as-due").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-due]");
+    if (!b) return;
+    dueKey = b.dataset.due;
+    $$("#as-due button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    syncDueExtras();
+  });
+  // ติ๊กว่าไม่มีคำอธิบาย = ปิดช่องพิมพ์ไปเลย จะได้ไม่มีทั้งติ๊กทั้งพิมพ์แล้วงงว่าอันไหนถูกบันทึก
+  $("#as-nonote").onchange = () => {
+    const off = $("#as-nonote").checked;
+    const box = $("#as-note");
+    box.disabled = off;
+    box.style.opacity = off ? ".5" : "";
+    if (off) box.value = "";
+  };
+  $("#as-save").onclick = saveAssess;
+  $("#as-cancel").onclick = backFromAssess;
+
+  // ปุ่มดำเนินการบนหน้ารายละเอียด (ปลายทางของปุ่มบนการ์ดในไลน์)
+  $("#detailBody").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-d]");
+    if (!b || !detailTicket) return;
+    const t = detailTicket;
+    if (b.dataset.d === "assess") openAssess(t, false);
+    else if (b.dataset.d === "progress") openProgress(t);
+    else if (b.dataset.d === "complete") completeTicket(t);
+    else if (b.dataset.d === "claim") doStatus(t.id, "in_progress", "รับเรื่องเรียบร้อยแล้ว");
+    else if (b.dataset.d === "transfer") openTransferSheet(t.id, t.dept_code);
   });
 
   // bottom sheet ยกเลิก

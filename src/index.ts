@@ -18,6 +18,8 @@ import masters from "./api/masters";
 import ticketsCreate from "./api/tickets-create";
 import ticketsDetail from "./api/tickets-detail";
 import ticketsStatus from "./api/tickets-status";
+import ticketsAssess from "./api/tickets-assess";
+import ticketsProgress from "./api/tickets-progress";
 import ticketsTransfer from "./api/tickets-transfer";
 import uploads from "./api/uploads";
 import adminEmployees from "./api/admin-employees";
@@ -66,13 +68,15 @@ function route(pathname: string, method: string): Handler | null {
   // /api/uploads
   if (seg[1] === "uploads" && seg.length === 2) return uploads;
 
-  // /api/tickets, /api/tickets/:id, /api/tickets/:id/{status,transfer}
+  // /api/tickets, /api/tickets/:id, /api/tickets/:id/{status,transfer,assess,progress}
   if (seg[1] === "tickets") {
     if (seg.length === 2) return ticketsCreate;
     // :id ครอบคลุม "mine" และ "department" ด้วย — tickets-detail แยกให้เองภายใน
     if (seg.length === 3) return ticketsDetail;
     if (seg.length === 4 && seg[3] === "status") return ticketsStatus;
     if (seg.length === 4 && seg[3] === "transfer") return ticketsTransfer;
+    if (seg.length === 4 && seg[3] === "assess") return ticketsAssess;
+    if (seg.length === 4 && seg[3] === "progress") return ticketsProgress;
     return null;
   }
 

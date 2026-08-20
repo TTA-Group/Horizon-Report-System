@@ -8,6 +8,7 @@ import { getSession, isMemberOf, requireActive } from "./auth";
 import { CATEGORY_BY_CODE, STATUS_LABELS, STATUS_TRANSITIONS, type StatusCode } from "./constants";
 import { db } from "./db";
 import { HttpError, json, methodGuard, run } from "./http";
+import { thaiDateShort } from "./tickets";
 
 interface TicketRow {
   id: string;
@@ -137,10 +138,14 @@ export async function handleTicketsDepartment(req: Request): Promise<Response> {
         reporter_name: string;
         reporter_dept: string | null;
         assignee_name: string | null;
+        assessed_at: string | null;
+        due_at: string | null;
+        due_label: string | null;
+        waiting_parts: boolean;
       }[]
     >`
       SELECT t.id, t.ticket_no, t.category_code, t.floor, t.location_note, t.detail,
-             t.urgency, t.status, t.created_at,
+             t.urgency, t.status, t.created_at, t.assessed_at, t.due_at, t.due_label, t.waiting_parts,
              r.full_name AS reporter_name, r.department_name AS reporter_dept,
              a.full_name AS assignee_name
       FROM tickets t
@@ -167,6 +172,11 @@ export async function handleTicketsDepartment(req: Request): Promise<Response> {
         reporter_name: t.reporter_name,
         reporter_dept: t.reporter_dept,
         assignee_name: t.assignee_name,
+        // งานที่ยังไม่แจ้งผลคือสิ่งที่ค้างอยู่จริง หน้าคิวจึงต้องรู้เพื่อขึ้นปุ่มให้ถูก
+        assessed: t.assessed_at !== null,
+        due_label: t.due_label,
+        due_date_label: t.due_at ? thaiDateShort(new Date(t.due_at)) : null,
+        waiting_parts: t.waiting_parts,
       })),
     });
   });

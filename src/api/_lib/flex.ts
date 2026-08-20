@@ -7,6 +7,7 @@
 
 import type { LineMessage } from "./line";
 import { DUE_BY_KEY, DUE_ROWS, STATUS_LABELS, type StatusCode, type UrgencyCode } from "./constants";
+import { envVar } from "./env";
 
 export interface TicketFlexInput {
   ticketId: string;
@@ -124,7 +125,7 @@ function stepNode(s: Step) {
 }
 
 /** แถบขั้นตอนแนวนอน: จุด — เส้น — จุด พร้อมชื่อขั้นเรียงใต้จุด */
-function stepper(t: TicketFlexInput) {
+function stepper(t: TicketFlexInput, margin = "lg") {
   const steps = stepsFor(t);
   const strip: unknown[] = [];
   steps.forEach((s, i) => {
@@ -143,7 +144,7 @@ function stepper(t: TicketFlexInput) {
   return {
     type: "box",
     layout: "vertical",
-    margin: "lg",
+    margin,
     contents: [
       { type: "box", layout: "horizontal", alignItems: "center", contents: strip },
       {
@@ -174,13 +175,13 @@ function latestWho(t: TicketFlexInput): string | null {
   return t.latestActor ?? t.actorName ?? t.assigneeName ?? null;
 }
 
-function latestBox(t: TicketFlexInput): Record<string, unknown> | null {
+function latestBox(t: TicketFlexInput, margin = "lg"): Record<string, unknown> | null {
   const who = latestWho(t);
   if (!who) return null;
   return {
     type: "box",
     layout: "vertical",
-    margin: "lg",
+    margin,
     paddingAll: "10px",
     cornerRadius: "8px",
     backgroundColor: "#F1F3F5",
@@ -251,47 +252,19 @@ function primaryButton(label: string, action: string, t: TicketFlexInput) {
   };
 }
 
-/** ปุ่มท้ายการ์ดตามสถานะ — สถานะที่จบแล้วไม่มีปุ่ม เหลือไว้เป็นบันทึกในกลุ่มเฉย ๆ */
-function secondaryButton(label: string, action: string, t: TicketFlexInput) {
-  return {
-    type: "button",
-    style: "secondary",
-    height: "sm",
-    action: { type: "postback", label, data: `action=${action}&ticket=${t.ticketId}` },
-  };
-}
-
 /**
- * ปุ่มท้ายการ์ดตามสถานะ — สถานะที่จบแล้วไม่มีปุ่ม เหลือไว้เป็นบันทึกในกลุ่มเฉย ๆ
+ * ปุ่มท้ายใบเต็ม — มีเฉพาะตอนยังไม่มีผู้รับ เพราะนี่คือใบที่ให้แย่งกันกดรับ
  *
- * ระหว่างดำเนินการ ปุ่มหลักขึ้นกับว่าแจ้งผลตรวจสอบแล้วหรือยัง เพราะการแจ้งผลคือสิ่งที่ค้างอยู่
- * ถ้ายังไม่ได้ทำ — เอาปุ่มนั้นขึ้นก่อน แล้วปุ่มเสร็จสิ้นค่อยเป็นรอง
+ * เรื่องที่มีเจ้าของแล้วเปลี่ยนไปใช้ใบย่อ (ดู buildCompactFlex) ปุ่มของสถานะหลังจากนั้น
+ * จึงอยู่บนใบย่อทั้งหมด ไม่ต้องมีซ้ำสองที่ให้แก้ไม่ตรงกัน
  */
 function footerFor(t: TicketFlexInput): Record<string, unknown> | null {
-  let buttons: unknown[];
-  if (t.status === "pending") buttons = [primaryButton("รับเรื่อง", "ack", t), cancelButton(t)];
-  else if (t.status === "in_progress") {
-    buttons = t.assessed
-      ? [primaryButton("ดำเนินการเสร็จสิ้น", "complete", t), progressButton(t), cancelButton(t)]
-      : [primaryButton("แจ้งผลตรวจสอบ", "assess", t), secondaryButton("ดำเนินการเสร็จสิ้น", "complete", t), cancelButton(t)];
-  } else return null;
-
-  return { type: "box", layout: "vertical", spacing: "sm", contents: buttons };
-}
-
-/** ปุ่มอัปเดตความคืบหน้า — เปิดแป้นพิมพ์พร้อมข้อความตั้งต้น เหมือนปุ่มยกเลิก */
-function progressButton(t: TicketFlexInput) {
+  if (t.status !== "pending") return null;
   return {
-    type: "button",
-    style: "secondary",
-    height: "sm",
-    action: {
-      type: "postback",
-      label: "อัปเดตความคืบหน้า",
-      data: `action=progress&ticket=${t.ticketId}`,
-      inputOption: "openKeyboard",
-      fillInText: `อัปเดต ${t.ticketNo}: `,
-    },
+    type: "box",
+    layout: "vertical",
+    spacing: "sm",
+    contents: [primaryButton("รับเรื่อง", "ack", t), cancelButton(t)],
   };
 }
 
@@ -482,6 +455,189 @@ export function buildTicketFlex(t: TicketFlexInput): LineMessage {
   };
 }
 
+/* ───────────────── การ์ดแบบย่อ (หลังมีผู้รับผิดชอบแล้ว) ─────────────────
+ *
+ * การ์ดใบเต็มมีหน้าที่เดียวคือประกาศงานใหม่ให้ทั้งกลุ่มแย่งกันกดรับ ข้อมูลบนใบนั้นจึงต้องครบ
+ * ทั้งรูป ชื่อผู้แจ้ง ต้นสังกัด หมวดหมู่ และเวลาที่แจ้ง เพราะคนอ่านยังไม่รู้อะไรเลย
+ *
+ * พอมีเจ้าของแล้วบริบทเปลี่ยน ทุกคนในกลุ่มอ่านใบแรกไปแล้ว การส่งข้อมูลชุดเดิมซ้ำอีก 5-6 รอบ
+ * ต่อหนึ่งเรื่องคือต้นเหตุที่กลุ่มล้น ใบย่อจึงเหลือเฉพาะสิ่งที่เปลี่ยนหรือใช้ตัดสินใจ:
+ * ฝ่ายกับความเร่งด่วน (แถบบน) · เลขที่กับสถานะ · เรื่องอะไร · ที่ไหน · ถึงขั้นไหนแล้ว · ใครถือ
+ *
+ * ส่วนการกรอกข้อมูล (กำหนดเสร็จ อาการที่พบ ความคืบหน้า) ย้ายไปทำในแอป — ปุ่มบนใบย่อเป็นลิงก์
+ * เปิดแอปตรงเข้าเรื่องนั้น การเปิดแอปไม่กินโควตาข้อความ และหน้าจอกว้างกว่าการ์ดถาม-ตอบมาก
+ */
+
+/** ลิงก์เปิดแอปตรงเข้าเรื่องนี้ — คืน null เมื่อยังไม่ได้ตั้ง LIFF_ID (ปุ่มจะถอยไปใช้ postback แทน) */
+export function liffUri(ticketId: string, todo?: string): string | null {
+  const liffId = envVar("LIFF_ID");
+  if (!liffId) return null;
+  const params = new URLSearchParams({ ticket: ticketId });
+  if (todo) params.set("do", todo);
+  return `https://liff.line.me/${liffId}?${params.toString()}`;
+}
+
+/**
+ * ปุ่มที่พาไปทำงานต่อในแอป
+ *
+ * ถ้ายังไม่ได้ตั้ง LIFF_ID ให้ถอยไปเป็นปุ่ม postback ชุดเดิม ระบบจะได้ไม่กลายเป็นปุ่มตายทั้งใบ
+ * ตอนขึ้นระบบใหม่ที่ยังตั้งค่าไม่ครบ (ตัวจัดการ postback เดิมยังอยู่ครบใน line-webhook.ts)
+ */
+function appButton(label: string, todo: string, t: TicketFlexInput, style: "primary" | "secondary") {
+  const uri = liffUri(t.ticketId, todo);
+  return {
+    type: "button",
+    style,
+    height: "sm",
+    ...(style === "primary" ? { color: CARD_COLOR } : {}),
+    action: uri
+      ? { type: "uri", label, uri }
+      : { type: "postback", label, data: `action=${todo}&ticket=${t.ticketId}` },
+  };
+}
+
+/** ชิปสถานะมุมขวาของบรรทัดเลขที่เรื่อง — สีบอกว่าจบดีหรือจบไม่ดี */
+const PILL_TONE: Record<StatusCode, { bg: string; fg: string }> = {
+  pending: { bg: "#FDECE9", fg: "#B3261E" },
+  in_progress: { bg: "#E6F7EE", fg: "#04A045" },
+  completed: { bg: "#E6F7EE", fg: "#04A045" },
+  closed: { bg: "#F1F3F5", fg: "#5B6672" },
+  cancelled: { bg: "#F1F3F5", fg: "#5B6672" },
+};
+
+function statusPill(status: StatusCode) {
+  const tone = PILL_TONE[status] ?? PILL_TONE.closed;
+  return {
+    type: "box",
+    layout: "vertical",
+    flex: 0,
+    paddingAll: "4px",
+    paddingStart: "10px",
+    paddingEnd: "10px",
+    cornerRadius: "12px",
+    backgroundColor: tone.bg,
+    contents: [
+      {
+        type: "text",
+        text: STATUS_CHIP[status] ?? STATUS_LABELS[status] ?? status,
+        size: "xxs",
+        weight: "bold",
+        color: tone.fg,
+        align: "center",
+      },
+    ],
+  };
+}
+
+/**
+ * ปุ่มท้ายใบย่อ — ขึ้นกับว่าแจ้งผลตรวจสอบแล้วหรือยัง
+ *
+ * ยังไม่แจ้งผล: ทั้งสองปุ่มพาเข้าแอป รวมถึงปุ่มปิดงานด้วย เพราะเรื่องที่เปิดแล้วปิดโดยไม่มีใครรู้ว่า
+ * เกิดอะไรขึ้นคือช่องโหว่ที่ตั้งใจอุด — แอปจะให้กรอกอาการกับกำหนดเสร็จก่อนแล้วค่อยปิดให้ในคราวเดียว
+ *
+ * แจ้งผลแล้ว: ปิดงานกดจบได้จากในกลุ่มเลย (postback = การตอบกลับ ไม่กินโควตา) เพราะข้อมูลที่ต้องบันทึก
+ * ครบไปแล้ว เหลือแค่บอกว่าเสร็จ ซึ่งช่างที่ยืนอยู่หน้างานควรกดได้ในแตะเดียวโดยไม่ต้องเปิดแอป
+ */
+function compactFooter(t: TicketFlexInput): Record<string, unknown> | null {
+  if (t.status !== "in_progress") return null;
+  const buttons = t.assessed
+    ? [primaryButton("ดำเนินการเสร็จสิ้น", "complete", t), appButton("อัปเดตความคืบหน้า", "progress", t, "secondary")]
+    : [appButton("แจ้งผลตรวจสอบ", "assess", t, "primary"), appButton("ดำเนินการเสร็จสิ้น", "complete", t, "secondary")];
+  return { type: "box", layout: "vertical", spacing: "sm", contents: buttons };
+}
+
+/**
+ * แถวข้อมูลของใบย่อ — ต่างจาก kv() ตรงที่ชื่อช่องกว้างเท่าตัวหนังสือ ไม่ใช่ 30% ของการ์ด
+ *
+ * ใบย่อใช้ฟองแบบ kilo ซึ่งแคบกว่าใบเต็มราว 40px พอคิดเป็นสัดส่วน ช่องชื่อจะเหลือไม่ถึง 70px
+ * แล้วคำอย่าง "คาดว่าเสร็จ" ถูกตัดเหลือ "คาดว่าเ..." ซึ่งอ่านไม่รู้เรื่อง
+ */
+function compactKv(label: string, value: string, margin: string, valueColor?: string) {
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    margin,
+    contents: [
+      { type: "text", text: label, color: "#8A94A0", size: "xs", flex: 0 },
+      {
+        type: "text",
+        text: value || "-",
+        wrap: true,
+        color: valueColor ?? "#111111",
+        size: "xs",
+        weight: valueColor ? "bold" : "regular",
+        flex: 1,
+      },
+    ],
+  };
+}
+
+export function buildCompactFlex(t: TicketFlexInput): LineMessage {
+  const urgency = URGENCY[t.urgency];
+  const statusLabel = STATUS_CHIP[t.status] ?? STATUS_LABELS[t.status] ?? t.status;
+  const where = `${t.floor}${t.locationNote ? " · " + t.locationNote : ""}`;
+
+  const body: unknown[] = [
+    {
+      type: "box",
+      layout: "horizontal",
+      alignItems: "center",
+      contents: [
+        { type: "text", text: t.ticketNo, size: "md", weight: "bold", color: "#111111", flex: 1 },
+        statusPill(t.status),
+      ],
+    },
+    // เรื่องที่แจ้งเป็นหัวเรื่องของใบนี้ ไม่ใช่แถวข้อมูลแถวหนึ่ง — จำกัด 2 บรรทัดกันเรื่องที่พิมพ์มายาว
+    // ดันให้การ์ดสูงเท่าใบเต็ม รายละเอียดครบยังอ่านได้ในแอปและบนการ์ดใบแรกที่ยังอยู่ในกลุ่ม
+    { type: "text", text: t.detail, size: "sm", weight: "bold", color: "#111111", wrap: true, maxLines: 2, margin: "sm" },
+    { type: "text", text: where, size: "xs", color: "#5B6672", wrap: true, margin: "xs" },
+    stepper(t, "md"),
+  ];
+
+  const latest = latestBox(t, "md");
+  if (latest) body.push(latest);
+
+  // ผลตรวจสอบขึ้นเฉพาะเมื่อมีแล้ว — ก่อนแจ้งผลไม่มีอะไรจะเขียน ใบจึงเตี้ยตามธรรมชาติ
+  if (t.dueLabel) {
+    // งานรออะไหล่ไม่ต้องเขียนคำว่ารออะไหล่ซ้ำในช่องค่า — ชื่อช่องบอกไปแล้ว เหลือแต่วันที่ที่ต้องรู้จริง
+    const when = t.waitingParts
+      ? t.dueDateLabel || t.dueLabel
+      : [t.dueLabel, t.dueDateLabel].filter(Boolean).join(" · ");
+    body.push(compactKv(t.waitingParts ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ", when, "md", STEP_DONE));
+  }
+  if (t.assessment) body.push(compactKv("อาการที่พบ", t.assessment, "sm"));
+  if (t.cancelReason) body.push(compactKv("เหตุผลที่ยกเลิก", t.cancelReason, "sm"));
+
+  const footer = compactFooter(t);
+
+  return {
+    type: "flex",
+    altText: `[${t.ticketNo}] ${statusLabel} · ${t.detail.slice(0, 40)}`,
+    contents: {
+      type: "bubble",
+      // kilo แคบกว่าใบเต็มอย่างเห็นได้ชัด ทำให้อ่านออกตั้งแต่ยังไม่ทันอ่านตัวหนังสือว่านี่คือใบตามงาน
+      // ไม่ใช่งานใหม่ที่ต้องรีบกดรับ
+      size: "kilo",
+      // ฝ่ายกับความเร่งด่วนรวมอยู่ในแถบเดียว — กลุ่มนี้ใช้ร่วมกันทุกฝ่าย ชื่อฝ่ายจึงตัดทิ้งไม่ได้
+      // แต่ก็ไม่คุ้มที่จะกินอีกหนึ่งแถบเต็มเหมือนใบแรก
+      header: {
+        type: "box",
+        layout: "horizontal",
+        paddingAll: "10px",
+        backgroundColor: urgency.color,
+        alignItems: "center",
+        contents: [
+          { type: "text", text: t.departmentName, color: "#FFFFFF", size: "xs", weight: "bold", wrap: true, flex: 1 },
+          { type: "text", text: urgency.label, color: "#FFFFFF", size: "xxs", weight: "bold", align: "end", flex: 0 },
+        ],
+      },
+      body: { type: "box", layout: "vertical", paddingAll: "14px", contents: body },
+      ...(footer ? { footer: { ...footer, paddingAll: "14px", paddingTop: "0px" } } : {}),
+    },
+  };
+}
+
 /* ───────────────── การ์ดถาม–ตอบระหว่างแจ้งผลตรวจสอบ ─────────────────
  * ทั้งหมดนี้ส่งด้วยการ "ตอบกลับ" หลังผู้ใช้กดปุ่มหรือพิมพ์ จึงไม่กินโควตาข้อความของ OA
  */
@@ -602,6 +758,25 @@ export function partsFollowUpCard(ticketId: string, ticketNo: string): LineMessa
         { type: "datetimepicker", label: "เลื่อนวัน", data: `action=duedate&ticket=${ticketId}&mode=wait`, mode: "date" },
         "grey",
       ),
+    ]),
+  ]);
+}
+
+/**
+ * กดปิดงานทั้งที่ยังไม่เคยแจ้งผลตรวจสอบ — พาไปกรอกในแอปแล้วปิดให้ในคราวเดียว
+ *
+ * ไม่ปฏิเสธเฉย ๆ เพราะคนกดไม่ได้ทำอะไรผิด เขาแค่ปิดงานที่ทำเสร็จจริง ๆ
+ * แต่เรื่องที่เปิดแล้วปิดโดยไม่มีใครรู้ว่าเกิดอะไรขึ้นคือช่องโหว่ที่ตั้งใจอุด จึงขอสองบรรทัดก่อน
+ */
+export function needAssessCard(ticketId: string, ticketNo: string): LineMessage {
+  const uri = liffUri(ticketId, "complete");
+  return bubble([
+    { type: "text", text: `${ticketNo} · ยังไม่ได้แจ้งผลตรวจสอบ`, size: "sm", weight: "bold", color: "#111111", wrap: true },
+    { type: "text", text: "กรอกอาการที่พบสั้น ๆ แล้วระบบจะปิดงานให้ในขั้นตอนเดียว", size: "xxs", color: "#8A94A0", wrap: true, margin: "xs" },
+    chipRow([
+      uri
+        ? chip("แจ้งผลแล้วปิดงานในแอป", { type: "uri", label: "เปิดในแอป", uri })
+        : chip("แจ้งผลตรวจสอบ", { type: "postback", label: "แจ้งผลตรวจสอบ", data: `action=assess&ticket=${ticketId}` }),
     ]),
   ]);
 }

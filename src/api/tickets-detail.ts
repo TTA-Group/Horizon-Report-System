@@ -72,7 +72,10 @@ export default async (req: Request): Promise<Response> => {
     const t = rows[0];
 
     // ตรวจสิทธิ์: เจ้าของเรื่อง / สมาชิกฝ่าย / ผู้ดูแล (spec หัวข้อ 10)
-    const canView = t.reporter_id === s.employee.id || isMemberOf(s, t.department_id);
+    // ปุ่มดำเนินการเป็นของเจ้าหน้าที่ฝ่ายเท่านั้น ผู้แจ้งเปิดดูได้แต่กดไม่ได้ — ปุ่มในกลุ่มไลน์
+    // ทุกคนมองเห็นและกดได้ (ไลน์ซ่อนรายคนไม่ได้) หน้านี้จึงเป็นด่านที่ตัดสินว่าใครทำอะไรได้จริง
+    const canAct = isMemberOf(s, t.department_id);
+    const canView = t.reporter_id === s.employee.id || canAct;
     if (!canView) throw new HttpError(403, "ไม่มีสิทธิ์ดูเรื่องนี้");
 
     const events = await sql<
@@ -100,6 +103,7 @@ export default async (req: Request): Promise<Response> => {
       status_label: STATUS_LABELS[t.status] ?? t.status,
       reporter_name: t.reporter_name,
       assignee_name: t.assignee_name,
+      can_act: canAct,
       created_at: t.created_at,
       acknowledged_at: t.acknowledged_at,
       completed_at: t.completed_at,

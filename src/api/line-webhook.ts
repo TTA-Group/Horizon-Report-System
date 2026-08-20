@@ -17,8 +17,10 @@ import {
 import { db } from "./_lib/db";
 import {
   assessmentAskCard,
+  buildCompactFlex,
   buildTicketFlex,
   dueAskCard,
+  needAssessCard,
   waitDateCard,
   type TicketFlexInput,
 } from "./_lib/flex";
@@ -495,9 +497,14 @@ function transitionBlocked(t: TicketRow, to: StatusCode): string | null {
   return `เรื่อง ${t.ticket_no} อยู่ในสถานะ "${STATUS_LABELS[t.status] ?? t.status}" แล้ว ทำรายการนี้ไม่ได้`;
 }
 
-/** การ์ดของเรื่องนี้ ตามสถานะที่เป็นอยู่ (ส่ง overrides เพื่อวาดสถานะใหม่ที่เพิ่งเปลี่ยนไป) */
+/**
+ * การ์ดของเรื่องนี้ ตามสถานะที่เป็นอยู่ (ส่ง overrides เพื่อวาดสถานะใหม่ที่เพิ่งเปลี่ยนไป)
+ *
+ * ยังไม่มีผู้รับ = ใบเต็ม เพราะเป็นใบที่คนทั้งกลุ่มต้องอ่านให้ครบก่อนแย่งกันกดรับ
+ * มีเจ้าของแล้ว = ใบย่อ เพราะทุกคนอ่านใบแรกไปแล้ว เหลือแค่บอกว่าคืบไปถึงไหน
+ */
 function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMessage {
-  return buildTicketFlex({
+  const input: TicketFlexInput = {
     ticketId: t.id,
     ticketNo: t.ticket_no,
     status: t.status,
@@ -520,7 +527,8 @@ function cardFor(t: TicketRow, overrides: Partial<TicketFlexInput> = {}): LineMe
     waitingParts: t.waiting_parts,
     assessment: t.assessment,
     ...overrides,
-  });
+  };
+  return input.status === "pending" ? buildTicketFlex(input) : buildCompactFlex(input);
 }
 
 /** ค่าที่ต้องส่งให้การ์ดเมื่อผู้กดปุ่มเพิ่งทำรายการนี้เดี๋ยวนี้ */
@@ -654,6 +662,8 @@ async function handlePostback(ev: LineEvent): Promise<void> {
     if (t.status === "completed") return replyCard(replyToken, cardFor(t));
     const blocked = transitionBlocked(t, "completed");
     if (blocked) return replyStale(replyToken, blocked, t);
+    // ปิดงานได้จากในกลุ่มแตะเดียวเมื่อแจ้งผลไปแล้ว — ถ้ายังไม่เคยแจ้ง พาไปกรอกในแอปก่อน
+    if (!t.assessed_at) return replyMessage(replyToken, needAssessCard(t.id, t.ticket_no));
 
     const done = await sql<{ n: number }[]>`
       WITH upd AS (
