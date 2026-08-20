@@ -2,6 +2,7 @@
 //
 // body มีสองแบบ
 //   { department_code, role }  role = "head" (หัวหน้าฝ่าย) | "staff" (ผู้รับผิดชอบฝ่าย) | "" (ถอดออกจากฝ่ายนั้น)
+//   { department_code, role, replace: true }  เหมือนข้างบน แต่ถอดออกจากฝ่ายอื่นทั้งหมดด้วย (ย้ายฝ่าย)
 //   { clear_all: true }        ถอดออกจากทุกฝ่าย = กลับเป็นพนักงานทั่วไป
 //
 // เดิมงานนี้ต้องเข้าไปแก้ฐานข้อมูลเอง ซึ่งแปลว่าเวลามีคนย้ายฝ่ายหรือลาออกจริง ๆ ระบบจะค้าง
@@ -14,6 +15,8 @@ import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 interface Body {
   department_code?: string;
   role?: string | null;
+  /** ย้ายฝ่าย: ถอดออกจากฝ่ายอื่นทั้งหมดพร้อมกับใส่เข้าฝ่ายนี้ */
+  replace?: boolean;
   clear_all?: boolean;
 }
 
@@ -75,6 +78,14 @@ export default async (req: Request): Promise<Response> =>
       if (!role) {
         await sql`DELETE FROM department_members WHERE department_id = ${dept[0].id} AND employee_id = ${id}`;
       } else {
+        // ย้ายฝ่าย: ถอดฝ่ายอื่นออกก่อน ไม่งั้นคนคนนั้นจะกลายเป็นดูแลสองฝ่ายพร้อมกัน
+        // แล้วรับทั้งคิวงานและการเตือนของฝ่ายที่ไม่ได้เกี่ยวข้องด้วย
+        if (body.replace === true) {
+          await sql`
+            DELETE FROM department_members
+            WHERE employee_id = ${id} AND department_id <> ${dept[0].id}
+          `;
+        }
         await sql`
           INSERT INTO department_members (department_id, employee_id, role)
           VALUES (${dept[0].id}, ${id}, ${role})
