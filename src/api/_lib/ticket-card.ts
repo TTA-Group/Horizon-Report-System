@@ -116,12 +116,13 @@ export async function pushGroupCard(t: CardRow, card: LineMessage): Promise<void
  */
 export async function askReporterRating(t: CardRow): Promise<void> {
   if (!t.reporter_line) return;
-  // เจ้าหน้าที่แจ้งเรื่องของตัวเองแล้วซ่อมเอง — ไม่ต้องถามว่าพอใจผลงานตัวเองแค่ไหน
-  if (t.assignee_id && t.assignee_id === t.reporter_id) return;
-  await pushTo(t.reporter_line, [ratingAskCard(t.id, t.ticket_no, t.detail, t.assignee_name)], {
+  const ok = await pushTo(t.reporter_line, [ratingAskCard(t.id, t.ticket_no, t.detail, t.assignee_name)], {
     ticketId: t.id,
     channel: "user",
   });
+  // การ์ดส่งไม่ผ่านด้วยเหตุใดก็ตาม ผู้แจ้งต้องไม่เงียบหาย — งานของเขาเสร็จแล้วและเขาควรได้รู้
+  // ต่อให้ส่วนที่เป็นลูกเล่นจะพัง ข้อความบอกสถานะเป็นสิ่งที่ห้ามหาย
+  if (!ok) await tellReporter(t, `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ดำเนินการเสร็จสิ้น`);
 }
 
 export async function tellReporter(t: CardRow, text: string): Promise<void> {
