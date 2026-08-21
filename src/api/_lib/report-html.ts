@@ -39,12 +39,18 @@ function rows(list: ReportTicket[]): string {
       (t) => `<tr>
         <td class="mono nowrap">${esc(t.ticket_no)}</td>
         <td><div class="d">${esc(t.detail)}</div><div class="s">${esc(t.category_label)}${
-          t.urgency === "normal" ? "" : ` · <b>${esc(URGENCY_LABEL[t.urgency] ?? t.urgency)}</b>`
+          t.urgency === "normal" ? "" : ` · <b class="nowrap">${esc(URGENCY_LABEL[t.urgency] ?? t.urgency)}</b>`
         }</div></td>
         <td>${esc(t.floor)}${t.location_note ? `<div class="s">${esc(t.location_note)}</div>` : ""}</td>
         <td>${esc(t.assignee_name ?? "—")}</td>
         <td>${statusPill(t)}</td>
-        <td class="nowrap">${esc(t.due_label ?? "—")}</td>
+        <td>${
+          t.due_label || t.due_date_label
+            ? `<div class="d">${esc(t.due_label ?? "—")}</div>${
+                t.due_date_label ? `<div class="s">${esc(t.due_date_label)}</div>` : ""
+              }`
+            : "—"
+        }</td>
         <td class="nowrap">${esc(t.created_label)}</td>
       </tr>`,
     )
@@ -109,8 +115,9 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
   .find:focus{border-color:var(--mid)}
   .scroll{overflow-x:auto}
   /* กว้างพอให้ทุกคอลัมน์ได้ที่ของตัวเองจริง ๆ แล้วให้เลื่อนแนวนอนเอาบนจอแคบ
-     ถ้าตั้งไว้แคบกว่านี้ คอลัมน์ "เรื่องที่แจ้ง" จะถูกบีบจนตัวหนังสือตกบรรทัดทีละคำ */
-  table{width:100%;border-collapse:collapse;font-size:13px;min-width:1020px}
+     ถ้าตั้งไว้แคบกว่านี้ คอลัมน์ "เรื่องที่แจ้ง" จะถูกบีบจนตัวหนังสือตกบรรทัดทีละคำ
+     (ฉบับพิมพ์ไม่ใช้ค่านี้ — บนกระดาษใช้ความกว้างเป็น % ดูบล็อก @media print) */
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:1000px}
   th,td{text-align:left;padding:12px 19px;vertical-align:top}
   th{font-size:11.5px;font-weight:600;color:var(--mid);background:#FAFAF9;
     border-top:1px solid var(--line);border-bottom:1px solid var(--line);white-space:nowrap}
@@ -120,9 +127,9 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
      ไม่งั้นเบราว์เซอร์จะเฉลี่ยความกว้างเอง แล้วชื่อคนกับสถานที่ถูกบีบจนตกบรรทัดทุกแถว */
   th:nth-child(1),td:nth-child(1){width:112px}
   th:nth-child(3),td:nth-child(3){width:126px}
-  th:nth-child(4),td:nth-child(4){width:140px}
+  th:nth-child(4),td:nth-child(4){width:165px}
   th:nth-child(5),td:nth-child(5){width:128px}
-  th:nth-child(6),td:nth-child(6){width:168px}
+  th:nth-child(6),td:nth-child(6){width:150px}
   th:nth-child(7),td:nth-child(7){width:88px}
   td .d{font-weight:500;line-height:1.45}
   /* ความเร่งด่วนขึ้นเฉพาะเรื่องที่ไม่ใช่ระดับปกติ — ส่วนใหญ่เป็นปกติ ถ้าเขียนทุกแถวจะกลายเป็นเสียงรบกวน
@@ -180,22 +187,27 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
     .ph h2{font-size:12.5px}
     /* ความกว้างเป็นสัดส่วนของหน้ากระดาษ แล้วบังคับให้เบราว์เซอร์ทำตาม (table-layout:fixed)
        ช่องไหนก็แย่งที่ของช่องอื่นไม่ได้อีก และรวมกันได้ 100% พอดี ตารางจึงกว้างเท่ากระดาษเสมอ
-       ไม่ว่ากระดาษจะกว้างเท่าไหร่ — แนวนอนได้ช่อง "เรื่องที่แจ้ง" ~300px แนวตั้งได้ ~200px */
+       ไม่ว่ากระดาษจะกว้างเท่าไหร่
+
+       สัดส่วนตั้งจากของที่ยาวที่สุดที่แต่ละช่องต้องรับจริง ไม่ได้เฉลี่ยเท่า ๆ กัน:
+       เลขที่เรื่องยาวคงที่ 12 ตัว · ป้ายสถานะยาวสุดคือ "กำลังดำเนินการ" · วันที่สั้นที่สุด
+       ที่เหลือยกให้ "เรื่องที่แจ้ง" ซึ่งเป็นช่องเดียวที่ยาวไม่จำกัด */
     table{min-width:0;table-layout:fixed;font-size:10.5px}
-    th:nth-child(1),td:nth-child(1){width:12%}
-    th:nth-child(2),td:nth-child(2){width:29%}
-    th:nth-child(3),td:nth-child(3){width:11%}
-    th:nth-child(4),td:nth-child(4){width:14%}
-    th:nth-child(5),td:nth-child(5){width:13%}
-    th:nth-child(6),td:nth-child(6){width:13%}
-    th:nth-child(7),td:nth-child(7){width:8%}
+    th:nth-child(1),td:nth-child(1){width:12%}   /* เลขที่ */
+    th:nth-child(2),td:nth-child(2){width:29%}   /* เรื่องที่แจ้ง */
+    th:nth-child(3),td:nth-child(3){width:12%}   /* สถานที่ */
+    th:nth-child(4),td:nth-child(4){width:14%}   /* ผู้รับผิดชอบ */
+    th:nth-child(5),td:nth-child(5){width:14%}   /* สถานะ */
+    th:nth-child(6),td:nth-child(6){width:12%}   /* กำหนดเสร็จ */
+    th:nth-child(7),td:nth-child(7){width:7%}    /* แจ้งเมื่อ */
     th,td{padding:6px 7px}
-    /* ห้ามตัดบรรทัดมีเหตุผลบนจอที่เลื่อนซ้ายขวาได้ บนกระดาษมันคือตัวที่ทำให้ช่องอื่นแคบ */
-    th,td,.nowrap,.p{white-space:normal}
-    th,td{overflow-wrap:anywhere}
+    /* พอความกว้างถูกล็อกด้วย % แล้ว "ห้ามตัดบรรทัด" ก็ไม่แย่งที่ใครได้อีก
+       จึงเอากลับมาใช้กับของที่ตัดแล้วอ่านแปลก — เลขที่เรื่อง ป้ายสถานะ และวันที่ */
+    th,td{white-space:normal}
+    .nowrap,.p{white-space:nowrap}
     .mono{font-size:10px}
     td .d{line-height:1.4}
-    td .s{font-size:9.5px}
+    td .s{font-size:9.5px;margin-top:2px;line-height:1.35}
     /* ป้ายสถานะพิมพ์สีพื้นติดมาด้วยเสมอ ไม่ต้องรอให้คนไปติ๊ก "ภาพพื้นหลัง" ในกล่องพิมพ์
        ถ้าสีหาย ป้ายจะเหลือแต่ตัวหนังสือสีจาง ๆ ซึ่งอ่านยากกว่าเดิม */
     .p{font-size:9.5px;padding:2px 7px;border-radius:5px;
@@ -209,14 +221,15 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
   @media print and (orientation:portrait){
     table{font-size:10px}
     .mono{font-size:9px}
+    .p{font-size:9px;padding:2px 6px}
     th,td{padding:5px 5px}
-    th:nth-child(1),td:nth-child(1){width:16%}
-    th:nth-child(2),td:nth-child(2){width:27%}
+    th:nth-child(1),td:nth-child(1){width:15%}
+    th:nth-child(2),td:nth-child(2){width:24%}
     th:nth-child(3),td:nth-child(3){width:10%}
     th:nth-child(4),td:nth-child(4){width:14%}
-    th:nth-child(5),td:nth-child(5){width:12%}
-    th:nth-child(6),td:nth-child(6){width:13%}
-    th:nth-child(7),td:nth-child(7){width:8%}
+    th:nth-child(5),td:nth-child(5){width:14%}
+    th:nth-child(6),td:nth-child(6){width:14%}
+    th:nth-child(7),td:nth-child(7){width:9%}
   }
 </style>
 </head>
@@ -250,7 +263,7 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
       <table>
         <thead><tr>
           <th>เลขที่</th><th>เรื่องที่แจ้ง</th><th>สถานที่</th>
-          <th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>กำหนดเสร็จ</th><th>วันที่แจ้ง</th>
+          <th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>กำหนดเสร็จ</th><th>แจ้งเมื่อ</th>
         </tr></thead>
         <tbody id="rows">${rows(all)}</tbody>
       </table>
@@ -292,7 +305,8 @@ export function renderReportCsv(r: DeptReport): string {
       out.push([
         t.ticket_no, group, t.status_label, t.category_label,
         URGENCY_LABEL[t.urgency] ?? t.urgency, t.floor, t.location_note ?? "",
-        t.detail, t.reporter_name, t.assignee_name ?? "", t.created_label, t.due_label ?? "",
+        t.detail, t.reporter_name, t.assignee_name ?? "", t.created_label,
+        [t.due_label, t.due_date_label].filter(Boolean).join(" · "),
         String(t.age_days), String(t.overdue_days), t.waiting_parts ? "ใช่" : "", t.assessment ?? "",
       ]);
     }

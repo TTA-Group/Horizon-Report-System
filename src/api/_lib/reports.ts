@@ -74,7 +74,9 @@ export interface ReportTicket {
   reporter_name: string;
   assignee_name: string | null;
   created_label: string;
+  /** คำบอกกำหนด เช่น "ภายใน 3 วัน" — แยกจากวันที่ ให้หน้ารายงานวางคนละบรรทัดได้ */
   due_label: string | null;
+  due_date_label: string | null;
   /** จำนวนวันที่เลยกำหนดมาแล้ว (0 = ยังไม่เลย) */
   overdue_days: number;
   age_days: number;
@@ -133,7 +135,8 @@ function toTicket(t: RawTicket, now: Date): ReportTicket {
     reporter_name: t.reporter_name,
     assignee_name: t.assignee_name,
     created_label: thaiDateShort(created),
-    due_label: due ? [t.due_label, thaiDateShort(due)].filter(Boolean).join(" · ") : null,
+    due_label: due ? t.due_label : null,
+    due_date_label: due ? thaiDateShort(due) : null,
     overdue_days: overdueMs > 0 ? Math.floor(overdueMs / DAY_MS) : 0,
     age_days: Math.max(0, Math.floor((now.getTime() - created.getTime()) / DAY_MS)),
     waiting_parts: t.waiting_parts,
