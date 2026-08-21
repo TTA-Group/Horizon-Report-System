@@ -7,7 +7,7 @@
 // ไฟล์นี้เป็นแหล่งข้อมูลเดียวที่กำหนดว่าเส้นทางไหนไปตัวจัดการใด
 
 import { withDbScope } from "./api/_lib/db";
-import { rememberOrigin, setEnv } from "./api/_lib/env";
+import { setEnv } from "./api/_lib/env";
 import { safeErrorText } from "./api/_lib/http";
 
 import health from "./api/health";
@@ -31,8 +31,6 @@ import adminEmployeeUnlink from "./api/admin-employee-unlink";
 import adminEmployeeDepartments from "./api/admin-employee-departments";
 import lineWebhook from "./api/line-webhook";
 import cronReminders from "./api/cron-reminders";
-import cronReportWeekly from "./api/cron-report-weekly";
-import cronReportMonthly from "./api/cron-report-monthly";
 
 import reminders from "./api/reminders";
 import dbKeepalive from "./api/db-keepalive";
@@ -103,13 +101,8 @@ function route(pathname: string, method: string): Handler | null {
   // /api/line/webhook
   if (seg[1] === "line" && seg[2] === "webhook" && seg.length === 3) return lineWebhook;
 
-  // /api/cron/*
-  if (seg[1] === "cron" && seg.length === 3) {
-    if (seg[2] === "reminders") return cronReminders;
-    if (seg[2] === "report-weekly") return cronReportWeekly;
-    if (seg[2] === "report-monthly") return cronReportMonthly;
-    return null;
-  }
+  // /api/cron/reminders
+  if (seg[1] === "cron" && seg[2] === "reminders" && seg.length === 3) return cronReminders;
 
   return null;
 }
@@ -118,12 +111,10 @@ function route(pathname: string, method: string): Handler | null {
 // หมายเหตุ: Cloudflare ไม่รับเลข 0 ในช่องวันของสัปดาห์ จึงใช้ SUN แทน
 const CRON_JOBS: Record<string, Handler> = {
   "*/15 * * * *": reminders,
-  "0 1 * * MON": cronReportWeekly,
   "0 3 * * *": dbKeepalive,
   "0 4 * * SUN": backup,
   "0 5 1 * *": cleanupFiles,
   "0 6 1 * *": usageReport,
-  "0 2 1 * *": cronReportMonthly,
 };
 
 /** ปรับรูปแบบ cron ให้เทียบกันได้ เผื่อช่องว่าง/ตัวพิมพ์ต่างกันเล็กน้อย */
@@ -168,8 +159,6 @@ export default {
     setEnv(env);
 
     const url = new URL(request.url);
-    // จำที่อยู่ของระบบไว้ให้งานตามเวลาใช้ประกอบลิงก์รายงาน (ดู publicBaseUrl ใน _lib/env.ts)
-    rememberOrigin(url.origin);
     const handler = route(url.pathname, request.method);
 
     if (handler) {

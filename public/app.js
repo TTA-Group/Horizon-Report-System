@@ -717,73 +717,30 @@ function renderReportFilters() {
     .join("");
 }
 
-function rtile(value, label, tone) {
-  return `<div class="rt ${tone || ""}"><div class="v">${esc(value)}</div><div class="l">${esc(label)}</div></div>`;
+function rtile(value, label, note, tone) {
+  return `<div class="rt ${tone || ""}"><div class="l">${esc(label)}</div><div class="v">${esc(value)}</div>${
+    note ? `<div class="n ${tone || ""}">${esc(note)}</div>` : ""
+  }</div>`;
 }
 
-function hoursText(h) {
-  if (h === null || h === undefined) return "—";
-  if (h < 1) return Math.round(h * 60) + " นาที";
-  if (h < 48) return h.toFixed(1) + " ชม.";
-  const d = Math.floor(h / 24);
-  const rest = Math.round(h - d * 24);
-  return rest ? `${d} วัน ${rest} ชม.` : `${d} วัน`;
-}
-
+/**
+ * ตัวเลขสี่ตัวที่บอกภาพรวมได้ครบ — เข้ามาเท่าไหร่ ปิดไปเท่าไหร่ เหลือเท่าไหร่ และเลยกำหนดเท่าไหร่
+ * รายชื่องานทั้งหมดอยู่ในรายงานฉบับเต็ม เพราะตารางยาว ๆ อ่านบนจอมือถือไม่ไหว
+ */
 function renderReportBody(r) {
   const open = r.now.pending + r.now.in_progress;
-  const onTime = r.kpi.due_closed ? Math.round((r.kpi.on_time / r.kpi.due_closed) * 100) + "%" : "—";
-  const alerts = [];
-  if (r.now.overdue > 0) alerts.push(`เลยกำหนดแล้ว ${r.now.overdue}`);
-  if (r.now.pending > 0) alerts.push(`ยังไม่มีผู้รับ ${r.now.pending}`);
-  const people = (r.people || []).filter((p) => p.closed > 0 || p.open > 0);
-
   return `
-    <div class="lede"><b>${esc(r.department_name)}</b> · ${esc(r.period_title)} ${esc(r.range_label)}<br>
-      แจ้งเข้ามา ${r.flow.created} เรื่อง ปิดจบไปแล้ว ${r.flow.completed} เรื่อง ยังค้างอยู่ ${open} เรื่อง${
-        alerts.length ? `<br>ในจำนวนนี้ ${esc(alerts.join(" และ "))} เรื่อง` : ""
-      }</div>
-
-    <div class="section">เกิดอะไรขึ้นในช่วงนี้</div>
     <div class="rtiles">
-      ${rtile(r.flow.created, "เรื่องที่แจ้งเข้ามา")}
-      ${rtile(r.flow.completed, "ปิดจบไปแล้ว", "good")}
+      ${rtile(r.flow.created, "แจ้งเข้ามาในช่วงนี้", r.flow.cancelled ? `ยกเลิก ${r.flow.cancelled} เรื่อง` : "")}
+      ${rtile(r.flow.completed, "ปิดจบไปแล้ว", r.flow.created ? Math.round((r.flow.completed / r.flow.created) * 100) + "% ของที่แจ้งเข้ามา" : "", "good")}
+      ${rtile(open, "ยังค้างอยู่ตอนนี้", r.now.pending ? `ยังไม่มีผู้รับ ${r.now.pending} เรื่อง` : "มีผู้รับผิดชอบครบแล้ว", r.now.pending ? "bad" : "good")}
+      ${rtile(r.now.overdue, "เลยกำหนดที่แจ้งไว้", r.now.overdue ? "ต้องตามด่วน" : "ไม่มีงานเลยกำหนด", r.now.overdue ? "bad" : "good")}
     </div>
-
-    <div class="section">ค้างอยู่ ณ วันนี้</div>
-    <div class="rtiles">
-      ${rtile(open, "งานที่ยังไม่จบ", open ? "warn" : "good")}
-      ${rtile(r.now.pending, "ยังไม่มีผู้รับเรื่อง", r.now.pending ? "bad" : "")}
-      ${rtile(r.now.overdue, "เลยกำหนดที่แจ้งไว้", r.now.overdue ? "bad" : "")}
-      ${rtile(r.now.not_assessed, "รับแล้วยังไม่แจ้งผล", r.now.not_assessed ? "warn" : "")}
-    </div>
-
-    <div class="section">ตัวชี้วัด</div>
-    <div class="rtiles">
-      ${rtile(hoursText(r.kpi.ack_hours), "เวลาเฉลี่ยกว่าจะมีคนรับ")}
-      ${rtile(hoursText(r.kpi.close_hours), "เวลาเฉลี่ยจนปิดงาน")}
-      ${rtile(onTime, "ปิดได้ทันกำหนด", r.kpi.due_closed && r.kpi.on_time / r.kpi.due_closed >= 0.8 ? "good" : r.kpi.due_closed ? "warn" : "")}
-      ${rtile(r.kpi.oldest_open_days ? r.kpi.oldest_open_days + " วัน" : "—", "เรื่องที่ค้างนานที่สุด", r.kpi.oldest_open_days >= 30 ? "bad" : "")}
-    </div>
-
-    ${
-      people.length
-        ? `<div class="section">ผลงานรายบุคคล</div>
-    <div class="card">${people
-      .map(
-        (p) =>
-          `<div class="rrow"><span>${esc(p.name)}</span><span class="rn">ปิดได้ ${p.closed} · ค้าง ${p.open}${
-            p.overdue ? " · เลยกำหนด " + p.overdue : ""
-          }</span></div>`,
-      )
-      .join("")}</div>`
-        : ""
-    }
 
     <button class="send" id="rp-open">เปิดรายงานฉบับเต็ม</button>
     <button class="ghost" id="rp-copy">คัดลอกลิงก์รายงาน</button>
-    <p class="tip">รายงานฉบับเต็มมีรายชื่องานค้างทุกเรื่อง ผลงานรายบุคคล และปุ่มบันทึกเป็น PDF
-      ลิงก์เปิดได้โดยไม่ต้องล็อกอิน ส่งต่อให้ผู้บริหารได้เลย และหมดอายุใน 14 วัน</p>`;
+    <p class="tip">รายงานฉบับเต็มมีรายชื่องานทุกเรื่องพร้อมสถานะ ปุ่มบันทึกเป็น PDF และปุ่มส่งออก CSV
+      ลิงก์เปิดได้โดยไม่ต้องล็อกอิน ส่งต่อได้เลย และหมดอายุใน 14 วัน</p>`;
 }
 
 /** เปิดรายงานในเบราว์เซอร์ของเครื่อง ไม่ใช่ในหน้าต่างของไลน์ — จะได้สั่งพิมพ์และแชร์ต่อได้ */
