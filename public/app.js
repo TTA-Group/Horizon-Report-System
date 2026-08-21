@@ -735,9 +735,10 @@ function syncRateChips() {
   $("#rt-chiplabel").innerHTML = good
     ? 'อยากชมเรื่องอะไรเป็นพิเศษ <span class="hint">(เลือกได้ 1 ข้อ)</span>'
     : 'ควรปรับปรุงเรื่องอะไร <span class="hint">(เลือกได้ 1 ข้อ)</span>';
+  // บอกตรง ๆ ว่าจะไปโผล่ที่ไหน ก่อนกดส่ง ไม่ใช่รู้ทีหลังตอนเห็นในกลุ่มแล้ว
   $("#rt-chiptip").textContent = good
-    ? "คำชมจะถูกส่งเข้ากลุ่มให้ทีมงานเห็นด้วย"
-    : "ความเห็นนี้เก็บไว้ให้หัวหน้าฝ่ายดู ไม่ได้ส่งเข้ากลุ่ม";
+    ? "คะแนนและคำชมจะถูกส่งเข้ากลุ่มให้ทีมงานเห็นด้วย"
+    : "คะแนนและความเห็นจะถูกส่งเข้ากลุ่มให้ทีมงานรับทราบ";
   $("#rt-chips").innerHTML = list
     .map((c) => `<button data-note="${esc(c)}" aria-pressed="${c === rateNote}">${esc(c)}</button>`)
     .join("");
@@ -753,7 +754,7 @@ async function saveRate() {
       method: "POST",
       body: { rating: rateStars, note: rateNote || undefined },
     });
-    toast(r.shared ? "ขอบคุณครับ ส่งคำชมเข้ากลุ่มแล้ว" : "ขอบคุณสำหรับคะแนนครับ");
+    toast(r.shared ? "ขอบคุณครับ ส่งผลประเมินเข้ากลุ่มแล้ว" : "ขอบคุณสำหรับคะแนนครับ");
     rateCtx = null;
     routeTab("mine");
   } catch (e) {

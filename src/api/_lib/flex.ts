@@ -9,8 +9,6 @@ import type { LineMessage } from "./line";
 import {
   DUE_BY_KEY,
   DUE_ROWS,
-  IMPROVE_CHIPS,
-  PRAISE_CHIPS,
   RATING_LABELS,
   STATUS_LABELS,
   type StatusCode,
@@ -853,7 +851,7 @@ export function ratingAskCard(
           { type: "text", text: "☆☆☆☆☆", size: "22px", color: STAR_ON, align: "center", margin: "lg" },
           {
             type: "text",
-            text: "ให้คะแนนการทำงาน และชื่นชมคนที่ช่วยเหลือ",
+            text: "คะแนนและความเห็นจะถูกส่งเข้ากลุ่มให้ทีมงานรับทราบ",
             size: FS.tiny,
             color: "#8A94A0",
             align: "center",
@@ -884,12 +882,21 @@ export function ratingAskCard(
 }
 
 /**
- * คำชมที่ส่งกลับเข้ากลุ่ม — จุดหมายปลายทางจริงของทั้งเรื่อง
+ * ผลประเมินที่ส่งกลับเข้ากลุ่ม — จุดหมายปลายทางจริงของทั้งเรื่อง
  *
- * ลงกลุ่มไม่ใช่แชทส่วนตัว เพราะคำชมที่เพื่อนร่วมงานเห็นด้วยมีค่ากับคนทำงานมากกว่า
- * และทำให้ทั้งกลุ่มเห็นว่างานที่ทำไปมีคนรับรู้
+ * ลงกลุ่มทุกคะแนน ไม่ใช่เฉพาะคะแนนดี เพราะทั้งกลุ่มควรรับทราบผลงานของตัวเองตามจริง
+ * ทั้งตอนที่ทำได้ดีและตอนที่ยังไม่ดีพอ
+ *
+ * หน้าตาการ์ดเปลี่ยนตามคะแนน — ขึ้นหัวว่า "คำชม" ทับผลประเมิน 1 ดาว จะอ่านเหมือนระบบประชด
+ * และทำให้คนอ่านไม่เชื่อถือการ์ดใบนี้ทั้งหมด
  */
-export function praiseCard(
+const RATING_TONE = [
+  { min: 4, title: "คำชมจากผู้แจ้ง", bar: CARD_COLOR, tint: "#F1F8F3", ink: STEP_DONE, thanks: true },
+  { min: 3, title: "ผลประเมินจากผู้แจ้ง", bar: "#5B6672", tint: "#F1F3F5", ink: "#3A444E", thanks: false },
+  { min: 1, title: "ผลประเมินจากผู้แจ้ง", bar: "#C2410C", tint: "#FDF2EC", ink: "#9A4A12", thanks: false },
+];
+
+export function ratingResultCard(
   ticketNo: string,
   detail: string,
   reporterName: string,
@@ -897,9 +904,10 @@ export function praiseCard(
   rating: number,
   note: string | null,
 ): LineMessage {
+  const tone = RATING_TONE.find((t) => rating >= t.min) ?? RATING_TONE[RATING_TONE.length - 1];
   return {
     type: "flex",
-    altText: `คำชมจากผู้แจ้ง ${ticketNo}${note ? " · " + note : ""}`,
+    altText: `${tone.title} ${ticketNo} · ${starText(rating)}${note ? " · " + note : ""}`,
     contents: {
       type: "bubble",
       size: "kilo",
@@ -907,10 +915,8 @@ export function praiseCard(
         type: "box",
         layout: "vertical",
         paddingAll: "12px",
-        backgroundColor: CARD_COLOR,
-        contents: [
-          { type: "text", text: "คำชมจากผู้แจ้ง", color: "#FFFFFF", size: FS.label, weight: "bold", align: "center" },
-        ],
+        backgroundColor: tone.bar,
+        contents: [{ type: "text", text: tone.title, color: "#FFFFFF", size: FS.label, weight: "bold", align: "center" }],
       },
       body: {
         type: "box",
@@ -918,6 +924,14 @@ export function praiseCard(
         paddingAll: "16px",
         contents: [
           { type: "text", text: starText(rating), size: "24px", color: STAR_ON, align: "center" },
+          {
+            type: "text",
+            text: RATING_LABELS[rating] ?? "",
+            size: FS.tiny,
+            color: "#8A94A0",
+            align: "center",
+            margin: "xs",
+          },
           ...(note
             ? [
                 {
@@ -926,9 +940,9 @@ export function praiseCard(
                   margin: "lg",
                   paddingAll: "12px",
                   cornerRadius: "10px",
-                  backgroundColor: "#F1F8F3",
+                  backgroundColor: tone.tint,
                   contents: [
-                    { type: "text", text: `“${note}”`, size: FS.body, weight: "bold", color: STEP_DONE, align: "center", wrap: true },
+                    { type: "text", text: `“${note}”`, size: FS.body, weight: "bold", color: tone.ink, align: "center", wrap: true },
                   ],
                 },
               ]
@@ -937,7 +951,7 @@ export function praiseCard(
             ? [
                 {
                   type: "text",
-                  text: `ขอบคุณ ${shortName(assigneeName)}`,
+                  text: tone.thanks ? `ขอบคุณ ${shortName(assigneeName)}` : `ผู้รับผิดชอบ ${shortName(assigneeName)}`,
                   size: FS.body,
                   weight: "bold",
                   color: "#111111",
