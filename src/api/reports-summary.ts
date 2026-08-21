@@ -8,7 +8,7 @@ import { getSession, requireActive, type Session } from "./_lib/auth";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { signReportToken } from "./_lib/report-token";
-import { buildDeptReport, PERIOD_TITLE, periodRange, type Period } from "./_lib/reports";
+import { ALL_DEPTS, buildDeptReport, PERIOD_TITLE, periodRange, type Period } from "./_lib/reports";
 
 const MAX_OFFSET = 12; // ย้อนหลังได้ราวหนึ่งปีสำหรับรายเดือน และสามเดือนสำหรับรายสัปดาห์
 
@@ -52,20 +52,28 @@ export default async (req: Request): Promise<Response> =>
       throw new HttpError(403, "รายงานสรุปงานเปิดให้เฉพาะหัวหน้าฝ่ายและผู้ดูแลระบบ", "not_head");
     }
 
+    // ไม่ระบุฝ่าย = ทุกฝ่ายที่คนนี้ดูได้ ซึ่งเป็นค่าเริ่มต้นของหน้าสรุปงาน
+    // ภาพรวมต้องมาก่อน แล้วค่อยเจาะเข้าไปทีละฝ่าย ไม่ใช่เปิดมาเจอฝ่ายแรกตามตัวอักษร
     const wanted = (params.get("dept") ?? "").trim().toUpperCase();
-    const dept = wanted ? options.find((d) => d.code === wanted) : options[0];
-    if (!dept) throw new HttpError(403, "ไม่มีสิทธิ์ดูรายงานของฝ่ายนี้");
+    const all = !wanted || wanted === ALL_DEPTS;
+    const dept = all ? null : options.find((d) => d.code === wanted);
+    if (!all && !dept) throw new HttpError(403, "ไม่มีสิทธิ์ดูรายงานของฝ่ายนี้");
+    const ids = dept ? [dept.id] : options.map((d) => d.id);
 
-    const report = await buildDeptReport(dept.id, period, offset);
+    const report = await buildDeptReport(ids, period, offset);
     if (!report) throw new HttpError(404, "ไม่พบฝ่ายนี้");
 
     // ลิงก์เปิดได้โดยไม่ต้องล็อกอิน เพื่อส่งต่อให้ผู้บริหารที่ไม่ได้ใช้แอปนี้
     const origin = new URL(req.url).origin;
-    const token = signReportToken({ d: dept.id, p: period, o: offset });
+    const token = signReportToken({ d: ids, p: period, o: offset });
+
+    // ชิป "ทั้งหมด" ขึ้นเฉพาะตอนที่มีฝ่ายให้รวมจริง ๆ — ฝ่ายเดียวรวมแล้วก็ได้ตัวเดิม
+    const chips = options.map((d) => ({ code: d.code, name: d.name }));
+    if (options.length > 1) chips.unshift({ code: ALL_DEPTS, name: "ทั้งหมด" });
 
     return json({
       ...report,
-      departments: options.map((d) => ({ code: d.code, name: d.name })),
+      departments: chips,
       period_options: [
         { period: "week", offset: 0, label: "สัปดาห์นี้" },
         { period: "week", offset: 1, label: "สัปดาห์ที่แล้ว" },

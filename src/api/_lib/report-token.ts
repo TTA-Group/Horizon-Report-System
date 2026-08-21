@@ -13,8 +13,8 @@ import { HttpError } from "./http";
 import type { Period } from "./reports";
 
 export interface ReportClaim {
-  /** department_id */
-  d: string;
+  /** รายชื่อ department_id ที่รายงานนี้ครอบคลุม — หนึ่งตัวคือรายงานของฝ่ายเดียว หลายตัวคือรวมทุกฝ่าย */
+  d: string[];
   p: Period;
   o: number;
   /** วันหมดอายุ (epoch วินาที) */
@@ -84,7 +84,11 @@ export function verifyReportToken(token: string): ReportClaim | null {
   if (!safeEqual(token.slice(dot + 1), sign(payload))) return null;
 
   const claim = decodeClaim(payload);
-  if (!claim || typeof claim.d !== "string" || (claim.p !== "week" && claim.p !== "month")) return null;
+  if (!claim || (claim.p !== "week" && claim.p !== "month")) return null;
+  // ลิงก์รุ่นก่อนเก็บ d เป็นรหัสฝ่ายเดี่ยว ๆ ที่ยังไม่หมดอายุก็ต้องเปิดได้อยู่
+  const raw: unknown = claim.d;
+  const depts = typeof raw === "string" ? [raw] : Array.isArray(raw) ? raw : [];
+  if (depts.length === 0 || !depts.every((x) => typeof x === "string" && x.length > 0)) return null;
   if (typeof claim.e !== "number" || claim.e * 1000 < Date.now()) return null;
-  return { d: claim.d, p: claim.p, o: Number(claim.o) || 0, e: claim.e };
+  return { d: depts, p: claim.p, o: Number(claim.o) || 0, e: claim.e };
 }
