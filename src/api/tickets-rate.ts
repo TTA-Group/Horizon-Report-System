@@ -1,15 +1,16 @@
 // POST /api/tickets/:id/rate — ผู้แจ้งให้คะแนนความพึงพอใจหลังงานปิด
 //
-// คำชมที่ได้ส่งกลับ "เข้ากลุ่ม" ไม่ใช่แชทส่วนตัวของผู้รับผิดชอบ — คำชมที่เพื่อนร่วมงานเห็นด้วย
-// มีค่ากับคนทำงานมากกว่าคำชมที่รู้กันสองคน และทำให้ทั้งกลุ่มเห็นว่างานที่ทำไปมีคนรับรู้
+// ผลประเมินส่งกลับ "เข้ากลุ่ม" ไม่ใช่แชทส่วนตัวของผู้รับผิดชอบ — คำชมที่เพื่อนร่วมงานเห็นด้วย
+// มีค่ากับคนทำงานมากกว่าคำชมที่รู้กันสองคน
 //
-// คำติไม่ส่งไปไหน เก็บไว้ในระบบให้หัวหน้าฝ่ายดูย้อนหลังได้เท่านั้น — การประจานกลางกลุ่ม
-// ไม่ได้ทำให้งานครั้งหน้าดีขึ้น
+// ลงกลุ่มทุกคะแนน ไม่ใช่เฉพาะคะแนนดี เพราะทั้งกลุ่มควรรับทราบผลงานของตัวเองตามจริง
+// หน้าตาการ์ดจึงเปลี่ยนตามคะแนน (ดู ratingResultCard) — ขึ้นหัวว่า "คำชม" ทับผลประเมิน 1 ดาว
+// จะอ่านเหมือนระบบประชด
 
 import { getSession, requireActive } from "./_lib/auth";
 import { IMPROVE_CHIPS, PRAISE_CHIPS, RATING_LABELS } from "./_lib/constants";
 import { db } from "./_lib/db";
-import { praiseCard } from "./_lib/flex";
+import { ratingResultCard } from "./_lib/flex";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { loadCardRow, pushGroupCard } from "./_lib/ticket-card";
 
@@ -66,14 +67,12 @@ export default async (req: Request): Promise<Response> =>
     `;
     if (done[0].n === 0) throw new HttpError(409, "เรื่องนี้ให้คะแนนไปแล้ว", "already_rated");
 
-    // คำชมลงกลุ่มเฉพาะตอนที่พอใจจริง ๆ — คะแนนน้อยเก็บไว้ในระบบ ไม่ประจานกลางกลุ่ม
-    if (rating >= 4) {
-      try {
-        await pushGroupCard(t, praiseCard(t.ticket_no, t.detail, t.reporter_name, t.assignee_name, rating, note));
-      } catch (e) {
-        console.error("[tickets-rate] ส่งคำชมเข้ากลุ่มไม่สำเร็จ", e);
-      }
+    try {
+      await pushGroupCard(t, ratingResultCard(t.ticket_no, t.detail, t.reporter_name, t.assignee_name, rating, note));
+    } catch (e) {
+      // ส่งเข้ากลุ่มไม่ผ่านไม่ควรทำให้ผู้ให้คะแนนเห็นว่าบันทึกไม่สำเร็จ — คะแนนลงฐานข้อมูลไปแล้ว
+      console.error("[tickets-rate] ส่งผลประเมินเข้ากลุ่มไม่สำเร็จ", e);
     }
 
-    return json({ ok: true, id, rating, note, shared: rating >= 4 && Boolean(t.line_group_id) });
+    return json({ ok: true, id, rating, note, shared: Boolean(t.line_group_id) });
   });
