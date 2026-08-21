@@ -9,8 +9,6 @@ import {
   CATEGORY_BY_CODE,
   CHANNEL_KEY,
   DUE_BY_KEY,
-  IMPROVE_CHIPS,
-  PRAISE_CHIPS,
   STATUS_LABELS,
   STATUS_TRANSITIONS,
   type StatusCode,
@@ -20,12 +18,11 @@ import { db } from "./_lib/db";
 import {
   assessmentAskCard,
   buildCompactFlex,
-  feedbackAskCard,
   buildTicketFlex,
   dueAskCard,
   needAssessCard,
-  praiseCard,
   ratingAskCard,
+  rateInAppCard,
   waitDateCard,
   type TicketFlexInput,
 } from "./_lib/flex";
@@ -613,95 +610,13 @@ async function setDue(t: TicketRow, actor: ActorRow, due: Date, label: string, w
  * ถ้ารอจนครบสองขั้นถึงจะบันทึก คะแนนส่วนใหญ่จะหายไป
  */
 /**
- * อ่านคะแนนที่เคยให้ไว้
+ * ปุ่มให้ดาวบนการ์ดใบเก่าที่ยังค้างอยู่ในแชท
  *
- * แยกออกมาจากคำสั่งหลักของ loadContext โดยตั้งใจ — คอลัมน์ชุดนี้มาจากไฟล์ migration
- * ที่อาจยังไม่ได้รัน ถ้าเอาไปรวมในคำสั่งที่ทุกปุ่มใช้ ปุ่มทั้งระบบจะตายพร้อมกันเมื่อฐานข้อมูล
- * ยังไม่ได้อัปเดต ตรงนี้พังก็พังแค่การให้ดาว
+ * การให้คะแนนย้ายไปทำในแอปแล้ว (ดู /api/tickets/:id/rate) การ์ดที่ส่งไปก่อนหน้านี้แก้ไม่ได้
+ * จึงตอบด้วยลิงก์เปิดแอปแทนที่จะปล่อยให้กดแล้วเงียบเหมือนปุ่มเสีย
  */
-async function loadRating(ticketId: string): Promise<{ rating: number | null; rating_note: string | null } | null> {
-  const sql = db();
-  try {
-    const rows = await sql<{ rating: number | null; rating_note: string | null }[]>`
-      SELECT rating, rating_note FROM tickets WHERE id = ${ticketId} LIMIT 1
-    `;
-    return rows[0] ?? null;
-  } catch (e) {
-    console.error("[rating] ยังไม่ได้รัน db/add-rating.sql หรือฐานข้อมูลมีปัญหา", e);
-    return null;
-  }
-}
-
-async function handleRate(ev: LineEvent, actor: ActorRow, t: TicketRow, stars: number): Promise<void> {
-  const replyToken = ev.replyToken;
-  if (!(stars >= 1 && stars <= 5)) return;
-  if (t.status !== "completed" && t.status !== "closed") {
-    return say(replyToken, `เรื่อง ${t.ticket_no} ยังไม่ได้ปิดงาน ให้คะแนนได้หลังงานเสร็จแล้ว`);
-  }
-
-  const current = await loadRating(t.id);
-  if (!current) return say(replyToken, "ระบบให้คะแนนยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแลระบบ");
-  // กดดาวซ้ำบนการ์ดใบเดิม — ให้แก้คะแนนได้ตราบใดที่ยังไม่ได้เลือกคำชม ถือว่ายังอยู่ในขั้นตอนเดียวกัน
-  // พอเลือกคำชมแล้วถือว่าจบ กดซ้ำอีกจะไม่เปลี่ยนอะไร กันการส่งคำชมซ้ำให้ผู้รับผิดชอบหลายรอบ
-  if (current.rating_note !== null) {
-    return say(replyToken, `บันทึกคะแนนของ ${t.ticket_no} ไว้แล้ว ขอบคุณครับ`);
-  }
-
-  const sql = db();
-  await sql`
-    UPDATE tickets SET rating = ${stars}, rated_at = now(), updated_at = now() WHERE id = ${t.id}
-  `;
-  await replyMessage(replyToken, feedbackAskCard(t.id, t.ticket_no, stars));
-}
-
-/**
- * ผู้แจ้งเลือกคำชม (หรือข้าม) — จบขั้นตอน แล้วส่งคำชมถึงผู้รับผิดชอบ
- *
- * ส่งต่อเฉพาะคำชม ไม่ส่งคำติ — ข้อความตำหนิที่เด้งเข้าแชทส่วนตัวโดยที่เจ้าตัวไม่ได้ขอ
- * ไม่ได้ทำให้งานครั้งหน้าดีขึ้น สิ่งที่ควรปรับปรุงถูกเก็บไว้ในระบบให้หัวหน้าฝ่ายดูย้อนหลังได้
- */
-async function handlePraise(ev: LineEvent, actor: ActorRow, t: TicketRow, index: string | null): Promise<void> {
-  const replyToken = ev.replyToken;
-  const current = await loadRating(t.id);
-  if (!current) return say(replyToken, "ระบบให้คะแนนยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแลระบบ");
-  const rating = current.rating ?? 0;
-  if (current.rating_note !== null) return say(replyToken, `บันทึกความเห็นของ ${t.ticket_no} ไว้แล้ว ขอบคุณครับ`);
-
-  // แปลลำดับชิปกลับเป็นคำจากรายการฝั่งเซิร์ฟเวอร์ — ไม่รับตัวหนังสือที่ส่งมากับปุ่มโดยตรง
-  // เลือกรายการจากคะแนนที่บันทึกไว้แล้ว ไม่ใช่จากค่าที่ปุ่มบอกมา
-  const list = rating >= 4 ? PRAISE_CHIPS : IMPROVE_CHIPS;
-  const i = Number(index);
-  const clean = index !== null && Number.isInteger(i) && i >= 0 && i < list.length ? list[i] : "";
-  const sql = db();
-
-  await sql`
-    WITH upd AS (
-      UPDATE tickets SET rating_note = ${clean || null}, rated_at = COALESCE(rated_at, now()), updated_at = now()
-      WHERE id = ${t.id} RETURNING id
-    )
-    INSERT INTO ticket_events (ticket_id, from_status, to_status, actor_id, note)
-    SELECT id, ${t.status}, ${t.status}, ${actor.id},
-           ${`ผู้แจ้งให้ ${rating} ดาว${clean ? ": " + clean : ""}`} FROM upd
-  `;
-
-  const thanks = clean
-    ? "ขอบคุณครับ ส่งคำชมให้ผู้รับผิดชอบแล้ว"
-    : "ขอบคุณสำหรับคะแนนครับ";
-  await say(replyToken, thanks);
-
-  // ส่งถึงคนที่ลงมือทำจริง — งานซ่อมบำรุงแทบไม่มีใครพูดถึงตอนทุกอย่างปกติ
-  if (rating >= 4 && clean && t.assignee_id) {
-    const rows = await sql<{ line_user_id: string }[]>`
-      SELECT line_user_id FROM line_accounts
-      WHERE employee_id = ${t.assignee_id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
-    `;
-    if (rows.length > 0) {
-      await pushTo(rows[0].line_user_id, [praiseCard(t.ticket_no, t.detail, t.reporter_name, rating, clean)], {
-        ticketId: t.id,
-        channel: "user",
-      });
-    }
-  }
+async function handleRateLegacy(ev: LineEvent, t: TicketRow): Promise<void> {
+  await replyMessage(ev.replyToken, rateInAppCard(t.id, t.ticket_no));
 }
 
 async function handlePostback(ev: LineEvent): Promise<void> {
@@ -728,11 +643,9 @@ async function handlePostback(ev: LineEvent): Promise<void> {
   if (actor.status === "suspended") return say(replyToken, "บัญชีของคุณถูกระงับสิทธิ์การใช้งาน");
 
   // ปุ่มให้คะแนนเป็นของ "ผู้แจ้ง" ไม่ใช่เจ้าหน้าที่ จึงต้องอยู่ก่อนด่านตรวจสิทธิ์เจ้าหน้าที่
-  // และตรวจด้วยเงื่อนไขของตัวเอง: ต้องเป็นเจ้าของเรื่องเท่านั้น
   if (action === "rate" || action === "praise") {
     if (t.reporter_id !== actor.id) return say(replyToken, "ให้คะแนนได้เฉพาะผู้แจ้งเรื่องนี้เท่านั้น");
-    if (action === "rate") return handleRate(ev, actor, t, Number(data.get("v")));
-    return handlePraise(ev, actor, t, data.get("i"));
+    return handleRateLegacy(ev, t);
   }
 
   if (!canAct(actor, isMember)) return say(replyToken, "คุณไม่ใช่เจ้าหน้าที่ของฝ่ายที่รับผิดชอบเรื่องนี้");

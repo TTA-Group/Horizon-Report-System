@@ -63,6 +63,9 @@ let dueKey = null; // กรอบเวลาที่เลือกไว้�
 let reportDept = ""; // ฝ่ายที่กำลังดูรายงาน (รหัสฝ่าย · ว่าง = ฝ่ายแรกที่มีสิทธิ์)
 let reportPeriod = { period: "week", offset: 1 }; // ค่าเริ่มต้น: สัปดาห์ที่แล้ว ซึ่งเป็นช่วงที่จบแล้ว
 let reportData = null; // ผลรอบล่าสุด ใช้ตอนกดปุ่มเปิด/คัดลอกลิงก์
+let rateCtx = null; // เรื่องที่กำลังให้คะแนนอยู่
+let rateStars = 0; // จำนวนดาวที่เลือกไว้
+let rateNote = ""; // คำชมหรือสิ่งที่ควรปรับปรุงที่เลือกไว้
 let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น ไม่ต้องรอ session ก่อน
 
 /* ---------- helpers ---------- */
@@ -185,6 +188,14 @@ async function openDeepLink(link) {
   } catch (e) {
     toast(e.message);
     return goForm();
+  }
+  // ให้คะแนนเป็นสิทธิ์ของผู้แจ้ง ไม่ใช่เจ้าหน้าที่ จึงตรวจแยกจาก can_act
+  if (link.todo === "rate") {
+    if (t.can_rate) return openRate(t);
+    if (t.rating) {
+      toast("เรื่องนี้ให้คะแนนไปแล้ว ขอบคุณครับ");
+      return showDetail(t, "mine");
+    }
   }
   const live = t.can_act && t.status === "in_progress";
   if (live && link.todo === "assess") return openAssess(t, false);
@@ -514,8 +525,13 @@ function renderTicketCard(t) {
     )
     .join("");
   // ยกเลิกได้เฉพาะตอนที่ยังไม่มีเจ้าหน้าที่รับเรื่อง (แจ้งผิด/แจ้งซ้ำแล้วอยากถอน)
+  // ส่วนงานที่ปิดแล้วยังไม่ได้ให้คะแนน ขึ้นปุ่มให้กดย้อนหลังได้ เผื่อเลื่อนการ์ดในไลน์ผ่านไปแล้ว
   const cancelBtn =
-    t.status === "pending" ? '<div class="actions"><button data-act="cancel">ยกเลิกเรื่อง</button></div>' : "";
+    t.status === "pending"
+      ? '<div class="actions"><button data-act="cancel">ยกเลิกเรื่อง</button></div>'
+      : t.can_rate
+        ? '<div class="actions"><button class="fill" data-act="rate">ให้คะแนนการทำงาน</button></div>'
+        : "";
   return `<div class="card clickable" data-id="${t.id}">
     <div class="cardtop">
       <div>
@@ -534,6 +550,7 @@ function renderTicketCard(t) {
 function routeTab(tab) {
   $("#backbtn").style.display = "none";
   assessCtx = null; // ออกจากหน้าแจ้งผลด้วยการกดแท็บ ก็ถือว่าเลิกกรอก
+  rateCtx = null;
   if (tab === "form") goForm();
   else if (tab === "mine") goMine();
   else if (tab === "queue") goQueue();
@@ -671,6 +688,83 @@ async function openTransferSheet(id, currentDeptCode) {
     routeTab("queue");
   } catch (e) {
     toast(e.message);
+  }
+}
+
+/* ---------- ให้คะแนนการทำงาน (ผู้แจ้ง) ---------- */
+
+/**
+ * เปิดจากปุ่มบนการ์ดที่ส่งให้ผู้แจ้งหลังปิดงาน
+ *
+ * ทำในแอปไม่ใช่บนการ์ด เพราะการ์ดถาม-ตอบต้องส่งใบใหม่ทุกครั้งที่ตอบ และบนการ์ดใส่ดาว
+ * กับชิปพร้อมกันไม่ไหว ในหน้าเดียวของแอปเห็นทุกอย่างพร้อมกันและกดจบในครั้งเดียว
+ */
+function openRate(t) {
+  rateCtx = t;
+  rateStars = 0;
+  rateNote = "";
+  show("s-rate");
+  $("#backbtn").style.display = "block";
+  $("#rt-head").innerHTML = `<div class="tid">${esc(t.ticket_no)}</div>
+    <div class="ttl">${esc(t.detail)}</div>
+    <div class="meta">${esc(t.floor)}${t.location_note ? " · " + esc(t.location_note) : ""}${
+      t.assignee_name ? " · ผู้ดูแล " + esc(t.assignee_name) : ""
+    }</div>`;
+  renderStars();
+  syncRateChips();
+}
+
+function renderStars() {
+  $("#rt-stars").innerHTML = [1, 2, 3, 4, 5]
+    .map((n) => `<button type="button" data-star="${n}" class="${n <= rateStars ? "on" : ""}" aria-label="${n} ดาว">★</button>`)
+    .join("");
+  const labels = (masters && masters.rating_labels) || {};
+  $("#rt-word").textContent = rateStars ? labels[rateStars] || "" : "";
+}
+
+/** ชิปเปลี่ยนชุดตามคะแนน — พอใจได้ชิปคำชม ไม่พอใจได้ชิปสิ่งที่ควรปรับปรุง */
+function syncRateChips() {
+  const block = $("#rt-chipblock");
+  if (!rateStars) {
+    block.style.display = "none";
+    return;
+  }
+  const good = rateStars >= 4;
+  const list = (masters && (good ? masters.praise_chips : masters.improve_chips)) || [];
+  block.style.display = "";
+  $("#rt-chiplabel").innerHTML = good
+    ? 'อยากชมเรื่องอะไรเป็นพิเศษ <span class="hint">(เลือกได้ 1 ข้อ)</span>'
+    : 'ควรปรับปรุงเรื่องอะไร <span class="hint">(เลือกได้ 1 ข้อ)</span>';
+  $("#rt-chiptip").textContent = good
+    ? "คำชมจะถูกส่งเข้ากลุ่มให้ทีมงานเห็นด้วย"
+    : "ความเห็นนี้เก็บไว้ให้หัวหน้าฝ่ายดู ไม่ได้ส่งเข้ากลุ่ม";
+  $("#rt-chips").innerHTML = list
+    .map((c) => `<button data-note="${esc(c)}" aria-pressed="${c === rateNote}">${esc(c)}</button>`)
+    .join("");
+}
+
+async function saveRate() {
+  if (!rateCtx) return;
+  if (!rateStars) return toast("กรุณาเลือกจำนวนดาว");
+  const btn = $("#rt-save");
+  btn.disabled = true;
+  try {
+    const r = await api(`/api/tickets/${rateCtx.id}/rate`, {
+      method: "POST",
+      body: { rating: rateStars, note: rateNote || undefined },
+    });
+    toast(r.shared ? "ขอบคุณครับ ส่งคำชมเข้ากลุ่มแล้ว" : "ขอบคุณสำหรับคะแนนครับ");
+    rateCtx = null;
+    routeTab("mine");
+  } catch (e) {
+    if (e.code === "already_rated") {
+      toast("เรื่องนี้ให้คะแนนไปแล้ว");
+      rateCtx = null;
+      return routeTab("mine");
+    }
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1247,6 +1341,8 @@ function renderDetail(t) {
  * ผู้แจ้ง (ไม่ใช่เจ้าหน้าที่ฝ่าย) ไม่มีปุ่มชุดนี้ เพราะหน้านี้ของเขาคือหน้าติดตามสถานะ
  */
 function detailActions(t) {
+  // ผู้แจ้งไม่มีปุ่มของเจ้าหน้าที่ แต่มีปุ่มให้คะแนนของตัวเอง
+  if (t.can_rate) return '<div class="actions"><button class="fill" data-d="rate">ให้คะแนนการทำงาน</button></div>';
   if (!t.can_act) return "";
   if (t.status === "pending") {
     return '<div class="actions"><button class="fill" data-d="claim">รับเรื่อง</button>' +
@@ -1562,6 +1658,10 @@ window.addEventListener("DOMContentLoaded", () => {
   // ปุ่มย้อนกลับจากหน้ารายละเอียดและหน้าแจ้งผล
   $("#backbtn").onclick = () => {
     if (assessCtx) return backFromAssess();
+    if (rateCtx) {
+      rateCtx = null;
+      return routeTab("mine");
+    }
     routeTab(detailReturnTab);
   };
 
@@ -1570,6 +1670,15 @@ window.addEventListener("DOMContentLoaded", () => {
     const card = e.target.closest(".card[data-id]");
     if (!card) return;
     const btn = e.target.closest("button[data-act]");
+    if (btn && btn.dataset.act === "rate") {
+      e.stopPropagation();
+      try {
+        openRate(await api(`/api/tickets/${card.dataset.id}`));
+      } catch (err) {
+        toast(err.message);
+      }
+      return;
+    }
     if (btn && btn.dataset.act === "cancel") {
       e.stopPropagation();
       const ok = await confirmDialog({
@@ -1638,6 +1747,30 @@ window.addEventListener("DOMContentLoaded", () => {
     $$("#queue-filters .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     goQueue();
   });
+
+  // ให้คะแนน: แตะดาว เลือกชิป และส่ง
+  $("#rt-stars").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-star]");
+    if (!b) return;
+    const n = Number(b.dataset.star);
+    // แตะดาวดวงเดิมซ้ำ = ยกเลิกคะแนน เผื่อกดพลาด
+    rateStars = rateStars === n ? 0 : n;
+    // เปลี่ยนคะแนนข้ามฝั่งพอใจ/ไม่พอใจ ชิปที่เลือกไว้ใช้ไม่ได้แล้ว
+    rateNote = "";
+    renderStars();
+    syncRateChips();
+  });
+  $("#rt-chips").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-note]");
+    if (!b) return;
+    rateNote = rateNote === b.dataset.note ? "" : b.dataset.note;
+    $$("#rt-chips button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.note === rateNote)));
+  });
+  $("#rt-save").onclick = saveRate;
+  $("#rt-cancel").onclick = () => {
+    rateCtx = null;
+    routeTab("mine");
+  };
 
   // สรุปงาน: เลือกฝ่าย เลือกช่วงเวลา และปุ่มเปิด/คัดลอกลิงก์
   $("#rp-depts").addEventListener("click", (e) => {
@@ -1725,7 +1858,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const b = e.target.closest("button[data-d]");
     if (!b || !detailTicket) return;
     const t = detailTicket;
-    if (b.dataset.d === "assess") openAssess(t, false);
+    if (b.dataset.d === "rate") openRate(t);
+    else if (b.dataset.d === "assess") openAssess(t, false);
     else if (b.dataset.d === "progress") openProgress(t);
     else if (b.dataset.d === "complete") completeTicket(t);
     else if (b.dataset.d === "claim") doStatus(t.id, "in_progress", "รับเรื่องเรียบร้อยแล้ว");

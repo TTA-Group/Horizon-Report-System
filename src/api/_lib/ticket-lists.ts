@@ -25,6 +25,7 @@ interface TicketRow {
   urgency: string;
   status: StatusCode;
   created_at: string;
+  rating: number | null;
 }
 
 interface EventRow {
@@ -45,7 +46,7 @@ export async function handleTicketsMine(req: Request): Promise<Response> {
     const sql = db();
     const tickets = await sql<TicketRow[]>`
       SELECT t.id, t.ticket_no, t.category_code, d.code AS dept_code, d.name AS dept_name,
-             t.floor, t.location_note, t.detail, t.urgency, t.status, t.created_at
+             t.floor, t.location_note, t.detail, t.urgency, t.status, t.created_at, t.rating
       FROM tickets t
       JOIN departments d ON d.id = t.department_id
       WHERE t.reporter_id = ${s.employee.id}
@@ -85,6 +86,10 @@ export async function handleTicketsMine(req: Request): Promise<Response> {
         status: t.status,
         status_label: STATUS_LABELS[t.status] ?? t.status,
         created_at: t.created_at,
+        // งานที่ปิดแล้วแต่ยังไม่ได้ให้คะแนน — หน้ารายการขึ้นปุ่มให้กดย้อนหลังได้
+        // เผื่อผู้แจ้งกด "ไว้ทีหลัง" หรือเลื่อนการ์ดผ่านไปแล้ว
+        can_rate: (t.status === "completed" || t.status === "closed") && t.rating === null,
+        rating: t.rating,
         timeline: (byTicket.get(t.id) ?? []).map((e) => ({
           from_status: e.from_status,
           to_status: e.to_status,

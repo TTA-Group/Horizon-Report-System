@@ -62,6 +62,8 @@ body{font-family:'Anuphan',system-ui,sans-serif;background:var(--canvas);color:v
 
 label.q{display:block;font-size:12px;font-weight:600;margin:0 0 8px;letter-spacing:.01em}
 label.q span{color:var(--alert)}
+/* หมายเหตุในป้ายกำกับไม่ใช่เครื่องหมายบังคับกรอก จึงต้องไม่เป็นสีแดงตามดอกจัน */
+label.q span.hint{color:var(--slate)}
 .hint{font-size:11px;color:var(--slate);font-weight:400}
 .block{margin-bottom:18px}
 .row{display:flex;gap:8px}
@@ -277,6 +279,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .rt .n.bad{color:#B3261E;font-weight:600}
 .rt .n.good{color:var(--green-deep);font-weight:600}
 
+/* หน้าให้คะแนน — ดาวใหญ่พอให้กดถูกดวงบนมือถือ และแตะดวงไหนก็ได้คะแนนเท่านั้น */
+.stars{display:flex;gap:4px;justify-content:center;padding:6px 0}
+.stars button{flex:0 0 auto;border:0;background:transparent;cursor:pointer;padding:4px 6px;
+  font-size:38px;line-height:1;color:#DCE2E8;transition:.12s}
+.stars button.on{color:#F5A623}
+.stars button:active{transform:scale(.92)}
+.starword{text-align:center;font-size:13px;font-weight:600;color:var(--slate);min-height:20px}
+
 /* หน้าแจ้งผลตรวจสอบ — ชิปเลือกกรอบเวลาแทนช่องพิมพ์ เพราะระบบต้องเอาไปเทียบเวลาจริงเพื่อทวงเมื่อเลยกำหนด */
 .duechips{display:flex;flex-wrap:wrap;gap:7px}
 .duechips button{font-family:inherit;font-size:12.5px;font-weight:500;padding:9px 14px;border-radius:20px;
@@ -466,6 +476,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     </div>
     <button class="send" id="as-save">บันทึกผลตรวจสอบ</button>
     <button class="ghost" id="as-cancel">ยกเลิก</button>
+  </section>
+
+  <!-- ให้คะแนนการทำงาน (ผู้แจ้ง เปิดจากปุ่มบนการ์ดหลังปิดงาน) -->
+  <section class="screen" id="s-rate">
+    <div class="section">ให้คะแนนการทำงาน</div>
+    <div class="headcard" id="rt-head"></div>
+    <div class="block">
+      <label class="q">พอใจกับการแก้ปัญหาครั้งนี้แค่ไหน <span>*</span></label>
+      <div class="stars" id="rt-stars"></div>
+      <div class="starword" id="rt-word"></div>
+    </div>
+    <div class="block" id="rt-chipblock" style="display:none">
+      <label class="q" id="rt-chiplabel">อยากชมเรื่องอะไรเป็นพิเศษ <span class="hint">(เลือกได้ 1 ข้อ)</span></label>
+      <div class="duechips" id="rt-chips"></div>
+      <p class="tip" id="rt-chiptip"></p>
+    </div>
+    <button class="send" id="rt-save">ส่งคะแนน</button>
+    <button class="ghost" id="rt-cancel">ไว้ทีหลัง</button>
   </section>
 
   <!-- สรุปงาน (หัวหน้าฝ่าย / ผู้ดูแล) -->
