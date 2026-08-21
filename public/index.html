@@ -267,19 +267,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
 /* detail */
 .backbtn{border:0;background:transparent;font-family:inherit;font-size:22px;color:var(--ink);cursor:pointer;padding:0 6px 0 0;line-height:1}
-/* หน้าสรุปงาน — ตัวเลขก่อน รายละเอียดอยู่ในไฟล์รายงาน */
-.lede{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--blue);
-  border-radius:var(--r);padding:13px 15px;font-size:13.5px;line-height:1.65;margin-bottom:14px}
-.rtiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
-.rt{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 13px;min-width:0}
-.rt .v{font-size:22px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
-.rt .l{font-size:11.5px;color:var(--slate);line-height:1.4;margin-top:1px}
-.rt.good{background:#F0FAF4;border-color:#BFE6D0}.rt.good .v{color:var(--green-deep)}
-.rt.warn{background:#FDF6EA;border-color:#EBD9B4}.rt.warn .v{color:#B7791F}
-.rt.bad{background:#FCEFEE;border-color:#EFC9C5}.rt.bad .v{color:#B3261E}
-.rrow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13px}
-.rrow:last-child{border-bottom:0}
-.rrow .rn{font-variant-numeric:tabular-nums;color:var(--slate);font-size:12px;white-space:nowrap}
+/* หน้าสรุปงาน — ตัวเลขสี่ตัวจบ รายชื่องานทั้งหมดอยู่ในรายงานฉบับเต็ม */
+.rtiles{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}
+.rt{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:13px 15px;min-width:0}
+.rt .l{font-size:11.5px;color:var(--slate);line-height:1.4}
+.rt .v{font-size:26px;font-weight:700;line-height:1.2;letter-spacing:-.02em;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.rt .n{font-size:11px;color:var(--slate);line-height:1.4;margin-top:2px}
+.rt .n.bad{color:#B3261E;font-weight:600}
+.rt .n.good{color:var(--green-deep);font-weight:600}
 
 /* หน้าแจ้งผลตรวจสอบ — ชิปเลือกกรอบเวลาแทนช่องพิมพ์ เพราะระบบต้องเอาไปเทียบเวลาจริงเพื่อทวงเมื่อเลยกำหนด */
 .duechips{display:flex;flex-wrap:wrap;gap:7px}

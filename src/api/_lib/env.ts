@@ -27,22 +27,3 @@ export function envVar(key: string): string | undefined {
   return fromNode !== undefined && fromNode !== "" ? fromNode : undefined;
 }
 
-/**
- * ที่อยู่สาธารณะของระบบ — ใช้ประกอบลิงก์รายงานในข้อความที่ส่งตามเวลา
- *
- * คำขอปกติรู้ที่อยู่ของตัวเองจาก URL อยู่แล้ว แต่งานตามเวลาไม่ได้มาจากคำขอจริงจึงไม่มีที่อยู่ให้อ่าน
- * ทางแก้คือจำที่อยู่ล่าสุดที่มีคนเปิดเข้ามาไว้ และให้ตั้ง PUBLIC_BASE_URL ทับได้
- * ถ้ายังไม่เคยมีคำขอเข้ามาเลยหลังระบบเพิ่งตื่น (ซึ่งเกิดได้กับงานตามเวลา) จะคืน null
- * แล้วข้อความจะถูกส่งโดยไม่มีลิงก์แนบ — ดีกว่าแนบลิงก์ที่ชี้ผิดที่
- */
-let lastOrigin: string | null = null;
-
-export function rememberOrigin(origin: string): void {
-  if (origin.startsWith("http")) lastOrigin = origin;
-}
-
-export function publicBaseUrl(): string | null {
-  const configured = envVar("PUBLIC_BASE_URL");
-  if (configured) return configured.replace(/\/$/, "");
-  return lastOrigin;
-}

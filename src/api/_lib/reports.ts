@@ -1,11 +1,11 @@
 // สรุปงานรายสัปดาห์/รายเดือนของแต่ละฝ่าย — ตัวเลขทั้งหมดของรายงานถูกคำนวณที่นี่ที่เดียว
 //
-// รายงานตอบคำถามของผู้บริหาร 3 ข้อ: ช่วงที่ผ่านมามีงานเข้ามาเท่าไหร่และปิดได้เท่าไหร่ ·
-// ตอนนี้ยังค้างอะไรอยู่บ้าง · ใครทำได้แค่ไหน
+// รายงานตอบคำถามเดียว: ตอนนี้ภาพรวมของฝ่ายเป็นยังไง — เข้ามากี่เรื่อง ปิดไปกี่เรื่อง เหลือค้างอะไร
+// ไม่มีตัวชี้วัดประสิทธิภาพและไม่มีกราฟ เพราะสิ่งที่คนเปิดดูต้องการคือรายการงานกับตัวเลขไม่กี่ตัว
+// ที่อ่านจบในสิบวินาที ไม่ใช่แผงข้อมูลที่ต้องตีความ
 //
-// แยก "ในช่วงนี้" ออกจาก "ณ ปัจจุบัน" อย่างชัดเจน เพราะเป็นคนละคำถามกัน
-// งานที่เข้าและปิดเป็นเหตุการณ์ที่เกิดในช่วงเวลา ส่วนงานค้างเป็นภาพนิ่ง ณ วันที่ออกรายงาน
-// ถ้าเอาสองอย่างมาปนกันในตารางเดียว ตัวเลขจะบวกกันไม่ลงและอธิบายให้ใครฟังไม่ได้
+// แยก "ในช่วงนี้" ออกจาก "ณ ปัจจุบัน" ในการคำนวณ เพราะเป็นคนละคำถาม — งานที่เข้าและปิด
+// เป็นเหตุการณ์ที่เกิดในช่วงเวลา ส่วนงานค้างเป็นภาพนิ่ง ณ วันที่ออกรายงาน
 
 import { CATEGORY_BY_CODE, STATUS_LABELS, type StatusCode } from "./constants";
 import { db } from "./db";
@@ -82,22 +82,6 @@ export interface ReportTicket {
   assessment: string | null;
 }
 
-export interface PersonRow {
-  name: string;
-  closed: number;
-  open: number;
-  overdue: number;
-  on_time: number;
-  due_closed: number;
-  avg_close_hours: number | null;
-}
-
-export interface BreakdownRow {
-  label: string;
-  total: number;
-  open: number;
-}
-
 export interface DeptReport {
   department_code: string;
   department_name: string;
@@ -109,21 +93,7 @@ export interface DeptReport {
   /** เหตุการณ์ที่เกิดในช่วงนี้ */
   flow: { created: number; completed: number; cancelled: number };
   /** ภาพนิ่ง ณ วันที่ออกรายงาน */
-  now: { pending: number; in_progress: number; overdue: number; waiting_parts: number; not_assessed: number };
-  kpi: {
-    ack_hours: number | null;
-    /** จำนวนเรื่องที่ใช้คิดเวลารับเรื่องเฉลี่ย (แจ้งเข้ามาในช่วงนี้และมีคนรับแล้ว) */
-    ack_base: number;
-    close_hours: number | null;
-    on_time: number;
-    due_closed: number;
-    assessed: number;
-    completed: number;
-    oldest_open_days: number;
-  };
-  people: PersonRow[];
-  categories: BreakdownRow[];
-  floors: BreakdownRow[];
+  now: { pending: number; in_progress: number; overdue: number };
   open_tickets: ReportTicket[];
   closed_tickets: ReportTicket[];
   cancelled_tickets: ReportTicket[];
@@ -187,75 +157,19 @@ export async function buildDeptReport(
   `;
   if (dept.length === 0) return null;
 
-  const [counts, kpi, people, categories, floors, open, closed, cancelled] = await Promise.all([
-    sql<
-      { created: number; completed: number; cancelled: number; pending: number; in_progress: number; overdue: number; waiting_parts: number; not_assessed: number }[]
-    >`
+  const [counts, open, closed, cancelled] = await Promise.all([
+    sql<{ created: number; completed: number; cancelled: number; pending: number; in_progress: number; overdue: number }[]>`
       SELECT
         count(*) FILTER (WHERE t.created_at >= ${from} AND t.created_at < ${to})::int AS created,
         count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to})::int AS completed,
         count(*) FILTER (WHERE t.status = 'cancelled' AND t.updated_at >= ${from} AND t.updated_at < ${to})::int AS cancelled,
         count(*) FILTER (WHERE t.status = 'pending')::int AS pending,
         count(*) FILTER (WHERE t.status = 'in_progress')::int AS in_progress,
-        count(*) FILTER (WHERE t.status = 'in_progress' AND t.due_at IS NOT NULL AND t.due_at < now())::int AS overdue,
-        count(*) FILTER (WHERE t.status = 'in_progress' AND t.waiting_parts)::int AS waiting_parts,
-        count(*) FILTER (WHERE t.status = 'in_progress' AND t.assessed_at IS NULL)::int AS not_assessed
+        count(*) FILTER (WHERE t.status = 'in_progress' AND t.due_at IS NOT NULL AND t.due_at < now())::int AS overdue
       FROM tickets t WHERE t.department_id = ${departmentId}
-    `,
-    sql<{ ack_hours: number | null; ack_base: number; close_hours: number | null; on_time: number; due_closed: number; assessed: number; completed: number; oldest_open_days: number }[]>`
-      SELECT
-        -- เวลารับเรื่องคิดจากงานที่ "แจ้งเข้ามาในช่วงนี้" ไม่ใช่งานที่ปิดในช่วงนี้ เพราะเป็นตัววัด
-        -- ความไวในการตอบสนองของช่วงนั้น ถ้าไปผูกกับวันที่ปิด งานที่แจ้งเดือนก่อนแล้วเพิ่งปิดสัปดาห์นี้
-        -- จะลากค่าเฉลี่ยของสัปดาห์นี้ไปด้วยทั้งที่ไม่เกี่ยวกัน
-        avg(EXTRACT(EPOCH FROM (t.acknowledged_at - t.created_at)) / 3600)
-          FILTER (WHERE t.acknowledged_at IS NOT NULL AND t.created_at >= ${from} AND t.created_at < ${to}) AS ack_hours,
-        count(*) FILTER (WHERE t.acknowledged_at IS NOT NULL AND t.created_at >= ${from} AND t.created_at < ${to})::int AS ack_base,
-        avg(EXTRACT(EPOCH FROM (t.completed_at - t.created_at)) / 3600)
-          FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to}) AS close_hours,
-        count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to}
-                           AND t.due_at IS NOT NULL AND t.completed_at <= t.due_at)::int AS on_time,
-        count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to} AND t.due_at IS NOT NULL)::int AS due_closed,
-        count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to} AND t.assessed_at IS NOT NULL)::int AS assessed,
-        count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to})::int AS completed,
-        COALESCE(max(EXTRACT(EPOCH FROM (now() - t.created_at)) / 86400)
-          FILTER (WHERE t.status IN ('pending', 'in_progress')), 0)::int AS oldest_open_days
-      FROM tickets t WHERE t.department_id = ${departmentId}
-    `,
-    sql<PersonRow[]>`
-      SELECT a.full_name AS name,
-             count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to})::int AS closed,
-             count(*) FILTER (WHERE t.status = 'in_progress')::int AS open,
-             count(*) FILTER (WHERE t.status = 'in_progress' AND t.due_at IS NOT NULL AND t.due_at < now())::int AS overdue,
-             count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to}
-                                AND t.due_at IS NOT NULL AND t.completed_at <= t.due_at)::int AS on_time,
-             count(*) FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to} AND t.due_at IS NOT NULL)::int AS due_closed,
-             avg(EXTRACT(EPOCH FROM (t.completed_at - t.created_at)) / 3600)
-               FILTER (WHERE t.completed_at >= ${from} AND t.completed_at < ${to}) AS avg_close_hours
-      FROM tickets t
-      JOIN employees a ON a.id = t.assignee_id
-      WHERE t.department_id = ${departmentId}
-        AND (t.status = 'in_progress' OR (t.completed_at >= ${from} AND t.completed_at < ${to}))
-      GROUP BY a.full_name
-      ORDER BY closed DESC, open DESC, a.full_name
-    `,
-    sql<{ code: string; total: number; open: number }[]>`
-      SELECT t.category_code AS code,
-             count(*) FILTER (WHERE t.created_at >= ${from} AND t.created_at < ${to})::int AS total,
-             count(*) FILTER (WHERE t.status IN ('pending', 'in_progress'))::int AS open
-      FROM tickets t WHERE t.department_id = ${departmentId}
-      GROUP BY t.category_code ORDER BY total DESC
-    `,
-    sql<{ label: string; total: number; open: number }[]>`
-      SELECT t.floor AS label,
-             count(*) FILTER (WHERE t.created_at >= ${from} AND t.created_at < ${to})::int AS total,
-             count(*) FILTER (WHERE t.status IN ('pending', 'in_progress'))::int AS open
-      FROM tickets t WHERE t.department_id = ${departmentId}
-      GROUP BY t.floor
-      HAVING count(*) FILTER (WHERE t.created_at >= ${from} AND t.created_at < ${to}) > 0
-          OR count(*) FILTER (WHERE t.status IN ('pending', 'in_progress')) > 0
-      ORDER BY total DESC, open DESC LIMIT 12
     `,
     // งานค้างเป็นภาพนิ่ง ณ ตอนนี้ ไม่ผูกกับช่วงเวลา — เรื่องที่ค้างมาตั้งแต่เดือนก่อนก็ยังต้องอยู่ในรายงาน
+    // เรียงให้ของที่ต้องรีบอยู่บนสุด: เลยกำหนดก่อน แล้วตามความเร่งด่วน แล้วเรื่องเก่าก่อน
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
              t.created_at, t.due_at, t.due_label, t.waiting_parts, t.assessment, t.assessed_at,
@@ -267,7 +181,7 @@ export async function buildDeptReport(
       ORDER BY (t.due_at IS NOT NULL AND t.due_at < now()) DESC,
                CASE t.urgency WHEN 'critical' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END,
                t.created_at ASC
-      LIMIT 200
+      LIMIT 300
     `,
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
@@ -277,7 +191,7 @@ export async function buildDeptReport(
       JOIN employees r ON r.id = t.reporter_id
       LEFT JOIN employees a ON a.id = t.assignee_id
       WHERE t.department_id = ${departmentId} AND t.completed_at >= ${from} AND t.completed_at < ${to}
-      ORDER BY t.completed_at DESC LIMIT 200
+      ORDER BY t.completed_at DESC LIMIT 300
     `,
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
@@ -293,7 +207,6 @@ export async function buildDeptReport(
   ]);
 
   const c = counts[0];
-  const k = kpi[0];
   return {
     department_code: dept[0].code,
     department_name: dept[0].name,
@@ -303,30 +216,7 @@ export async function buildDeptReport(
     ongoing: range.ongoing,
     generated_label: thaiDateShort(now),
     flow: { created: c.created, completed: c.completed, cancelled: c.cancelled },
-    now: {
-      pending: c.pending,
-      in_progress: c.in_progress,
-      overdue: c.overdue,
-      waiting_parts: c.waiting_parts,
-      not_assessed: c.not_assessed,
-    },
-    kpi: {
-      ack_hours: k.ack_hours === null ? null : Number(k.ack_hours),
-      ack_base: k.ack_base,
-      close_hours: k.close_hours === null ? null : Number(k.close_hours),
-      on_time: k.on_time,
-      due_closed: k.due_closed,
-      assessed: k.assessed,
-      completed: k.completed,
-      oldest_open_days: k.oldest_open_days,
-    },
-    people: people.map((p) => ({ ...p, avg_close_hours: p.avg_close_hours === null ? null : Number(p.avg_close_hours) })),
-    categories: categories.map((r) => ({
-      label: CATEGORY_BY_CODE.get(r.code)?.label ?? r.code,
-      total: r.total,
-      open: r.open,
-    })),
-    floors: [...floors],
+    now: { pending: c.pending, in_progress: c.in_progress, overdue: c.overdue },
     open_tickets: open.map((t) => toTicket(t, now)),
     closed_tickets: closed.map((t) => toTicket(t, now)),
     cancelled_tickets: cancelled.map((t) => toTicket(t, now)),
