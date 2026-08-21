@@ -149,16 +149,74 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
     .kc{padding:13px 15px}
     th,td{padding:11px 14px}
   }
+  /* ===== ฉบับพิมพ์ / บันทึกเป็น PDF =====
+     กติกาข้อเดียวของทั้งบล็อก: ทุกอย่างต้องอยู่ในหน้ากระดาษ A4 ไม่ว่าเครื่องพิมพ์จะตั้งแนวไหนไว้
+
+     ของเดิมปล่อยให้เบราว์เซอร์เฉลี่ยความกว้างคอลัมน์เอง ซึ่งบนกระดาษพังสองทาง:
+     ช่อง "กำหนดเสร็จ" ห้ามตัดบรรทัดไว้ มันจึงกินที่ตามความยาวข้อความจริง
+     ("รออะไหล่ / ผู้รับเหมา · 30 กันยายน 2569" ยาวเกือบ 300px) แล้วไปบีบช่อง "เรื่องที่แจ้ง"
+     จนเหลือ 2-3 ตัวอักษรต่อบรรทัด · และกล่องที่ครอบตารางตั้ง overflow ไว้สำหรับเลื่อนบนจอ
+     แต่กระดาษไม่มีแถบเลื่อน ของที่ล้นออกไปจึงหายไปเฉย ๆ */
   @media print{
-    body{background:#fff}
-    .wrap{max-width:none;padding:0;gap:12px}
+    @page{size:A4 landscape;margin:11mm}
+    body{background:#fff;font-size:11px}
+    .wrap{max-width:none;padding:0;gap:10px}
     .acts,.find{display:none}
-    .panel,.kc{border-color:#D8DAD8}
+    h1{font-size:16px}
+    .sub{font-size:10.5px}
+    /* บังคับสี่ช่องเรียงเดียว — เบราว์เซอร์จัดหน้ากระดาษด้วยความกว้างราว 800px
+       ซึ่งไปเข้าเงื่อนไขจอแคบของหน้าจอ แล้วตัวเลขภาพรวมจะพับเป็น 2x2 กินที่ไปสองแถวเปล่า ๆ */
+    .kpis{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .kc{border-color:#D8DAD8;padding:11px 13px 10px}
+    .kl{font-size:10.5px}
+    .kv{font-size:24px}
+    .kn{font-size:10px}
     tr,.kc{break-inside:avoid}
     thead{display:table-header-group}
-    table{min-width:0;font-size:11px}
-    th,td{padding:7px 8px}
-    @page{size:A4 landscape;margin:12mm}
+    /* บนกระดาษไม่มีแถบเลื่อน สิ่งที่ล้นกล่องคือสิ่งที่หายไป จึงต้องไม่มีกล่องไหนตัดของเลย */
+    .panel{border-color:#D8DAD8;border-radius:0;overflow:visible}
+    .scroll{overflow:visible}
+    .ph{padding:12px 7px 10px}   /* 7px ให้ตรงกับระยะขอบของช่องแรกในตาราง หัวข้อจะได้ไม่ทับเส้นกรอบ */
+    .ph h2{font-size:12.5px}
+    /* ความกว้างเป็นสัดส่วนของหน้ากระดาษ แล้วบังคับให้เบราว์เซอร์ทำตาม (table-layout:fixed)
+       ช่องไหนก็แย่งที่ของช่องอื่นไม่ได้อีก และรวมกันได้ 100% พอดี ตารางจึงกว้างเท่ากระดาษเสมอ
+       ไม่ว่ากระดาษจะกว้างเท่าไหร่ — แนวนอนได้ช่อง "เรื่องที่แจ้ง" ~300px แนวตั้งได้ ~200px */
+    table{min-width:0;table-layout:fixed;font-size:10.5px}
+    th:nth-child(1),td:nth-child(1){width:12%}
+    th:nth-child(2),td:nth-child(2){width:29%}
+    th:nth-child(3),td:nth-child(3){width:11%}
+    th:nth-child(4),td:nth-child(4){width:14%}
+    th:nth-child(5),td:nth-child(5){width:13%}
+    th:nth-child(6),td:nth-child(6){width:13%}
+    th:nth-child(7),td:nth-child(7){width:8%}
+    th,td{padding:6px 7px}
+    /* ห้ามตัดบรรทัดมีเหตุผลบนจอที่เลื่อนซ้ายขวาได้ บนกระดาษมันคือตัวที่ทำให้ช่องอื่นแคบ */
+    th,td,.nowrap,.p{white-space:normal}
+    th,td{overflow-wrap:anywhere}
+    .mono{font-size:10px}
+    td .d{line-height:1.4}
+    td .s{font-size:9.5px}
+    /* ป้ายสถานะพิมพ์สีพื้นติดมาด้วยเสมอ ไม่ต้องรอให้คนไปติ๊ก "ภาพพื้นหลัง" ในกล่องพิมพ์
+       ถ้าสีหาย ป้ายจะเหลือแต่ตัวหนังสือสีจาง ๆ ซึ่งอ่านยากกว่าเดิม */
+    .p{font-size:9.5px;padding:2px 7px;border-radius:5px;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .foot{font-size:9.5px;padding:0}
+  }
+  /* หน้านี้ตั้งกระดาษแนวนอนไว้ให้แล้ว แต่เครื่องพิมพ์ในออฟฟิศหลายเครื่องตั้งแนวตั้งค้างไว้
+     และกล่องพิมพ์ของเบราว์เซอร์ก็กดเปลี่ยนเองได้ ถ้าออกมาแนวตั้งก็ต้องอ่านรู้เรื่องเหมือนกัน
+     กระดาษแนวตั้งแคบกว่าราวหนึ่งในสาม ช่อง "เลขที่" จึงต้องได้ที่เพิ่ม ไม่งั้นเลขที่เรื่อง
+     ถูกตัดครึ่งเป็นสองบรรทัด แล้วส่วนที่เหลือเฉลี่ยกันใหม่ทั้งแถว */
+  @media print and (orientation:portrait){
+    table{font-size:10px}
+    .mono{font-size:9px}
+    th,td{padding:5px 5px}
+    th:nth-child(1),td:nth-child(1){width:16%}
+    th:nth-child(2),td:nth-child(2){width:27%}
+    th:nth-child(3),td:nth-child(3){width:10%}
+    th:nth-child(4),td:nth-child(4){width:14%}
+    th:nth-child(5),td:nth-child(5){width:12%}
+    th:nth-child(6),td:nth-child(6){width:13%}
+    th:nth-child(7),td:nth-child(7){width:8%}
   }
 </style>
 </head>
