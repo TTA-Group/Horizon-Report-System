@@ -6,7 +6,7 @@
 
 import { CATEGORY_BY_CODE, CHANNEL_KEY, type StatusCode, type UrgencyCode } from "./constants";
 import { db } from "./db";
-import { buildCompactFlex, buildTicketFlex, type TicketFlexInput } from "./flex";
+import { buildCompactFlex, buildTicketFlex, ratingAskCard, type TicketFlexInput } from "./flex";
 import { pushTo, textMessage, type LineMessage } from "./line";
 import { thaiDateShort, thaiDateTimeShort } from "./tickets";
 
@@ -106,6 +106,22 @@ export function justNow(actorName: string): Partial<TicketFlexInput> {
 export async function pushGroupCard(t: CardRow, card: LineMessage): Promise<void> {
   if (!t.line_group_id) return;
   await pushTo(t.line_group_id, [card], { ticketId: t.id, channel: "group" });
+}
+
+/**
+ * ปิดงานแล้วถามความพึงพอใจ แทนข้อความ "สถานะ: ดำเนินการเสร็จสิ้น" แบบเดิม
+ *
+ * ข้อความเดิมบอกสิ่งที่ผู้แจ้งรู้อยู่แล้ว (ของที่เสียกลับมาใช้ได้แล้ว) และไม่ได้เปิดโอกาสให้ทำอะไรต่อ
+ * ใบนี้ใช้จำนวนข้อความเท่ากันคือใบเดียว แต่ได้คำขอบคุณที่เดินทางไปถึงคนที่ลงมือทำจริง
+ */
+export async function askReporterRating(t: CardRow): Promise<void> {
+  if (!t.reporter_line) return;
+  // เจ้าหน้าที่แจ้งเรื่องของตัวเองแล้วซ่อมเอง — ไม่ต้องถามว่าพอใจผลงานตัวเองแค่ไหน
+  if (t.assignee_id && t.assignee_id === t.reporter_id) return;
+  await pushTo(t.reporter_line, [ratingAskCard(t.id, t.ticket_no, t.detail, t.assignee_name)], {
+    ticketId: t.id,
+    channel: "user",
+  });
 }
 
 export async function tellReporter(t: CardRow, text: string): Promise<void> {

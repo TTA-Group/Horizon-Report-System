@@ -11,7 +11,7 @@ import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { DUE_BY_KEY, STATUS_LABELS } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { groupCard, justNow, loadCardRow, pushGroupCard, tellReporter } from "./_lib/ticket-card";
+import { askReporterRating, groupCard, justNow, loadCardRow, pushGroupCard, tellReporter } from "./_lib/ticket-card";
 import { dueFromOption, dueFromPickedDate, shortName, thaiDateShort } from "./_lib/tickets";
 
 interface Body {
@@ -102,17 +102,22 @@ export default async (req: Request): Promise<Response> =>
     const when = [label, thaiDateShort(due)].join(" · ");
     try {
       await pushGroupCard(t, groupCard(t, justNow(s.employee.full_name)));
-      await tellReporter(
-        t,
-        [
-          `${t.ticket_no} ${complete ? "ดำเนินการเสร็จสิ้น" : "ตรวจสอบแล้ว"}`,
-          assessment ? `อาการ: ${assessment}` : null,
-          complete ? null : `${waiting ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ"}: ${when}`,
-          `ผู้รับผิดชอบ: ${shortName(t.assignee_name ?? s.employee.full_name)}`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-      );
+      if (complete) {
+        // ปิดงานไปเลยในขั้นตอนเดียว — ผู้แจ้งได้การ์ดถามความพึงพอใจใบเดียว ไม่ต้องมีข้อความบอกสถานะซ้ำ
+        await askReporterRating(t);
+      } else {
+        await tellReporter(
+          t,
+          [
+            `${t.ticket_no} ตรวจสอบแล้ว`,
+            assessment ? `อาการ: ${assessment}` : null,
+            `${waiting ? "รออะไหล่ ถึง" : "คาดว่าเสร็จ"}: ${when}`,
+            `ผู้รับผิดชอบ: ${shortName(t.assignee_name ?? s.employee.full_name)}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      }
     } catch (e) {
       console.error("[tickets-assess] notify failed", e);
     }
