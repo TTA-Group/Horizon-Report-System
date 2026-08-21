@@ -173,6 +173,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 /* staff queue + admin */
 .filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
+/* ชิปช่วงเวลาของหน้าสรุปงานมีห้าตัวตายตัว ให้ตกบรรทัดแทนการเลื่อนซ้ายขวา
+   เพราะแถบเลื่อนถูกซ่อนไว้ ชิปตัวท้ายที่โผล่ไม่พ้นขอบจะดูเหมือนหน้าเสีย ไม่ใช่ของที่เลื่อนดูได้
+   (ชิปฝ่ายยังเลื่อนเหมือนเดิม เพราะจำนวนไม่แน่นอน ตกบรรทัดแล้วกินที่หลายแถว) */
+#rp-periods{flex-wrap:wrap;overflow-x:visible;row-gap:6px}
 .chip{font-family:inherit;font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:20px;border:1px solid var(--line);
   background:var(--surface);color:var(--slate);white-space:nowrap;cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
