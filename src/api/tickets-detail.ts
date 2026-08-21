@@ -54,6 +54,8 @@ export default async (req: Request): Promise<Response> => {
         assessment: string | null;
         assessed_at: string | null;
         waiting_parts: boolean;
+        rating: number | null;
+        rating_note: string | null;
       }[]
     >`
       SELECT t.id, t.ticket_no, t.category_code, t.department_id,
@@ -61,7 +63,8 @@ export default async (req: Request): Promise<Response> => {
              t.floor, t.location_note, t.detail, t.urgency, t.status,
              t.reporter_id, r.full_name AS reporter_name, a.full_name AS assignee_name,
              t.created_at, t.acknowledged_at, t.completed_at, t.closed_at,
-             t.due_at, t.due_label, t.assessment, t.assessed_at, t.waiting_parts
+             t.due_at, t.due_label, t.assessment, t.assessed_at, t.waiting_parts,
+             t.rating, t.rating_note
       FROM tickets t
       JOIN departments d ON d.id = t.department_id
       JOIN employees r ON r.id = t.reporter_id
@@ -104,6 +107,12 @@ export default async (req: Request): Promise<Response> => {
       reporter_name: t.reporter_name,
       assignee_name: t.assignee_name,
       can_act: canAct,
+      // ให้คะแนนได้เฉพาะผู้แจ้ง หลังงานปิด และให้ได้ครั้งเดียว
+      can_rate:
+        t.reporter_id === s.employee.id &&
+        (t.status === "completed" || t.status === "closed") &&
+        t.rating === null,
+      rating: t.rating === null ? null : { stars: t.rating, note: t.rating_note },
       created_at: t.created_at,
       acknowledged_at: t.acknowledged_at,
       completed_at: t.completed_at,
