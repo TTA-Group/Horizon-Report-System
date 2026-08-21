@@ -1,7 +1,10 @@
 // GET /api/health — ตรวจสุขภาพระบบโดยไม่ต้องล็อกอิน ใช้ไล่หาสาเหตุตอนย้ายที่อยู่ระบบ
 //
-// บอกแค่ 2 อย่าง: ค่าตั้งค่าแต่ละตัว "ตั้งไว้แล้วหรือยัง" (true/false เท่านั้น ไม่แสดงค่า)
-// และ "ต่อฐานข้อมูล / ต่อ LINE ได้ไหม" พร้อมเวลาที่ใช้ ทำให้แยกได้ว่าปัญหาอยู่ตรงไหน
+// บอก 3 อย่าง: ค่าตั้งค่าแต่ละตัว "ตั้งไว้แล้วหรือยัง" (true/false เท่านั้น ไม่แสดงค่า) ·
+// "ต่อฐานข้อมูล / ต่อ LINE ได้ไหม" พร้อมเวลาที่ใช้ · และ "รันไฟล์ SQL ที่ต้องรันครบหรือยัง"
+//
+// ข้อสุดท้ายสำคัญเพราะโค้ดใหม่กับฐานข้อมูลเก่าคือสาเหตุที่เดายากที่สุดเวลาระบบเงียบไปเฉย ๆ
+// ตัวจัดการจะพังตั้งแต่คำสั่งอ่านข้อมูล แล้ว error ไปจบใน log ที่ไม่มีใครเปิดดู
 
 import { db } from "./_lib/db";
 import { envVar } from "./_lib/env";
@@ -38,6 +41,33 @@ export default async (req: Request): Promise<Response> =>
       database = { ok: false, ms: Date.now() - dbStart, error: safeErrorText(e) };
     }
 
+    // คอลัมน์ที่มาจากไฟล์ migration แต่ละไฟล์ — ขาดตัวไหนแปลว่ายังไม่ได้รันไฟล์นั้น
+    let migrations: Record<string, unknown> = { ok: false, error: "ตรวจไม่ได้เพราะต่อฐานข้อมูลไม่ได้" };
+    if (database.ok === true) {
+      try {
+        const sql = db();
+        const cols = await sql<{ column_name: string }[]>`
+          SELECT column_name FROM information_schema.columns WHERE table_name = 'tickets'
+        `;
+        const have = new Set(cols.map((c) => c.column_name));
+        const need: Record<string, string[]> = {
+          "add-followup.sql": ["due_at", "assessment", "assessed_at", "waiting_parts"],
+          "add-rating.sql": ["rating", "rating_note", "rated_at"],
+        };
+        const missing: string[] = [];
+        const files: Record<string, boolean> = {};
+        for (const [file, columns] of Object.entries(need)) {
+          const gap = columns.filter((c) => !have.has(c));
+          files[file] = gap.length === 0;
+          if (gap.length > 0) missing.push(`${file} (ขาด ${gap.join(", ")})`);
+        }
+        migrations = { ok: missing.length === 0, files, ...(missing.length > 0 ? { missing } : {}) };
+      } catch (e) {
+        console.error("[health] migrations", e);
+        migrations = { ok: false, error: safeErrorText(e) };
+      }
+    }
+
     let line: Record<string, unknown>;
     const lineStart = Date.now();
     try {
@@ -49,9 +79,10 @@ export default async (req: Request): Promise<Response> =>
     }
 
     return json({
-      ok: database.ok === true && line.ok === true,
+      ok: database.ok === true && line.ok === true && migrations.ok === true,
       config,
       database,
+      migrations,
       line,
     });
   });

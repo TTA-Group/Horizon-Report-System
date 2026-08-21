@@ -375,9 +375,6 @@ interface TicketRow {
   assessment: string | null;
   assessed_at: string | null;
   waiting_parts: boolean;
-  rating: number | null;
-  rating_note: string | null;
-  rated_at: string | null;
 }
 
 interface ActorRow {
@@ -418,7 +415,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
            t.id AS ticket_pk, t.status AS ticket_status, t.department_id, t.reporter_id,
            t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency,
            t.created_at, t.assignee_id,
-           t.due_at, t.due_label, t.assessment, t.assessed_at, t.waiting_parts, t.rating, t.rating_note, t.rated_at,
+           t.due_at, t.due_label, t.assessment, t.assessed_at, t.waiting_parts,
            r.full_name AS reporter_name, r.department_name AS reporter_dept,
            d.code AS department_code, d.name AS department_name,
            a.full_name AS assignee_name,
@@ -493,9 +490,6 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
       assessment: row.assessment as string | null,
       assessed_at: row.assessed_at as string | null,
       waiting_parts: row.waiting_parts === true,
-      rating: row.rating as number | null,
-      rating_note: row.rating_note as string | null,
-      rated_at: row.rated_at as string | null,
     },
   };
 }
@@ -618,15 +612,38 @@ async function setDue(t: TicketRow, actor: ActorRow, due: Date, label: string, w
  * บันทึกทันทีตั้งแต่ขั้นนี้ ไม่รอให้เลือกคำชมก่อน เพราะคนส่วนใหญ่กดดาวแล้วหยุด
  * ถ้ารอจนครบสองขั้นถึงจะบันทึก คะแนนส่วนใหญ่จะหายไป
  */
+/**
+ * อ่านคะแนนที่เคยให้ไว้
+ *
+ * แยกออกมาจากคำสั่งหลักของ loadContext โดยตั้งใจ — คอลัมน์ชุดนี้มาจากไฟล์ migration
+ * ที่อาจยังไม่ได้รัน ถ้าเอาไปรวมในคำสั่งที่ทุกปุ่มใช้ ปุ่มทั้งระบบจะตายพร้อมกันเมื่อฐานข้อมูล
+ * ยังไม่ได้อัปเดต ตรงนี้พังก็พังแค่การให้ดาว
+ */
+async function loadRating(ticketId: string): Promise<{ rating: number | null; rating_note: string | null } | null> {
+  const sql = db();
+  try {
+    const rows = await sql<{ rating: number | null; rating_note: string | null }[]>`
+      SELECT rating, rating_note FROM tickets WHERE id = ${ticketId} LIMIT 1
+    `;
+    return rows[0] ?? null;
+  } catch (e) {
+    console.error("[rating] ยังไม่ได้รัน db/add-rating.sql หรือฐานข้อมูลมีปัญหา", e);
+    return null;
+  }
+}
+
 async function handleRate(ev: LineEvent, actor: ActorRow, t: TicketRow, stars: number): Promise<void> {
   const replyToken = ev.replyToken;
   if (!(stars >= 1 && stars <= 5)) return;
   if (t.status !== "completed" && t.status !== "closed") {
     return say(replyToken, `เรื่อง ${t.ticket_no} ยังไม่ได้ปิดงาน ให้คะแนนได้หลังงานเสร็จแล้ว`);
   }
+
+  const current = await loadRating(t.id);
+  if (!current) return say(replyToken, "ระบบให้คะแนนยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแลระบบ");
   // กดดาวซ้ำบนการ์ดใบเดิม — ให้แก้คะแนนได้ตราบใดที่ยังไม่ได้เลือกคำชม ถือว่ายังอยู่ในขั้นตอนเดียวกัน
   // พอเลือกคำชมแล้วถือว่าจบ กดซ้ำอีกจะไม่เปลี่ยนอะไร กันการส่งคำชมซ้ำให้ผู้รับผิดชอบหลายรอบ
-  if (t.rating_note !== null) {
+  if (current.rating_note !== null) {
     return say(replyToken, `บันทึกคะแนนของ ${t.ticket_no} ไว้แล้ว ขอบคุณครับ`);
   }
 
@@ -645,8 +662,10 @@ async function handleRate(ev: LineEvent, actor: ActorRow, t: TicketRow, stars: n
  */
 async function handlePraise(ev: LineEvent, actor: ActorRow, t: TicketRow, index: string | null): Promise<void> {
   const replyToken = ev.replyToken;
-  const rating = t.rating ?? 0;
-  if (t.rating_note !== null) return say(replyToken, `บันทึกความเห็นของ ${t.ticket_no} ไว้แล้ว ขอบคุณครับ`);
+  const current = await loadRating(t.id);
+  if (!current) return say(replyToken, "ระบบให้คะแนนยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแลระบบ");
+  const rating = current.rating ?? 0;
+  if (current.rating_note !== null) return say(replyToken, `บันทึกความเห็นของ ${t.ticket_no} ไว้แล้ว ขอบคุณครับ`);
 
   // แปลลำดับชิปกลับเป็นคำจากรายการฝั่งเซิร์ฟเวอร์ — ไม่รับตัวหนังสือที่ส่งมากับปุ่มโดยตรง
   // เลือกรายการจากคะแนนที่บันทึกไว้แล้ว ไม่ใช่จากค่าที่ปุ่มบอกมา
@@ -671,8 +690,7 @@ async function handlePraise(ev: LineEvent, actor: ActorRow, t: TicketRow, index:
   await say(replyToken, thanks);
 
   // ส่งถึงคนที่ลงมือทำจริง — งานซ่อมบำรุงแทบไม่มีใครพูดถึงตอนทุกอย่างปกติ
-  // ข้ามกรณีที่ผู้แจ้งกับผู้รับผิดชอบเป็นคนเดียวกัน จะได้ไม่ส่งคำชมของตัวเองกลับหาตัวเอง
-  if (rating >= 4 && clean && t.assignee_id && t.assignee_id !== t.reporter_id) {
+  if (rating >= 4 && clean && t.assignee_id) {
     const rows = await sql<{ line_user_id: string }[]>`
       SELECT line_user_id FROM line_accounts
       WHERE employee_id = ${t.assignee_id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
@@ -785,13 +803,16 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       }),
     );
     // ผู้แจ้งได้การ์ดถามความพึงพอใจแทนข้อความ "เสร็จสิ้น" — ใช้จำนวนข้อความเท่ากัน
-    // ยกเว้นตอนที่ผู้แจ้งกับผู้รับผิดชอบเป็นคนเดียวกัน ไม่ต้องถามว่าพอใจผลงานตัวเองแค่ไหน
-    if (t.reporter_line_user_id && t.reporter_id !== actor.id) {
-      await pushTo(
+    if (t.reporter_line_user_id) {
+      const sent = await pushTo(
         t.reporter_line_user_id,
         [ratingAskCard(t.id, t.ticket_no, t.detail, t.assignee_name ?? actor.full_name)],
         { ticketId, channel: "user" },
       );
+      // ส่งการ์ดไม่ผ่าน ก็ต้องยังบอกให้รู้ว่างานเสร็จแล้ว ห้ามปล่อยให้ผู้แจ้งเงียบหาย
+      if (!sent) {
+        await tellReporter(t.reporter_line_user_id, `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ${STATUS_LABELS.completed}`, ticketId);
+      }
     }
     return;
   }
