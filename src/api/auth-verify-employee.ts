@@ -1,7 +1,7 @@
 // POST /api/auth/verify-employee — ค้นหาด้วยรหัสพนักงาน คืนข้อมูล "แบบปิดบัง" ให้ยืนยันตัวตน
 // (spec หัวข้อ 5.1 / 6 — ปรับให้ไม่คืนข้อมูลส่วนบุคคลแบบเต็มตามข้อกำหนดความปลอดภัยหัวข้อ 10)
 //
-// เหตุผลที่ต้องปิดบัง: รหัสพนักงานเป็นตัวเลข 5 หลัก (แค่ 100,000 ค่า) ถ้าคืนชื่อ–สกุลและอีเมลเต็ม
+// เหตุผลที่ต้องปิดบัง: รหัสพนักงานเป็นตัวเลข 5 หลัก (แค่ 100,000 ค่า) ถ้าคืนชื่อ–สกุลเต็ม
 // ผู้ที่มีบัญชี LINE ใดก็ได้จะไล่ยิงทุกรหัสเพื่อดูดรายชื่อพนักงานทั้งองค์กรได้
 // จึงคืนเฉพาะข้อมูลที่ "พอให้เจ้าตัวยืนยันว่าใช่ตนเอง" แต่ไม่พอให้คนอื่นเอาไปใช้ประโยชน์
 // และจำกัดจำนวนครั้งที่ลองต่อบัญชี LINE หนึ่งบัญชี
@@ -42,15 +42,6 @@ function maskName(full: string): string {
     .join(" ");
 }
 
-/** ปิดบังอีเมล: "somchai.j@thoresen.com" -> "som***@thoresen.com" */
-function maskEmail(email: string | null): string | null {
-  if (!email) return null;
-  const at = email.indexOf("@");
-  if (at <= 0) return "***";
-  const local = email.slice(0, at);
-  return local.slice(0, Math.min(3, local.length)) + "***" + email.slice(at);
-}
-
 export default async (req: Request): Promise<Response> =>
   run(async () => {
     methodGuard(req, "POST");
@@ -63,9 +54,9 @@ export default async (req: Request): Promise<Response> =>
 
     const sql = db();
     const rows = await sql<
-      { id: string; employee_code: string; full_name: string; department_name: string | null; floor: string | null; email: string | null; status: string }[]
+      { id: string; employee_code: string; full_name: string; department_name: string | null; floor: string | null; status: string }[]
     >`
-      SELECT id, employee_code, full_name, department_name, floor, email, status
+      SELECT id, employee_code, full_name, department_name, floor, status
       FROM employees WHERE employee_code = ${code} LIMIT 1
     `;
 
@@ -85,7 +76,6 @@ export default async (req: Request): Promise<Response> =>
         full_name: maskName(e.full_name),
         department_name: e.department_name,
         floor: e.floor,
-        email: maskEmail(e.email),
       },
     });
   });

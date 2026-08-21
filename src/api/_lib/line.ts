@@ -13,7 +13,6 @@ export interface LineProfile {
   sub: string; // = userId ที่เชื่อถือได้
   name?: string;
   picture?: string;
-  email?: string;
 }
 
 // ตรวจลายเซ็นของ ID token ด้วยกุญแจสาธารณะของ LINE เอง (JWKS) แทนการเรียก endpoint
@@ -75,7 +74,6 @@ export async function verifyIdToken(idToken: string): Promise<LineProfile> {
     sub: payload.sub,
     name: typeof payload.name === "string" ? payload.name : undefined,
     picture: typeof payload.picture === "string" ? payload.picture : undefined,
-    email: typeof payload.email === "string" ? payload.email : undefined,
   };
 }
 
