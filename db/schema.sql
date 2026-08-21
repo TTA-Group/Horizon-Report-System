@@ -96,6 +96,10 @@ CREATE TABLE tickets (
   due_changes     INT NOT NULL DEFAULT 0,         -- เลื่อนกำหนดมากี่ครั้ง (เกิน 3 ครั้งแจ้งหัวหน้า)
   progress_remind_count  INT NOT NULL DEFAULT 0,  -- ทวงหลังรับเรื่องไปกี่ครั้ง
   last_progress_remind_at TIMESTAMPTZ,
+  -- ความพึงพอใจของผู้แจ้ง ถามหลังปิดงาน (ผู้แจ้งเป็นคนกดเอง ไม่บังคับ)
+  rating          SMALLINT,              -- 1-5 ดาว
+  rating_note     VARCHAR(120),          -- คำชมหรือสิ่งที่ควรปรับปรุงที่ผู้แจ้งเลือก
+  rated_at        TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -6,8 +6,18 @@
 // ลำดับการอ่านของการ์ด: ฝ่ายไหน (หัวการ์ด) -> ด่วนแค่ไหน (แถบสี) -> เรื่องอะไร -> ใครรับผิดชอบ -> ทำอะไรต่อ
 
 import type { LineMessage } from "./line";
-import { DUE_BY_KEY, DUE_ROWS, STATUS_LABELS, type StatusCode, type UrgencyCode } from "./constants";
+import {
+  DUE_BY_KEY,
+  DUE_ROWS,
+  IMPROVE_CHIPS,
+  PRAISE_CHIPS,
+  RATING_LABELS,
+  STATUS_LABELS,
+  type StatusCode,
+  type UrgencyCode,
+} from "./constants";
 import { envVar } from "./env";
+import { shortName } from "./tickets";
 
 export interface TicketFlexInput {
   ticketId: string;
@@ -787,6 +797,194 @@ export function partsFollowUpCard(ticketId: string, ticketNo: string): LineMessa
       ),
     ]),
   ]);
+}
+
+/* ───────────────── ถามความพึงพอใจหลังปิดงาน ─────────────────
+ *
+ * แทนที่ข้อความ "สถานะ: ดำเนินการเสร็จสิ้น" ที่เคยส่งให้ผู้แจ้ง — ข้อความนั้นบอกสิ่งที่ผู้แจ้ง
+ * รู้อยู่แล้ว (ของที่เสียหายกลับมาใช้ได้แล้ว) และไม่ได้เปิดโอกาสให้ทำอะไรต่อ
+ *
+ * การ์ดนี้ใช้จำนวนข้อความเท่าเดิมคือใบเดียว ส่วนขั้นตอนที่เหลือเป็นการตอบกลับหลังผู้ใช้กด
+ * จึงไม่กินโควตาเพิ่ม ยกเว้นข้อความคำชมที่ส่งถึงผู้รับผิดชอบ ซึ่งเป็นหัวใจของเรื่องนี้
+ */
+
+const STAR_ON = "#F5A623";
+
+/** ดาวหนึ่งดวงที่กดได้ — กดดวงที่เท่าไหร่ก็ได้คะแนนเท่านั้น เหมือนการให้ดาวทั่วไป */
+function starButton(ticketId: string, n: number) {
+  return {
+    type: "box",
+    layout: "vertical",
+    flex: 1,
+    paddingAll: "6px",
+    action: { type: "postback", label: `${n} ดาว`, data: `action=rate&ticket=${ticketId}&v=${n}` },
+    contents: [{ type: "text", text: "☆", size: "28px", color: STAR_ON, align: "center" }],
+  };
+}
+
+/** แถวดาวแบบอ่านอย่างเดียว — ใช้ตอนแสดงคะแนนที่ให้ไปแล้ว */
+function starText(rating: number): string {
+  return "★".repeat(rating) + "☆".repeat(5 - rating);
+}
+
+/** ใบแรกหลังปิดงาน — บอกว่างานจบแล้ว แล้วชวนให้ดาว */
+export function ratingAskCard(
+  ticketId: string,
+  ticketNo: string,
+  detail: string,
+  assigneeName: string | null,
+): LineMessage {
+  return {
+    type: "flex",
+    altText: `${ticketNo} ดำเนินการเสร็จสิ้น · ให้คะแนนความพึงพอใจ`,
+    contents: {
+      type: "bubble",
+      size: "kilo",
+      header: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "12px",
+        backgroundColor: CARD_COLOR,
+        contents: [{ type: "text", text: "ดำเนินการเสร็จสิ้น", color: "#FFFFFF", size: FS.label, weight: "bold" }],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "14px",
+        contents: [
+          { type: "text", text: ticketNo, size: FS.noSm, weight: "bold", color: "#111111" },
+          { type: "text", text: detail, size: FS.body, color: "#111111", wrap: true, maxLines: 2, margin: "sm" },
+          ...(assigneeName
+            ? [{ type: "text", text: `ผู้ดูแล ${shortName(assigneeName)}`, size: FS.label, color: "#5B6672", margin: "xs" }]
+            : []),
+          { type: "separator", margin: "lg", color: "#EDF0F3" },
+          {
+            type: "text",
+            text: "ให้คะแนนความพึงพอใจ",
+            size: FS.body,
+            weight: "bold",
+            color: "#111111",
+            align: "center",
+            margin: "lg",
+          },
+          {
+            type: "box",
+            layout: "horizontal",
+            margin: "sm",
+            contents: [1, 2, 3, 4, 5].map((n) => starButton(ticketId, n)),
+          },
+          {
+            type: "text",
+            text: "แตะดาวเพื่อให้คะแนน",
+            size: FS.tiny,
+            color: "#8A94A0",
+            align: "center",
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * ใบที่สอง — ให้ดาวแล้ว ชวนเลือกคำชม (หรือสิ่งที่ควรปรับปรุงเมื่อคะแนนน้อย)
+ *
+ * คำชมส่งต่อให้ผู้รับผิดชอบอ่าน ส่วนสิ่งที่ควรปรับปรุงเก็บไว้ในระบบเฉย ๆ ไม่ส่งต่อ
+ * เพราะข้อความตำหนิที่เด้งเข้าแชทส่วนตัวโดยที่เจ้าตัวไม่ได้ขอ ไม่ได้ทำให้งานครั้งหน้าดีขึ้น
+ */
+export function feedbackAskCard(ticketId: string, ticketNo: string, rating: number): LineMessage {
+  const good = rating >= 4;
+  const chips = good ? PRAISE_CHIPS : IMPROVE_CHIPS;
+  // ส่งลำดับของชิปแทนตัวข้อความ — ข้อมูลที่ฝากไปกับปุ่มของไลน์จำกัดความยาวไว้ 300 ตัวอักษร
+  // และภาษาไทยหนึ่งตัวกินไปถึง 9 ตัวเมื่อเข้ารหัสใส่ URL คำยาว ๆ คำเดียวก็เกือบเต็มโควตาแล้ว
+  // ฝั่งเซิร์ฟเวอร์รู้อยู่แล้วว่าให้กี่ดาว จึงเปิดรายการที่ถูกต้องขึ้นมาแปลลำดับกลับเป็นคำได้เอง
+  const rows: unknown[] = [];
+  for (let i = 0; i < chips.length; i += 2) {
+    rows.push(
+      chipRow(
+        chips.slice(i, i + 2).map((c, j) =>
+          chip(c, { type: "postback", label: c, data: `action=praise&ticket=${ticketId}&i=${i + j}` }, good ? "green" : "amber"),
+        ),
+      ),
+    );
+  }
+  return bubble([
+    {
+      type: "text",
+      text: starText(rating),
+      size: "20px",
+      color: STAR_ON,
+      align: "center",
+    },
+    {
+      type: "text",
+      text: `${ticketNo} · ${RATING_LABELS[rating] ?? ""}`,
+      size: FS.tiny,
+      color: "#8A94A0",
+      align: "center",
+      margin: "xs",
+      wrap: true,
+    },
+    {
+      type: "text",
+      text: good ? "อยากชมเรื่องอะไรเป็นพิเศษ" : "ควรปรับปรุงเรื่องอะไร",
+      size: FS.body,
+      weight: "bold",
+      color: "#111111",
+      wrap: true,
+      margin: "lg",
+    },
+    ...rows,
+    chipRow([chip("ไม่เพิ่มเติม", { type: "postback", label: "ไม่เพิ่มเติม", data: `action=praise&ticket=${ticketId}` }, "grey")]),
+  ]);
+}
+
+/** คำชมที่ส่งถึงผู้รับผิดชอบ — จุดหมายปลายทางจริงของทั้งเรื่อง */
+export function praiseCard(ticketNo: string, detail: string, reporterName: string, rating: number, note: string | null): LineMessage {
+  return {
+    type: "flex",
+    altText: `ได้รับคำชมจากผู้แจ้ง ${ticketNo}`,
+    contents: {
+      type: "bubble",
+      size: "kilo",
+      header: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "12px",
+        backgroundColor: CARD_COLOR,
+        contents: [
+          { type: "text", text: "คำชมจากผู้แจ้ง", color: "#FFFFFF", size: FS.label, weight: "bold", align: "center" },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "16px",
+        contents: [
+          { type: "text", text: starText(rating), size: "24px", color: STAR_ON, align: "center" },
+          ...(note
+            ? [
+                {
+                  type: "box",
+                  layout: "vertical",
+                  margin: "lg",
+                  paddingAll: "12px",
+                  cornerRadius: "10px",
+                  backgroundColor: "#F1F8F3",
+                  contents: [
+                    { type: "text", text: `“${note}”`, size: FS.body, weight: "bold", color: STEP_DONE, align: "center", wrap: true },
+                  ],
+                },
+              ]
+            : []),
+          { type: "separator", margin: "lg", color: "#EDF0F3" },
+          { type: "text", text: ticketNo, size: FS.label, weight: "bold", color: "#111111", margin: "lg" },
+          { type: "text", text: detail, size: FS.tiny, color: "#5B6672", wrap: true, maxLines: 2, margin: "xs" },
+          { type: "text", text: `โดย ${shortName(reporterName)}`, size: FS.tiny, color: "#8A94A0", margin: "xs" },
+        ],
+      },
+    },
+  };
 }
 
 /**

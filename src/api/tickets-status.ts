@@ -5,7 +5,7 @@ import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { STATUS_LABELS, STATUS_TRANSITIONS, type StatusCode } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { groupCard, justNow, loadCardRow, pushGroupCard, tellReporter } from "./_lib/ticket-card";
+import { askReporterRating, groupCard, justNow, loadCardRow, pushGroupCard, tellReporter } from "./_lib/ticket-card";
 import { assertTransition, shortName } from "./_lib/tickets";
 
 interface Body {
@@ -89,7 +89,10 @@ export default async (req: Request): Promise<Response> =>
     try {
       // แจ้งผู้แจ้งเมื่อสถานะเปลี่ยน (spec หัวข้อ 5.3)
       // ข้ามกรณีผู้แจ้งเป็นคนกดเอง — เขาเห็นผลบนหน้าจออยู่แล้ว การส่งซ้ำเปลืองโควตาข้อความเปล่า ๆ
-      if (!isOwnerCancelling) {
+      if (to === "completed") {
+        // ปิดงานแล้วถามความพึงพอใจแทนการบอกสถานะ (ดู askReporterRating)
+        await askReporterRating(t);
+      } else if (!isOwnerCancelling) {
         // บอกชื่อผู้รับผิดชอบด้วยตอนมีคนรับเรื่อง ให้ตรงกับตอนกดปุ่มจากการ์ดในกลุ่ม
         // ไม่งั้นผู้แจ้งจะรู้ชื่อคนรับผิดชอบบ้างไม่รู้บ้าง ขึ้นอยู่กับว่าเจ้าหน้าที่กดจากที่ไหน
         const who = to === "in_progress" ? `\nผู้รับผิดชอบ: ${shortName(s.employee.full_name)}` : "";
