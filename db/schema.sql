@@ -34,7 +34,6 @@ CREATE TABLE employees (
   department_id   UUID REFERENCES departments(id),
   department_name VARCHAR(100),          -- กรณีฝ่ายที่ไม่ใช่ฝ่ายผู้รับเรื่อง
   floor           VARCHAR(20),
-  email           VARCHAR(150),
   source          VARCHAR(20) NOT NULL,  -- 'directory' = พบในฐาน HR, 'self' = กรอกเอง
   status          VARCHAR(20) NOT NULL DEFAULT 'active', -- active | suspended
   suspended_at    TIMESTAMPTZ,

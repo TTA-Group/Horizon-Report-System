@@ -12,7 +12,6 @@ export interface EmployeeRow {
   department_id: string | null;
   department_name: string | null;
   floor: string | null;
-  email: string | null;
   status: string; // active | suspended
 }
 
@@ -53,7 +52,7 @@ export async function getSession(req: Request): Promise<Session> {
 
   const rows = await sql<(EmployeeRow & { line_display_name: string | null })[]>`
     SELECT e.id, e.employee_code, e.full_name, e.department_id,
-           e.department_name, e.floor, e.email, e.status,
+           e.department_name, e.floor, e.status,
            la.display_name AS line_display_name
     FROM line_accounts la
     JOIN employees e ON e.id = la.employee_id

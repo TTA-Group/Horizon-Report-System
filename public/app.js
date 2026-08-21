@@ -150,7 +150,7 @@ async function boot() {
   }
 }
 
-/** คืนข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น/โดเมนอีเมล) — ใช้ผลที่ยิงคู่ขนานไว้ตอน boot() ถ้ามี */
+/** คืนข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น/ความเร่งด่วน) — ใช้ผลที่ยิงคู่ขนานไว้ตอน boot() ถ้ามี */
 async function getMasters() {
   if (!masters) masters = (await mastersPromise) || (await api("/api/masters"));
   return masters;
@@ -255,7 +255,6 @@ async function checkEmp() {
     $("#f-name").textContent = e.full_name;
     $("#f-dept").textContent = e.department_name || "-";
     $("#f-floor").textContent = e.floor || "-";
-    $("#f-mail").textContent = e.email || "-";
     $("#reg-found").dataset.code = e.employee_code;
     showRegPart("reg-found");
   } catch (e) {

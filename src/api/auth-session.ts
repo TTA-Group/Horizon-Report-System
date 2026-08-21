@@ -20,7 +20,6 @@ export default async (req: Request): Promise<Response> =>
             full_name: s.employee.full_name,
             department_name: s.employee.department_name,
             floor: s.employee.floor,
-            email: s.employee.email,
             status: s.employee.status,
           }
         : null,
