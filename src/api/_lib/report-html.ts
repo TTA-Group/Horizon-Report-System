@@ -69,6 +69,9 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
   const open = r.now.pending + r.now.in_progress;
   // ตารางเดียวจบ เรียงจากของที่ต้องทำก่อน ไปหาของที่จบไปแล้ว — สถานะบนแถวเป็นตัวแยกให้เอง
   const all = [...r.open_tickets, ...r.closed_tickets, ...r.cancelled_tickets];
+  // จำนวนที่ตารางแสดงจริง เทียบกับจำนวนที่นับได้ทั้งหมด — ต่างกันเมื่อไหร่แปลว่าชนเพดานแถว
+  const shown = all.length;
+  const total = r.now.pending + r.now.in_progress + r.flow.completed + r.flow.cancelled;
 
   return `<!DOCTYPE html>
 <html lang="th">
@@ -151,6 +154,8 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
   .p.run{background:var(--run-bg);color:var(--run)}
   .p.off{background:var(--off-bg);color:var(--mid)}
   .none{padding:34px 19px;text-align:center;color:var(--muted);font-size:13px}
+  .cut{padding:11px 19px;border-top:1px solid var(--line);background:#FAFAF9;
+    color:var(--mid);font-size:12px;line-height:1.6}
 
   .foot{font-size:11.5px;color:var(--muted);line-height:1.7;padding:0 2px}
 
@@ -220,6 +225,7 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
        ถ้าสีหาย ป้ายจะเหลือแต่ตัวหนังสือสีจาง ๆ ซึ่งอ่านยากกว่าเดิม */
     .p{font-size:9.5px;padding:2px 7px;border-radius:5px;
       -webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .cut{font-size:9.5px;padding:8px 7px}
     .foot{font-size:9.5px;padding:0}
   }
   /* หน้านี้ตั้งกระดาษแนวนอนไว้ให้แล้ว แต่เครื่องพิมพ์ในออฟฟิศหลายเครื่องตั้งแนวตั้งค้างไว้
@@ -279,6 +285,14 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
       </table>
       ${all.length === 0 ? '<div class="none">ไม่มีรายการในช่วงนี้</div>' : ""}
     </div>
+    ${
+      // ตารางมีเพดานจำนวนแถวเพื่อไม่ให้หน้าหนักเกินไป ถ้าชนเพดานต้องบอกตรง ๆ
+      // ไม่ใช่ตัดของหายเงียบ ๆ แล้วให้คนอ่านเข้าใจว่านี่คือทั้งหมด (ตัวเลขด้านบนยังนับครบเสมอ)
+      shown < total
+        ? `<div class="cut">ตารางแสดง ${shown} เรื่องล่าสุด จากทั้งหมด ${total} เรื่อง —
+             ตัวเลขภาพรวมด้านบนนับครบทุกเรื่อง</div>`
+        : ""
+    }
   </div>
 
   <p class="foot">

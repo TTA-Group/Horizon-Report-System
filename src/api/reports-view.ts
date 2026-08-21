@@ -41,7 +41,9 @@ export default async (req: Request): Promise<Response> =>
     if (!report) return page("ไม่พบข้อมูล", "ไม่พบฝ่ายของรายงานนี้ในระบบแล้ว", 404);
 
     if (url.searchParams.get("format") === "csv") {
-      const name = `report-${report.department_code}-${claim.p}-${report.range_label.replace(/[^0-9]+/g, "-")}.csv`;
+      // ช่วง "ทั้งหมด" ไม่มีตัวเลขวันที่ในชื่อช่วง จึงใช้วันที่ออกรายงานแทน ไม่งั้นได้ชื่อไฟล์ที่มีแต่ขีด
+      const span = report.range_label.replace(/[^0-9]+/g, "-").replace(/^-|-$/g, "");
+      const name = `report-${report.department_code}-${claim.p}-${span || Date.now()}.csv`;
       return new Response(renderReportCsv(report), {
         headers: {
           "content-type": "text/csv; charset=utf-8",

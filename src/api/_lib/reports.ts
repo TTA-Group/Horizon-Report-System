@@ -11,7 +11,7 @@ import { CATEGORY_BY_CODE, STATUS_LABELS, type StatusCode } from "./constants";
 import { db } from "./db";
 import { thaiDateShort } from "./tickets";
 
-export type Period = "week" | "month";
+export type Period = "week" | "month" | "all";
 
 const TH_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,6 +33,14 @@ export interface PeriodRange {
  * สัปดาห์เริ่มวันจันทร์ตามที่ใช้กันในที่ทำงาน ไม่ใช่วันอาทิตย์
  */
 export function periodRange(period: Period, offset = 0, now = new Date()): PeriodRange {
+  // "ทั้งหมด" ไม่มีขอบเวลา — นับทุกเรื่องที่มีในระบบ ไม่ว่าจะแจ้งไว้ตั้งแต่เมื่อไหร่
+  // ใช้เวลาเริ่มต้นของยุค epoch เป็นขอบล่าง เพื่อให้ query ชุดเดียวใช้ได้กับทุกช่วงโดยไม่ต้องแยกเส้นทาง
+  if (period === "all") {
+    // ไม่มีขอบบนจริง ๆ ไม่ใช่ "ถึงตอนนี้" — เผื่อมีเรื่องที่วันเวลาในฐานข้อมูลล้ำหน้าไป
+    // (เวลาเครื่องเพี้ยน หรือแก้ข้อมูลย้อนหลัง) จะได้ไม่หายไปจากรายงานที่ชื่อว่า "ทั้งหมด"
+    return { from: new Date(0), to: new Date("9999-12-31T00:00:00Z"), ongoing: false, label: "ตั้งแต่เริ่มใช้ระบบ" };
+  }
+
   // เลื่อนเวลาไป 7 ชั่วโมงแล้วอ่านค่าแบบ UTC = อ่านวันเวลาตามปฏิทินไทยโดยไม่ต้องพึ่ง timezone ของเครื่อง
   const th = new Date(now.getTime() + TH_OFFSET_MS);
   const y = th.getUTCFullYear();
@@ -60,7 +68,7 @@ export function periodRange(period: Period, offset = 0, now = new Date()): Perio
   return { from, to, ongoing, label };
 }
 
-export const PERIOD_TITLE: Record<Period, string> = { week: "รายสัปดาห์", month: "รายเดือน" };
+export const PERIOD_TITLE: Record<Period, string> = { week: "รายสัปดาห์", month: "รายเดือน", all: "ทั้งหมด" };
 
 /** รหัสสมมติของ "ทุกฝ่ายรวมกัน" — ไม่ใช่รหัสฝ่ายจริงในฐานข้อมูล จึงชนกับของจริงไม่ได้ */
 export const ALL_DEPTS = "ALL";
@@ -202,7 +210,7 @@ export async function buildDeptReport(
       ORDER BY (t.due_at IS NOT NULL AND t.due_at < now()) DESC,
                CASE t.urgency WHEN 'critical' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END,
                t.created_at ASC
-      LIMIT 300
+      LIMIT 500
     `,
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
@@ -213,7 +221,7 @@ export async function buildDeptReport(
       JOIN employees r ON r.id = t.reporter_id
       LEFT JOIN employees a ON a.id = t.assignee_id
       WHERE t.department_id = ANY(${ids}::uuid[]) AND t.completed_at >= ${from} AND t.completed_at < ${to}
-      ORDER BY t.completed_at DESC LIMIT 300
+      ORDER BY t.completed_at DESC LIMIT 1000
     `,
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
@@ -225,7 +233,7 @@ export async function buildDeptReport(
       LEFT JOIN employees a ON a.id = t.assignee_id
       WHERE t.department_id = ANY(${ids}::uuid[]) AND t.status = 'cancelled'
         AND t.updated_at >= ${from} AND t.updated_at < ${to}
-      ORDER BY t.updated_at DESC LIMIT 100
+      ORDER BY t.updated_at DESC LIMIT 300
     `,
   ]);
 

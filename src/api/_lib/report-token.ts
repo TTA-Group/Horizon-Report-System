@@ -84,7 +84,7 @@ export function verifyReportToken(token: string): ReportClaim | null {
   if (!safeEqual(token.slice(dot + 1), sign(payload))) return null;
 
   const claim = decodeClaim(payload);
-  if (!claim || (claim.p !== "week" && claim.p !== "month")) return null;
+  if (!claim || (claim.p !== "week" && claim.p !== "month" && claim.p !== "all")) return null;
   // ลิงก์รุ่นก่อนเก็บ d เป็นรหัสฝ่ายเดี่ยว ๆ ที่ยังไม่หมดอายุก็ต้องเปิดได้อยู่
   const raw: unknown = claim.d;
   const depts = typeof raw === "string" ? [raw] : Array.isArray(raw) ? raw : [];

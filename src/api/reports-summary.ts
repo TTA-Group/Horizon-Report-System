@@ -43,9 +43,14 @@ export default async (req: Request): Promise<Response> =>
     requireActive(s);
 
     const params = new URL(req.url).searchParams;
-    const period = (params.get("period") ?? "week").trim() as Period;
-    if (period !== "week" && period !== "month") throw new HttpError(400, "ช่วงเวลาไม่ถูกต้อง");
-    const offset = Math.min(MAX_OFFSET, Math.max(0, Number(params.get("offset") ?? "1") || 0));
+    // ไม่ระบุช่วง = ทั้งหมด ซึ่งเป็นค่าเริ่มต้นของหน้าสรุปงาน — ภาพรวมทั้งหมดต้องมาก่อน
+    // แล้วค่อยเจาะเข้าไปดูเป็นสัปดาห์หรือเป็นเดือน
+    const period = (params.get("period") ?? "all").trim() as Period;
+    if (period !== "week" && period !== "month" && period !== "all") {
+      throw new HttpError(400, "ช่วงเวลาไม่ถูกต้อง");
+    }
+    // "ทั้งหมด" ไม่มีช่วงก่อนหน้าให้ย้อน จึงบังคับ offset เป็น 0 เสมอ
+    const offset = period === "all" ? 0 : Math.min(MAX_OFFSET, Math.max(0, Number(params.get("offset") ?? "1") || 0));
 
     const options = await reportableDepts(s);
     if (options.length === 0) {
@@ -75,6 +80,7 @@ export default async (req: Request): Promise<Response> =>
       ...report,
       departments: chips,
       period_options: [
+        { period: "all", offset: 0, label: "ทั้งหมด" },
         { period: "week", offset: 0, label: "สัปดาห์นี้" },
         { period: "week", offset: 1, label: "สัปดาห์ที่แล้ว" },
         { period: "month", offset: 0, label: "เดือนนี้" },
@@ -82,6 +88,7 @@ export default async (req: Request): Promise<Response> =>
       ],
       share_url: `${origin}/api/reports/view?t=${token}`,
       csv_url: `${origin}/api/reports/view?t=${token}&format=csv`,
-      share_label: `${PERIOD_TITLE[period]} ${periodRange(period, offset).label}`,
+      share_label:
+        period === "all" ? periodRange(period, offset).label : `${PERIOD_TITLE[period]} ${periodRange(period, offset).label}`,
     });
   });
