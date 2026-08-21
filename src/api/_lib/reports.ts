@@ -62,8 +62,13 @@ export function periodRange(period: Period, offset = 0, now = new Date()): Perio
 
 export const PERIOD_TITLE: Record<Period, string> = { week: "รายสัปดาห์", month: "รายเดือน" };
 
+/** รหัสสมมติของ "ทุกฝ่ายรวมกัน" — ไม่ใช่รหัสฝ่ายจริงในฐานข้อมูล จึงชนกับของจริงไม่ได้ */
+export const ALL_DEPTS = "ALL";
+
 export interface ReportTicket {
   ticket_no: string;
+  /** ฝ่ายเจ้าของเรื่อง — ใช้ตอนรายงานรวมหลายฝ่าย เพราะตารางเดียวปนกันแล้วต้องแยกออก */
+  dept_name: string;
   category_label: string;
   floor: string;
   location_note: string | null;
@@ -87,6 +92,8 @@ export interface ReportTicket {
 export interface DeptReport {
   department_code: string;
   department_name: string;
+  /** จำนวนฝ่ายที่รายงานนี้รวมไว้ — มากกว่า 1 เมื่อไหร่ ตารางต้องบอกด้วยว่าแต่ละเรื่องเป็นของฝ่ายไหน */
+  dept_count: number;
   period: Period;
   period_title: string;
   range_label: string;
@@ -102,6 +109,7 @@ export interface DeptReport {
 }
 
 interface RawTicket {
+  dept_name: string;
   ticket_no: string;
   category_code: string;
   floor: string;
@@ -125,6 +133,7 @@ function toTicket(t: RawTicket, now: Date): ReportTicket {
   const overdueMs = due ? now.getTime() - due.getTime() : 0;
   return {
     ticket_no: t.ticket_no,
+    dept_name: t.dept_name,
     category_label: CATEGORY_BY_CODE.get(t.category_code)?.label ?? t.category_code,
     floor: t.floor,
     location_note: t.location_note,
@@ -144,19 +153,27 @@ function toTicket(t: RawTicket, now: Date): ReportTicket {
   };
 }
 
-/** สรุปงานของฝ่ายหนึ่งในช่วงเวลาหนึ่ง */
+/**
+ * สรุปงานของฝ่ายหนึ่ง หรือของหลายฝ่ายรวมกันในช่วงเวลาหนึ่ง
+ *
+ * รับเป็นรายชื่อฝ่ายเสมอ เพราะหน้าสรุปงานตั้งต้นที่ "ทั้งหมด" — หัวหน้าที่ดูแลหลายฝ่าย
+ * และฝ่ายบุคคลต้องเห็นภาพรวมก่อน แล้วค่อยเจาะเข้าไปดูทีละฝ่าย ไม่ใช่เห็นฝ่ายแรกตามตัวอักษร
+ * แล้วต้องไล่กดดูเองว่ารวมกันแล้วเป็นเท่าไหร่
+ */
 export async function buildDeptReport(
-  departmentId: string,
+  departmentIds: string | string[],
   period: Period,
   offset = 0,
   now = new Date(),
 ): Promise<DeptReport | null> {
+  const ids = (Array.isArray(departmentIds) ? departmentIds : [departmentIds]).filter(Boolean);
+  if (ids.length === 0) return null;
   const sql = db();
   const range = periodRange(period, offset, now);
   const { from, to } = range;
 
   const dept = await sql<{ code: string; name: string }[]>`
-    SELECT code, name FROM departments WHERE id = ${departmentId} LIMIT 1
+    SELECT code, name FROM departments WHERE id = ANY(${ids}::uuid[]) ORDER BY code
   `;
   if (dept.length === 0) return null;
 
@@ -169,18 +186,19 @@ export async function buildDeptReport(
         count(*) FILTER (WHERE t.status = 'pending')::int AS pending,
         count(*) FILTER (WHERE t.status = 'in_progress')::int AS in_progress,
         count(*) FILTER (WHERE t.status = 'in_progress' AND t.due_at IS NOT NULL AND t.due_at < now())::int AS overdue
-      FROM tickets t WHERE t.department_id = ${departmentId}
+      FROM tickets t WHERE t.department_id = ANY(${ids}::uuid[])
     `,
     // งานค้างเป็นภาพนิ่ง ณ ตอนนี้ ไม่ผูกกับช่วงเวลา — เรื่องที่ค้างมาตั้งแต่เดือนก่อนก็ยังต้องอยู่ในรายงาน
     // เรียงให้ของที่ต้องรีบอยู่บนสุด: เลยกำหนดก่อน แล้วตามความเร่งด่วน แล้วเรื่องเก่าก่อน
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
              t.created_at, t.due_at, t.due_label, t.waiting_parts, t.assessment, t.assessed_at,
-             r.full_name AS reporter_name, a.full_name AS assignee_name
+             d.name AS dept_name, r.full_name AS reporter_name, a.full_name AS assignee_name
       FROM tickets t
+      JOIN departments d ON d.id = t.department_id
       JOIN employees r ON r.id = t.reporter_id
       LEFT JOIN employees a ON a.id = t.assignee_id
-      WHERE t.department_id = ${departmentId} AND t.status IN ('pending', 'in_progress')
+      WHERE t.department_id = ANY(${ids}::uuid[]) AND t.status IN ('pending', 'in_progress')
       ORDER BY (t.due_at IS NOT NULL AND t.due_at < now()) DESC,
                CASE t.urgency WHEN 'critical' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END,
                t.created_at ASC
@@ -189,30 +207,35 @@ export async function buildDeptReport(
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
              t.created_at, t.due_at, t.due_label, t.waiting_parts, t.assessment, t.assessed_at,
-             r.full_name AS reporter_name, a.full_name AS assignee_name
+             d.name AS dept_name, r.full_name AS reporter_name, a.full_name AS assignee_name
       FROM tickets t
+      JOIN departments d ON d.id = t.department_id
       JOIN employees r ON r.id = t.reporter_id
       LEFT JOIN employees a ON a.id = t.assignee_id
-      WHERE t.department_id = ${departmentId} AND t.completed_at >= ${from} AND t.completed_at < ${to}
+      WHERE t.department_id = ANY(${ids}::uuid[]) AND t.completed_at >= ${from} AND t.completed_at < ${to}
       ORDER BY t.completed_at DESC LIMIT 300
     `,
     sql<RawTicket[]>`
       SELECT t.ticket_no, t.category_code, t.floor, t.location_note, t.detail, t.urgency, t.status,
              t.created_at, t.due_at, t.due_label, t.waiting_parts, t.assessment, t.assessed_at,
-             r.full_name AS reporter_name, a.full_name AS assignee_name
+             d.name AS dept_name, r.full_name AS reporter_name, a.full_name AS assignee_name
       FROM tickets t
+      JOIN departments d ON d.id = t.department_id
       JOIN employees r ON r.id = t.reporter_id
       LEFT JOIN employees a ON a.id = t.assignee_id
-      WHERE t.department_id = ${departmentId} AND t.status = 'cancelled'
+      WHERE t.department_id = ANY(${ids}::uuid[]) AND t.status = 'cancelled'
         AND t.updated_at >= ${from} AND t.updated_at < ${to}
       ORDER BY t.updated_at DESC LIMIT 100
     `,
   ]);
 
   const c = counts[0];
+  // รวมหลายฝ่าย ชื่อรายงานจึงเป็นชื่อรวม ไม่ใช่ชื่อฝ่ายใดฝ่ายหนึ่ง
+  const many = dept.length > 1;
   return {
-    department_code: dept[0].code,
-    department_name: dept[0].name,
+    department_code: many ? ALL_DEPTS : dept[0].code,
+    department_name: many ? "รวมทุกฝ่าย" : dept[0].name,
+    dept_count: dept.length,
     period,
     period_title: PERIOD_TITLE[period],
     range_label: range.label,

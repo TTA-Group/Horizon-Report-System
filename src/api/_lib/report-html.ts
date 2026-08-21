@@ -33,11 +33,19 @@ function card(value: number, label: string, note: string, tone = ""): string {
   </div>`;
 }
 
-function rows(list: ReportTicket[]): string {
+/**
+ * showDept = รายงานใบนี้รวมหลายฝ่ายไว้ในตารางเดียว จึงต้องบอกว่าแต่ละเรื่องเป็นของฝ่ายไหน
+ *
+ * ชื่อฝ่ายไปอยู่ใต้เลขที่เรื่อง ไม่ได้เพิ่มเป็นคอลัมน์ที่แปด เพราะช่องเลขที่มีที่ว่างใต้บรรทัดอยู่แล้ว
+ * และเลขที่เรื่องขึ้นต้นด้วยรหัสฝ่ายอยู่แล้ว (ADM-2026-100) สองอย่างนี้จึงอ่านคู่กันพอดี
+ */
+function rows(list: ReportTicket[], showDept: boolean): string {
   return list
     .map(
       (t) => `<tr>
-        <td class="mono nowrap">${esc(t.ticket_no)}</td>
+        <td><div class="mono nowrap">${esc(t.ticket_no)}</div>${
+          showDept ? `<div class="s">${esc(t.dept_name)}</div>` : ""
+        }</td>
         <td><div class="d">${esc(t.detail)}</div><div class="s">${esc(t.category_label)}${
           t.urgency === "normal" ? "" : ` · <b class="nowrap">${esc(URGENCY_LABEL[t.urgency] ?? t.urgency)}</b>`
         }</div></td>
@@ -239,7 +247,9 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
   <div class="top">
     <div>
       <h1>${esc(r.department_name)}</h1>
-      <div class="sub">สรุปงาน${esc(r.period_title)} · ${esc(r.range_label)}${r.ongoing ? " (ถึงปัจจุบัน)" : ""} · ออกรายงาน ${esc(r.generated_label)}</div>
+      <div class="sub">สรุปงาน${esc(r.period_title)} · ${esc(r.range_label)}${
+        r.ongoing ? " (ถึงปัจจุบัน)" : ""
+      }${r.dept_count > 1 ? ` · รวม ${r.dept_count} ฝ่าย` : ""} · ออกรายงาน ${esc(r.generated_label)}</div>
     </div>
     <div class="acts">
       ${csvUrl ? `<a href="${esc(csvUrl)}">ส่งออก CSV</a>` : ""}
@@ -265,7 +275,7 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
           <th>เลขที่</th><th>เรื่องที่แจ้ง</th><th>สถานที่</th>
           <th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>กำหนดเสร็จ</th><th>แจ้งเมื่อ</th>
         </tr></thead>
-        <tbody id="rows">${rows(all)}</tbody>
+        <tbody id="rows">${rows(all, r.dept_count > 1)}</tbody>
       </table>
       ${all.length === 0 ? '<div class="none">ไม่มีรายการในช่วงนี้</div>' : ""}
     </div>
@@ -295,7 +305,7 @@ export function renderReportHtml(r: DeptReport, csvUrl: string | null): string {
 /** ข้อมูลดิบสำหรับเอาไปทำต่อในตารางคำนวณ — หนึ่งบรรทัดต่อหนึ่งเรื่อง */
 export function renderReportCsv(r: DeptReport): string {
   const head = [
-    "เลขที่เรื่อง", "กลุ่ม", "สถานะ", "ประเภท", "ความเร่งด่วน", "ชั้น", "จุดที่เกิดเหตุ",
+    "เลขที่เรื่อง", "ฝ่าย", "กลุ่ม", "สถานะ", "ประเภท", "ความเร่งด่วน", "ชั้น", "จุดที่เกิดเหตุ",
     "รายละเอียด", "ผู้แจ้ง", "ผู้รับผิดชอบ", "วันที่แจ้ง", "กำหนดเสร็จ", "อายุเรื่อง (วัน)",
     "เลยกำหนด (วัน)", "รออะไหล่", "อาการที่พบ",
   ];
@@ -303,7 +313,7 @@ export function renderReportCsv(r: DeptReport): string {
   const push = (group: string, list: ReportTicket[]) => {
     for (const t of list) {
       out.push([
-        t.ticket_no, group, t.status_label, t.category_label,
+        t.ticket_no, t.dept_name, group, t.status_label, t.category_label,
         URGENCY_LABEL[t.urgency] ?? t.urgency, t.floor, t.location_note ?? "",
         t.detail, t.reporter_name, t.assignee_name ?? "", t.created_label,
         [t.due_label, t.due_date_label].filter(Boolean).join(" · "),
