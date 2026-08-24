@@ -404,10 +404,10 @@ function bindingLines(depts: DeptBinding[], hereGroupId: string): string {
   return depts
     .map((d) => {
       const where = !d.line_group_id
-        ? "ยังไม่ผูกกลุ่ม"
+        ? "ยังไม่มีกลุ่ม"
         : d.line_group_id === hereGroupId
           ? "กลุ่มนี้"
-          : "กลุ่มอื่น";
+          : "อยู่กลุ่มอื่น";
       return `${d.code} · ${d.name} — ${where}`;
     })
     .join("\n");
@@ -440,17 +440,40 @@ async function handleBindGroup(ev: LineEvent, code: string): Promise<void> {
   if (!target) {
     return say(replyToken, `ไม่พบฝ่ายรหัส ${code}\n\nฝ่ายที่ผูกได้:\n${depts.map((d) => `${d.code} · ${d.name}`).join("\n")}`);
   }
-  if (target.line_group_id === groupId) {
+
+  // ฝ่ายอื่นที่ยังชี้มาที่กลุ่มนี้อยู่ — คือต้นเหตุที่ข้อความปนกัน
+  const others = depts.filter((d) => d.code !== code && d.line_group_id === groupId);
+  if (target.line_group_id === groupId && others.length === 0) {
     return say(replyToken, `กลุ่มนี้เป็นกลุ่มของ ${target.name} อยู่แล้ว\n\n${bindingLines(depts, groupId)}`);
   }
 
+  // "ผูกฝ่าย X" แปลว่ากลุ่มนี้เป็นของ X และเป็นของ X เท่านั้น จึงปลดฝ่ายอื่นออกจากกลุ่มนี้ด้วย
+  // ถ้าไม่ปลด คำสั่งนี้จะพากลับไปสู่สภาพเดิมไม่ได้เลยตอนที่ทุกฝ่ายเริ่มจากกลุ่มเดียวกัน —
+  // พิมพ์แล้วระบบตอบว่า "เป็นอยู่แล้ว" ทั้งที่ยังปนกันอยู่ ซึ่งเป็นสิ่งที่ผู้ใช้กำลังพยายามแก้
   await db()`UPDATE departments SET line_group_id = ${groupId} WHERE code = ${code}`;
+  if (others.length > 0) {
+    await db()`
+      UPDATE departments SET line_group_id = NULL
+      WHERE line_group_id = ${groupId} AND code <> ${code}
+    `;
+  }
+
   const after = await bindableDepts();
-  const moved = target.line_group_id ? "\n(ย้ายมาจากกลุ่มเดิม เรื่องเก่าที่ค้างอยู่ในกลุ่มเดิมจะอัปเดตที่กลุ่มนี้แทน)" : "";
-  await say(
-    replyToken,
-    `ตั้งกลุ่มนี้เป็นกลุ่มของ ${target.name} แล้ว${moved}\n\nสถานะตอนนี้\n${bindingLines(after, groupId)}`,
-  );
+  const parts = [`ตั้งกลุ่มนี้เป็นกลุ่มของ ${target.name} แล้ว`];
+  if (target.line_group_id && target.line_group_id !== groupId) {
+    parts.push("(ย้ายมาจากกลุ่มเดิม เรื่องที่ค้างอยู่จะมาอัปเดตที่กลุ่มนี้แทน)");
+  }
+  if (others.length > 0) {
+    // ปลดออกไปแล้วต้องบอกให้ชัดว่าฝ่ายนั้นกำลังไม่มีกลุ่ม และต้องไปทำอะไรต่อ
+    parts.push(
+      `\nปลด ${others.map((d) => d.name).join(" และ ")} ออกจากกลุ่มนี้แล้ว ตอนนี้ยังไม่มีกลุ่ม\n` +
+        "เรื่องของฝ่ายนั้นยังแจ้งเข้าระบบและดูในแอปได้ตามปกติ แต่จะไม่มีการ์ดเข้ากลุ่มไหน\n" +
+        "จนกว่าจะไปพิมพ์คำสั่งนี้ในกลุ่มของแต่ละฝ่าย:\n" +
+        others.map((d) => `ผูกฝ่าย ${d.code}`).join("\n"),
+    );
+  }
+  parts.push(`\nสถานะตอนนี้\n${bindingLines(after, groupId)}`);
+  await say(replyToken, parts.join("\n"));
 }
 
 /** "ฝ่ายนี้" — ตรวจว่าตั้งค่ากลุ่มครบและถูกต้องหรือยัง โดยไม่ต้องเปิดฐานข้อมูลดู */
@@ -462,12 +485,15 @@ async function handleWhichDept(ev: LineEvent): Promise<void> {
 
   const depts = await bindableDepts();
   const here = depts.filter((d) => d.line_group_id === groupId);
-  const head = here.length === 0
-    ? "กลุ่มนี้ยังไม่ผูกกับฝ่ายไหน จึงยังไม่มีเรื่องแจ้งเข้ามา"
-    : here.length === 1
-      ? `กลุ่มนี้เป็นกลุ่มของ ${here[0].name}`
-      : `กลุ่มนี้รับเรื่องของ ${here.length} ฝ่ายรวมกัน: ${here.map((d) => d.name).join(" · ")}`;
-  const tail = depts.some((d) => !d.line_group_id) ? `\n\nยังไม่ผูกกลุ่ม สั่งได้ด้วย\n${BIND_HINT}` : "";
+  const head =
+    here.length === 0
+      ? "กลุ่มนี้ยังไม่ผูกกับฝ่ายไหน จึงยังไม่มีเรื่องแจ้งเข้ามา"
+      : here.length === 1
+        ? `กลุ่มนี้เป็นกลุ่มของ ${here[0].name}`
+        : `กลุ่มนี้รับเรื่องของ ${here.length} ฝ่ายรวมกัน (${here.map((d) => d.name).join(" · ")})\n` +
+          "ข้อความของทุกฝ่ายจึงมากองรวมกันที่นี่\n" +
+          `ถ้าจะแยก ให้สร้างกลุ่มของแต่ละฝ่าย แล้วพิมพ์ "ผูกฝ่าย <รหัสฝ่าย>" ในกลุ่มนั้น`;
+  const tail = depts.some((d) => !d.line_group_id) ? `\n\nฝ่ายที่ยังไม่มีกลุ่ม สั่งได้ด้วย\n${BIND_HINT}` : "";
   await say(replyToken, `${head}\n\n${bindingLines(depts, groupId)}${tail}`);
 }
 
