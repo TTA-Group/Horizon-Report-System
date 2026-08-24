@@ -125,6 +125,26 @@ export async function askReporterRating(t: CardRow): Promise<void> {
   if (!ok) await tellReporter(t, `อัปเดตเรื่อง ${t.ticket_no}\nสถานะ: ดำเนินการเสร็จสิ้น`);
 }
 
+/**
+ * บอกกลุ่มเดิมว่าเรื่องถูกส่งต่อไปฝ่ายอื่นแล้ว
+ *
+ * จำเป็นตอนที่แต่ละฝ่ายมีกลุ่มของตัวเอง — การ์ดใบใหม่ไปโผล่ที่กลุ่มของฝ่ายปลายทาง
+ * กลุ่มเดิมจึงเหลือการ์ดที่หยุดขยับโดยไม่มีใครรู้ว่าเกิดอะไรขึ้น
+ * ส่งเป็นข้อความบรรทัดเดียว ไม่ใช่การ์ด เพราะกลุ่มเดิมไม่ต้องทำอะไรกับเรื่องนี้แล้ว
+ * ข้ามให้เมื่อสองฝ่ายใช้กลุ่มเดียวกัน (หรือกลุ่มเดิมยังไม่ได้ตั้ง) จะได้ไม่ส่งซ้ำที่เดิม
+ */
+export async function tellGroupMoved(
+  fromGroupId: string | null,
+  toGroupId: string | null,
+  ticketNo: string,
+  toDeptName: string,
+  ticketId?: string,
+): Promise<void> {
+  if (!fromGroupId || fromGroupId === toGroupId) return;
+  const text = `เรื่อง ${ticketNo} ถูกส่งต่อไปยัง ${toDeptName} แล้ว\nฝ่ายนี้ไม่ต้องดำเนินการต่อ`;
+  await pushTo(fromGroupId, [textMessage(text)], { ticketId, channel: "group" });
+}
+
 export async function tellReporter(t: CardRow, text: string): Promise<void> {
   if (!t.reporter_line) return;
   await pushTo(t.reporter_line, [textMessage(text)], { ticketId: t.id, channel: "user" });

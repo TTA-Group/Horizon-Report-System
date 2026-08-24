@@ -5,6 +5,7 @@
 // - join: เก็บ groupId ของกลุ่มฝ่ายไว้ตั้งค่าใน departments.line_group_id
 
 import {
+  ADMIN_DEPARTMENT_CODE,
   adminCodes,
   CATEGORY_BY_CODE,
   CHANNEL_KEY,
@@ -28,6 +29,7 @@ import {
 } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
+import { tellGroupMoved } from "./_lib/ticket-card";
 import { dueFromOption, dueFromPickedDate, shortName, thaiDateShort, thaiDateTimeShort } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
 
@@ -107,7 +109,14 @@ function isOwnEvent(ev: LineEvent): boolean {
   if (ev.type === "message" && ev.message?.type === "text") {
     const text = (ev.message.text ?? "").trim();
     const cmd = text.toLowerCase();
-    return cmd === "groupid" || CANCEL_RE.test(text) || NOTE_RE.test(text) || PROGRESS_RE.test(text);
+    return (
+      cmd === "groupid" ||
+      BIND_RE.test(text) ||
+      WHICH_RE.test(text) ||
+      CANCEL_RE.test(text) ||
+      NOTE_RE.test(text) ||
+      PROGRESS_RE.test(text)
+    );
   }
   return false;
 }
@@ -148,11 +157,19 @@ const CANCEL_RE = /^ยกเลิก\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\s*
 // ข้อความที่พิมพ์ต่อท้ายปุ่ม — ข้อความตั้งต้นถูกเติมให้แล้ว ผู้ใช้พิมพ์แค่ส่วนหลังโคลอน
 const NOTE_RE = /^ผลตรวจ\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\s*([\s\S]*)$/;
 const PROGRESS_RE = /^อัปเดต\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\s*([\s\S]*)$/;
+// ผูกกลุ่มนี้เข้ากับฝ่ายหนึ่ง — พิมพ์ในกลุ่มโดยผู้ดูแลระบบ แทนการเข้าไปแก้ตาราง departments ด้วยมือ
+// แต่ละฝ่ายมีกลุ่มของตัวเองได้ ข้อความของฝ่ายอื่นจะได้ไม่ปนกันจนไล่ไม่ทัน
+const BIND_RE = /^(?:ผูกฝ่าย|ผูกกลุ่ม)\s+([A-Za-z]{2,6})$/i;
+// ขอดูว่ากลุ่มนี้เป็นของฝ่ายไหน และฝ่ายไหนยังไม่มีกลุ่ม
+const WHICH_RE = /^(?:ฝ่ายนี้|กลุ่มนี้|ตรวจกลุ่ม)$/;
 
 async function handleMessage(ev: LineEvent): Promise<void> {
   if (ev.message?.type !== "text") return;
   const text = (ev.message.text ?? "").trim();
   if (text.toLowerCase() === "groupid") return handleGroupIdRequest(ev);
+  const bind = BIND_RE.exec(text);
+  if (bind) return handleBindGroup(ev, bind[1].toUpperCase());
+  if (WHICH_RE.test(text)) return handleWhichDept(ev);
   if (CANCEL_RE.test(text)) return handleCancelMessage(ev, text);
   if (NOTE_RE.test(text)) return handleNoteMessage(ev, text);
   if (PROGRESS_RE.test(text)) return handleProgressMessage(ev, text);
@@ -331,7 +348,11 @@ async function handleGroupIdRequest(ev: LineEvent): Promise<void> {
 
   const groupId = ev.source?.groupId ?? ev.source?.roomId;
   await replyTo(ev.replyToken, [
-    textMessage(groupId ? `groupId ของกลุ่มนี้คือ\n${groupId}` : "คำสั่งนี้ใช้ได้เฉพาะในกลุ่มเท่านั้น"),
+    textMessage(
+      groupId
+        ? `groupId ของกลุ่มนี้คือ\n${groupId}\n\nถ้าจะตั้งให้กลุ่มนี้เป็นกลุ่มของฝ่ายใดฝ่ายหนึ่ง ไม่ต้องใช้ค่านี้ ให้ผู้ดูแลระบบพิมพ์\n${BIND_HINT}`
+        : "คำสั่งนี้ใช้ได้เฉพาะในกลุ่มเท่านั้น",
+    ),
   ]);
 }
 
@@ -340,9 +361,114 @@ async function handleJoin(ev: LineEvent): Promise<void> {
   if (!groupId || !ev.replyToken) return;
   await replyTo(ev.replyToken, [
     textMessage(
-      `เพิ่มบอทเข้ากลุ่มเรียบร้อย\ngroupId ของกลุ่มนี้คือ:\n${groupId}\n\nกรุณาส่งค่านี้ให้ผู้ดูแลระบบ เพื่อตั้งเป็น line_group_id ของทุกฝ่ายในตาราง departments (ทุกฝ่ายใช้กลุ่มนี้ร่วมกัน แล้วเรียกเจ้าหน้าที่ที่รับผิดชอบด้วยการ mention)`,
+      "เพิ่มบอทเข้ากลุ่มเรียบร้อย\n\n" +
+        "กลุ่มนี้ยังไม่ผูกกับฝ่ายไหน จึงยังไม่มีเรื่องแจ้งเข้ามา\n" +
+        "ให้ผู้ดูแลระบบพิมพ์คำสั่งนี้ในกลุ่ม เพื่อบอกว่ากลุ่มนี้เป็นของฝ่ายไหน\n\n" +
+        `${BIND_HINT}\n\n` +
+        'พิมพ์ "ฝ่ายนี้" เพื่อดูว่าตอนนี้ฝ่ายไหนใช้กลุ่มไหนอยู่',
     ),
   ]);
+}
+
+/** ตัวอย่างคำสั่งผูกกลุ่ม ใช้ซ้ำในหลายข้อความ จะได้ไม่เขียนต่างกันจนคนอ่านสับสน */
+const BIND_HINT = "ผูกฝ่าย IT      (กลุ่มของฝ่ายไอที)\nผูกฝ่าย ADM   (กลุ่มของฝ่ายอาคาร/ธุรการ)\nผูกฝ่าย GEN   (กลุ่มของเรื่องอื่น ๆ)";
+
+interface DeptBinding {
+  code: string;
+  name: string;
+  line_group_id: string | null;
+}
+
+/** ฝ่ายที่รับเรื่องได้ทั้งหมด พร้อมกลุ่มที่ผูกไว้ — ใช้ทั้งตอนผูกและตอนตรวจ */
+async function bindableDepts(): Promise<DeptBinding[]> {
+  const rows = await db()<DeptBinding[]>`
+    SELECT code, name, line_group_id FROM departments
+    WHERE is_active = true AND receives_tickets = true ORDER BY code
+  `;
+  return [...rows];
+}
+
+/** คนที่พิมพ์คำสั่งเป็นผู้ดูแลระบบไหม — เกณฑ์เดียวกับที่ใช้ในแอป (อยู่ฝ่าย HR หรืออยู่ในรายชื่อสำรอง) */
+async function isAdminActor(actor: ActorRow): Promise<boolean> {
+  if (adminCodes().has(actor.employee_code)) return true;
+  const rows = await db()`
+    SELECT 1 FROM department_members dm
+    JOIN departments d ON d.id = dm.department_id
+    WHERE dm.employee_id = ${actor.id} AND d.code = ${ADMIN_DEPARTMENT_CODE} LIMIT 1
+  `;
+  return rows.length > 0;
+}
+
+/** บรรทัดสรุปว่าฝ่ายไหนอยู่กลุ่มไหน เทียบกับกลุ่มที่กำลังพิมพ์คำสั่งอยู่ */
+function bindingLines(depts: DeptBinding[], hereGroupId: string): string {
+  return depts
+    .map((d) => {
+      const where = !d.line_group_id
+        ? "ยังไม่ผูกกลุ่ม"
+        : d.line_group_id === hereGroupId
+          ? "กลุ่มนี้"
+          : "กลุ่มอื่น";
+      return `${d.code} · ${d.name} — ${where}`;
+    })
+    .join("\n");
+}
+
+/**
+ * "ผูกฝ่าย <รหัส>" — ตั้งกลุ่มที่พิมพ์คำสั่งให้เป็นกลุ่มของฝ่ายนั้น
+ *
+ * มีคำสั่งนี้เพราะทางเลือกเดียวก่อนหน้าคือให้ผู้ดูแลเข้าไปแก้ line_group_id ในตารางเอง
+ * ซึ่งต้องใช้ SQL และเป็นขั้นตอนที่พลาดง่ายที่สุดของการติดตั้ง (ผูกผิดฝ่าย = เรื่องไปโผล่ผิดกลุ่ม)
+ * ตอบกลับด้วย reply ไม่ใช่ push จึงไม่กินโควตา
+ */
+async function handleBindGroup(ev: LineEvent, code: string): Promise<void> {
+  const replyToken = ev.replyToken;
+  if (!replyToken) return;
+  const groupId = ev.source?.groupId ?? ev.source?.roomId;
+  if (!groupId) return say(replyToken, "คำสั่งนี้ใช้ได้เฉพาะในกลุ่มเท่านั้น");
+
+  const lineUserId = ev.source?.userId;
+  const actor = lineUserId ? await resolveActor(lineUserId) : null;
+  if (!actor || actor.status !== "active") {
+    return say(replyToken, "ต้องผูกบัญชีไลน์กับข้อมูลพนักงานก่อน จึงจะใช้คำสั่งนี้ได้");
+  }
+  if (!(await isAdminActor(actor))) {
+    return say(replyToken, "คำสั่งนี้ใช้ได้เฉพาะผู้ดูแลระบบ (ฝ่ายบุคคล) เท่านั้น");
+  }
+
+  const depts = await bindableDepts();
+  const target = depts.find((d) => d.code === code);
+  if (!target) {
+    return say(replyToken, `ไม่พบฝ่ายรหัส ${code}\n\nฝ่ายที่ผูกได้:\n${depts.map((d) => `${d.code} · ${d.name}`).join("\n")}`);
+  }
+  if (target.line_group_id === groupId) {
+    return say(replyToken, `กลุ่มนี้เป็นกลุ่มของ ${target.name} อยู่แล้ว\n\n${bindingLines(depts, groupId)}`);
+  }
+
+  await db()`UPDATE departments SET line_group_id = ${groupId} WHERE code = ${code}`;
+  const after = await bindableDepts();
+  const moved = target.line_group_id ? "\n(ย้ายมาจากกลุ่มเดิม เรื่องเก่าที่ค้างอยู่ในกลุ่มเดิมจะอัปเดตที่กลุ่มนี้แทน)" : "";
+  await say(
+    replyToken,
+    `ตั้งกลุ่มนี้เป็นกลุ่มของ ${target.name} แล้ว${moved}\n\nสถานะตอนนี้\n${bindingLines(after, groupId)}`,
+  );
+}
+
+/** "ฝ่ายนี้" — ตรวจว่าตั้งค่ากลุ่มครบและถูกต้องหรือยัง โดยไม่ต้องเปิดฐานข้อมูลดู */
+async function handleWhichDept(ev: LineEvent): Promise<void> {
+  const replyToken = ev.replyToken;
+  if (!replyToken) return;
+  const groupId = ev.source?.groupId ?? ev.source?.roomId;
+  if (!groupId) return say(replyToken, "คำสั่งนี้ใช้ได้เฉพาะในกลุ่มเท่านั้น");
+
+  const depts = await bindableDepts();
+  const here = depts.filter((d) => d.line_group_id === groupId);
+  const head = here.length === 0
+    ? "กลุ่มนี้ยังไม่ผูกกับฝ่ายไหน จึงยังไม่มีเรื่องแจ้งเข้ามา"
+    : here.length === 1
+      ? `กลุ่มนี้เป็นกลุ่มของ ${here[0].name}`
+      : `กลุ่มนี้รับเรื่องของ ${here.length} ฝ่ายรวมกัน: ${here.map((d) => d.name).join(" · ")}`;
+  const tail = depts.some((d) => !d.line_group_id) ? `\n\nยังไม่ผูกกลุ่ม สั่งได้ด้วย\n${BIND_HINT}` : "";
+  await say(replyToken, `${head}\n\n${bindingLines(depts, groupId)}${tail}`);
 }
 
 interface TicketRow {
@@ -351,6 +477,7 @@ interface TicketRow {
   department_id: string;
   department_code: string;
   department_name: string;
+  department_group_id: string | null;
   reporter_id: string;
   ticket_no: string;
   category_code: string;
@@ -414,7 +541,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
            t.created_at, t.assignee_id,
            t.due_at, t.due_label, t.assessment, t.assessed_at, t.waiting_parts,
            r.full_name AS reporter_name, r.department_name AS reporter_dept,
-           d.code AS department_code, d.name AS department_name,
+           d.code AS department_code, d.name AS department_name, d.line_group_id AS department_group_id,
            a.full_name AS assignee_name,
            rl.line_user_id AS reporter_line_user_id,
            last.actor_name AS last_actor_name, last.at AS last_at,
@@ -476,6 +603,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
       created_at: row.created_at as string,
       reporter_name: row.reporter_name as string,
       reporter_dept: row.reporter_dept as string | null,
+      department_group_id: row.department_group_id as string | null,
       assignee_id: row.assignee_id as string | null,
       assignee_name: row.assignee_name as string | null,
       reporter_line_user_id: row.reporter_line_user_id as string | null,
@@ -821,6 +949,9 @@ async function handlePostback(ev: LineEvent): Promise<void> {
       });
       await pushTo(dept[0].line_group_id, [flex], { ticketId, channel: "group" });
     }
+    // แต่ละฝ่ายมีกลุ่มของตัวเอง กลุ่มเดิมจึงไม่เห็นการ์ดใบใหม่ที่ไปโผล่อีกกลุ่ม
+    // ถ้าไม่บอก กลุ่มเดิมจะเหลือการ์ดที่หยุดขยับเฉย ๆ โดยไม่มีใครรู้ว่าเรื่องย้ายไปแล้ว
+    await tellGroupMoved(t.department_group_id, dept[0].line_group_id, t.ticket_no, dept[0].name, ticketId);
     await say(replyToken, `ส่งต่อ ${t.ticket_no} ไปยัง ${dept[0].name} แล้ว`);
     await tellReporter(t.reporter_line_user_id, `เรื่อง ${t.ticket_no} ถูกส่งต่อไปยัง ${dept[0].name}`, ticketId);
     return;

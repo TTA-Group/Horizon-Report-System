@@ -68,6 +68,36 @@ export default async (req: Request): Promise<Response> =>
       }
     }
 
+    // แต่ละฝ่ายผูกกลุ่มไลน์ของตัวเองไว้หรือยัง — ฝ่ายที่ไม่มีกลุ่มคือฝ่ายที่เรื่องแจ้งเข้ามาแล้วเงียบหาย
+    // และสองฝ่ายที่ใช้กลุ่มเดียวกันคือสาเหตุที่ข้อความในกลุ่มปนกันจนไล่ไม่ทัน
+    // ไม่แสดงรหัสกลุ่มจริง เพราะหน้านี้เปิดได้โดยไม่ต้องล็อกอิน
+    let groups: Record<string, unknown> = { ok: false, error: "ตรวจไม่ได้เพราะต่อฐานข้อมูลไม่ได้" };
+    if (database.ok === true) {
+      try {
+        const rows = await db()<{ code: string; line_group_id: string | null }[]>`
+          SELECT code, line_group_id FROM departments
+          WHERE is_active = true AND receives_tickets = true ORDER BY code
+        `;
+        const unbound = rows.filter((r) => !r.line_group_id).map((r) => r.code);
+        const byGroup = new Map<string, string[]>();
+        for (const r of rows) {
+          if (!r.line_group_id) continue;
+          byGroup.set(r.line_group_id, [...(byGroup.get(r.line_group_id) ?? []), r.code]);
+        }
+        const shared = [...byGroup.values()].filter((codes) => codes.length > 1);
+        groups = {
+          ok: unbound.length === 0,
+          departments: rows.length,
+          bound: rows.length - unbound.length,
+          ...(unbound.length > 0 ? { unbound } : {}),
+          ...(shared.length > 0 ? { shared } : {}),
+        };
+      } catch (e) {
+        console.error("[health] groups", e);
+        groups = { ok: false, error: safeErrorText(e) };
+      }
+    }
+
     let line: Record<string, unknown>;
     const lineStart = Date.now();
     try {
@@ -83,6 +113,7 @@ export default async (req: Request): Promise<Response> =>
       config,
       database,
       migrations,
+      groups,
       line,
     });
   });

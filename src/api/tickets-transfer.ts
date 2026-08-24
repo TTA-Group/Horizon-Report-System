@@ -5,7 +5,7 @@ import { getSession, isMemberOf, requireActive } from "./_lib/auth";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo } from "./_lib/line";
-import { groupCard, justNow, loadCardRow, tellReporter } from "./_lib/ticket-card";
+import { groupCard, justNow, loadCardRow, tellGroupMoved, tellReporter } from "./_lib/ticket-card";
 
 interface Body {
   to_dept?: string;
@@ -63,6 +63,8 @@ export default async (req: Request): Promise<Response> =>
       });
       await pushTo(dept[0].line_group_id, [flex], { ticketId: id, channel: "group" });
     }
+    // แต่ละฝ่ายมีกลุ่มของตัวเอง กลุ่มเดิมจึงไม่เห็นการ์ดใบใหม่ — ถ้าไม่บอก จะเหลือการ์ดที่หยุดขยับ
+    await tellGroupMoved(t.line_group_id, dept[0].line_group_id, t.ticket_no, dept[0].name, id);
 
     await tellReporter(t, `เรื่อง ${t.ticket_no} ถูกส่งต่อไปยัง ${dept[0].name} แล้ว`);
 
