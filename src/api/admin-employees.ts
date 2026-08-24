@@ -5,7 +5,7 @@
 // ถ้าตัดรายชื่อทิ้งกลางทาง ตัวเลขที่ขึ้นข้างชื่อฝ่ายจะผิดโดยไม่มีอะไรบอก
 
 import { getSession, requireAdmin } from "./_lib/auth";
-import { CHANNEL_KEY } from "./_lib/constants";
+import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { thaiDateTime } from "./_lib/tickets";
@@ -57,7 +57,7 @@ export default async (req: Request): Promise<Response> =>
                WHERE dm.employee_id = e.id AND d.is_active = true) AS depts
       FROM employees e
       -- 1 คนผูกได้ 1 บัญชีต่อระบบ (UNIQUE employee_id, channel_key) การ join ตรงนี้จึงไม่ทำให้แถวซ้ำ
-      LEFT JOIN line_accounts la ON la.employee_id = e.id AND la.channel_key = ${CHANNEL_KEY}
+      LEFT JOIN line_accounts la ON la.employee_id = e.id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
       WHERE 1=1 ${qFilter} ${statusFilter}
       ORDER BY e.status DESC, e.employee_code ASC
       LIMIT 1000

@@ -61,6 +61,13 @@ export default async (req: Request): Promise<Response> =>
           files[file] = gap.length === 0;
           if (gap.length > 0) missing.push(`${file} (ขาด ${gap.join(", ")})`);
         }
+        // ไฟล์นี้ไม่ได้เพิ่มคอลัมน์ แต่ย้ายค่าในข้อมูล จึงตรวจจากค่าที่เหลืออยู่แทน
+        const legacy = await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM line_accounts WHERE channel_key = 'report'
+        `;
+        files["add-core-channel.sql"] = legacy[0].n === 0;
+        if (legacy[0].n > 0) missing.push(`add-core-channel.sql (ยังมีบัญชีผูกด้วยกุญแจเดิม ${legacy[0].n} รายการ)`);
+
         migrations = { ok: missing.length === 0, files, ...(missing.length > 0 ? { missing } : {}) };
       } catch (e) {
         console.error("[health] migrations", e);

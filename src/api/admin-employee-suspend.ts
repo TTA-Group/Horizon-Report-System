@@ -2,7 +2,7 @@
 // body: { action: "suspend" | "restore", reason?: string }
 
 import { getSession, invalidateSessionByEmployeeId, requireAdmin } from "./_lib/auth";
-import { CHANNEL_KEY } from "./_lib/constants";
+import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { pushTo, textMessage } from "./_lib/line";
@@ -58,7 +58,7 @@ export default async (req: Request): Promise<Response> =>
     // แจ้งพนักงานทาง LINE ว่าคืนสิทธิ์แล้ว (spec หัวข้อ 5.5)
     const acc = await sql<{ line_user_id: string }[]>`
       SELECT line_user_id FROM line_accounts
-      WHERE employee_id = ${id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
+      WHERE employee_id = ${id} AND channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
     `;
     if (acc.length > 0) {
       await pushTo(acc[0].line_user_id, [textMessage("บัญชีของคุณได้รับการคืนสิทธิ์การใช้งานแล้ว สามารถแจ้งเรื่องได้ตามปกติ")], {

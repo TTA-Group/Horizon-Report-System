@@ -1,6 +1,6 @@
 // การยืนยันตัวตนและตรวจสิทธิ์จาก LINE ID token ใน header Authorization
 
-import { ADMIN_DEPARTMENT_CODE, CHANNEL_KEY, adminCodes } from "./constants";
+import { ADMIN_DEPARTMENT_CODE, CHANNEL_KEY, CHANNEL_KEYS_READ, adminCodes } from "./constants";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { verifyIdToken } from "./line";
@@ -56,7 +56,8 @@ export async function getSession(req: Request): Promise<Session> {
            la.display_name AS line_display_name
     FROM line_accounts la
     JOIN employees e ON e.id = la.employee_id
-    WHERE la.line_user_id = ${profile.sub} AND la.channel_key = ${CHANNEL_KEY}
+    WHERE la.line_user_id = ${profile.sub} AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
+    ORDER BY la.channel_key = ${CHANNEL_KEY} DESC
     LIMIT 1
   `;
 
@@ -81,7 +82,7 @@ export async function getSession(req: Request): Promise<Session> {
       try {
         await sql`
           UPDATE line_accounts SET display_name = ${profile.name}
-          WHERE line_user_id = ${profile.sub} AND channel_key = ${CHANNEL_KEY}
+          WHERE line_user_id = ${profile.sub} AND channel_key = ANY(${CHANNEL_KEYS_READ})
         `;
       } catch (e) {
         console.error("[auth] อัปเดตชื่อไลน์ไม่สำเร็จ", e);

@@ -8,7 +8,7 @@ import {
   ADMIN_DEPARTMENT_CODE,
   adminCodes,
   CATEGORY_BY_CODE,
-  CHANNEL_KEY,
+  CHANNEL_KEY, CHANNEL_KEYS_READ,
   DUE_BY_KEY,
   STATUS_LABELS,
   STATUS_TRANSITIONS,
@@ -542,7 +542,7 @@ async function resolveActor(lineUserId: string): Promise<ActorRow | null> {
   const rows = await sql<ActorRow[]>`
     SELECT e.id, e.full_name, e.employee_code, e.status
     FROM line_accounts la JOIN employees e ON e.id = la.employee_id
-    WHERE la.line_user_id = ${lineUserId} AND la.channel_key = ${CHANNEL_KEY} LIMIT 1
+    WHERE la.line_user_id = ${lineUserId} AND la.channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
   `;
   return rows[0] ?? null;
 }
@@ -582,7 +582,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
     JOIN departments d ON d.id = t.department_id
     LEFT JOIN employees a ON a.id = t.assignee_id
     LEFT JOIN department_members dm ON dm.department_id = t.department_id AND dm.employee_id = e.id
-    LEFT JOIN line_accounts rl ON rl.employee_id = t.reporter_id AND rl.channel_key = ${CHANNEL_KEY}
+    LEFT JOIN line_accounts rl ON rl.employee_id = t.reporter_id AND rl.channel_key = ANY(${CHANNEL_KEYS_READ})
     -- ความเคลื่อนไหวล่าสุดที่ "คน" เป็นคนทำ (actor_id IS NOT NULL ตัดรายการเตือนซ้ำของระบบทิ้ง)
     -- อยู่ใน query เดียวกัน จึงไม่ได้เพิ่มรอบวิ่งไปฐานข้อมูล
     LEFT JOIN LATERAL (
@@ -593,7 +593,7 @@ async function loadContext(lineUserId: string, by: { id: string } | { ticketNo: 
       ORDER BY ev.created_at DESC
       LIMIT 1
     ) last ON true
-    WHERE la.line_user_id = ${lineUserId} AND la.channel_key = ${CHANNEL_KEY}
+    WHERE la.line_user_id = ${lineUserId} AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
     LIMIT 1
   `;
 

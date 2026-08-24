@@ -7,7 +7,7 @@
 // ลบเฉพาะการผูกบัญชี ไม่แตะข้อมูลพนักงานและเรื่องที่เคยแจ้งไว้
 
 import { getSession, invalidateSessionByLineUserId, requireAdmin } from "./_lib/auth";
-import { CHANNEL_KEY } from "./_lib/constants";
+import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 
@@ -28,7 +28,7 @@ export default async (req: Request): Promise<Response> =>
     const sql = db();
     const removed = await sql<{ line_user_id: string }[]>`
       DELETE FROM line_accounts
-      WHERE employee_id = ${id} AND channel_key = ${CHANNEL_KEY}
+      WHERE employee_id = ${id} AND channel_key = ANY(${CHANNEL_KEYS_READ})
       RETURNING line_user_id
     `;
     if (removed.length === 0) throw new HttpError(404, "พนักงานคนนี้ยังไม่ได้ผูกบัญชี LINE");

@@ -22,25 +22,49 @@
 
 ---
 
+## สองระบบใน repo เดียว
+
+repo นี้ deploy เป็น **Worker สองตัว** ใช้ฐานข้อมูลเดียวกันและแชร์โค้ดใน `src/api/_lib/` ร่วมกัน
+
+| Worker | ทำอะไร | ตั้งค่า | คำสั่ง deploy |
+| --- | --- | --- | --- |
+| `core` | ลงทะเบียนพนักงาน · หน้าจัดการทะเบียนของ HR | `wrangler.core.toml` · `public-core/` | `npm run deploy:core` |
+| `report` | ระบบแจ้งปัญหา (คิวงาน · รายงาน · webhook · งานตามเวลา) | `wrangler.toml` · `public/` | `npm run deploy` |
+
+**ทำไมต้องแยก** — พนักงานต้องลงทะเบียนครั้งเดียวแล้วใช้ได้ทุกระบบ ถ้าหน้าลงทะเบียนฝังอยู่ใน
+ระบบแจ้งปัญหา ระบบที่สอง (จองคิวนวด) ก็ต้องมีหน้าลงทะเบียนของตัวเองอีกชุด กลายเป็นสองที่
+ที่เขียนตาราง `line_accounts` ได้ และพนักงานต้องยืนยันตัวตนซ้ำทุกครั้งที่มีระบบใหม่
+
+ระบบใหม่ที่จะมาต่อ **ไม่ต้องเรียก `core` ผ่าน API** — แค่ตรวจ ID token ของไลน์เองแล้วอ่าน
+`line_accounts` กับ `employees` จากฐานข้อมูลกลาง เหมือนที่ `report` ทำ (ดู `src/api/_lib/auth.ts`)
+`core` ล่มไม่ทำให้ระบบอื่นล่ม เพราะไม่ได้อยู่ในเส้นทางของทุกคำขอ
+
 ## โครงสร้างโปรเจกต์
 
 ```
-public/          หน้าเว็บ LIFF — index.html, app.js, config.js (★ ตั้งค่า liffId ที่นี่)
-src/index.ts     จุดเข้าของ Worker — จัดเส้นทาง /api/*, เสิร์ฟหน้าเว็บ, รันงานตามเวลา
-src/api/         ตัวจัดการแต่ละ endpoint
+public-core/     หน้าเว็บ LIFF ของระบบกลาง — ลงทะเบียน + ทะเบียนพนักงาน (★ ตั้ง liffId ใน config.js)
+public/          หน้าเว็บ LIFF ของระบบแจ้งปัญหา (★ ตั้ง liffId และ coreLiffId ใน config.js)
+src/core.ts      จุดเข้าของ Worker "core" — /api/auth/*, /api/admin/*, /api/masters, /api/health
+src/index.ts     จุดเข้าของ Worker "report" — /api/tickets*, /api/reports/*, webhook, งานตามเวลา
+src/api/         ตัวจัดการแต่ละ endpoint (ใช้ร่วมกันทั้งสอง Worker)
   _lib/          โค้ดใช้ร่วม (db, auth, line, flex, jobs, reports, constants, env)
 db/              schema.sql · seed.sql · enable-rls.sql · cleanup-sample-data.sql · reset-tickets.sql
                  add-followup.sql (เพิ่มคอลัมน์ของขั้นตอนแจ้งผลตรวจสอบ)
                  add-rating.sql (เพิ่มคอลัมน์ความพึงพอใจหลังปิดงาน)
+                 add-core-channel.sql (ย้ายการผูกบัญชีมาเป็นกุญแจกลาง — ★ ต้องรันตอนแยกระบบ)
                  import-employees.template.sql (นำเข้าพนักงานเป็นชุด — ห้ามใส่ข้อมูลจริงลงในที่เก็บโค้ด)
-wrangler.toml    การตั้งค่า Worker (assets, nodejs_compat, cron triggers, LIFF_ID)
+wrangler.toml       การตั้งค่า Worker "report" (assets, nodejs_compat, cron triggers, LIFF_ID)
+wrangler.core.toml  การตั้งค่า Worker "core"
 ```
 
-**API** (รายละเอียดใน `spec.md` หัวข้อ 6)
-`/api/auth/*` ยืนยันตัวตนและผูกบัญชี · `/api/tickets*` แจ้งเรื่อง ติดตาม เปลี่ยนสถานะ ส่งต่อฝ่าย
-แจ้งผลตรวจสอบ (`/assess`) อัปเดตความคืบหน้า (`/progress`) ·
-`/api/admin/*` เพิ่มพนักงาน จัดการผู้ใช้งาน และกำหนดสถานะ (พนักงาน / ผู้รับผิดชอบฝ่าย / หัวหน้าฝ่าย) ·
-`/api/reports/*` สรุปงานรายสัปดาห์/รายเดือน · `/api/uploads` ภาพแนบ · `/api/line/webhook` รับ postback จาก LINE
+**API ของ `core`** — `/api/auth/session` ใครคือใครและมีสิทธิ์อะไร · `/api/auth/verify-employee`
+กับ `/api/auth/link` ลงทะเบียนผูกบัญชี (มีที่นี่ที่เดียวทั้งระบบ) · `/api/admin/employees*`
+ทะเบียนพนักงาน ระงับสิทธิ์ ปลดการผูกบัญชี และกำหนดสถานะในฝ่าย · `/api/masters` · `/api/health`
+
+**API ของ `report`** (รายละเอียดใน `spec.md` หัวข้อ 6) — `/api/auth/session` (อ่านอย่างเดียว) ·
+`/api/tickets*` แจ้งเรื่อง ติดตาม เปลี่ยนสถานะ ส่งต่อฝ่าย แจ้งผลตรวจสอบ (`/assess`)
+อัปเดตความคืบหน้า (`/progress`) · `/api/reports/*` สรุปงานรายสัปดาห์/รายเดือน ·
+`/api/uploads` ภาพแนบ · `/api/line/webhook` รับ postback จาก LINE
 
 **คำสั่งในกลุ่มไลน์** (ตอบกลับด้วย reply จึงไม่กินโควตา) — `ผูกฝ่าย <รหัสฝ่าย>` ตั้งกลุ่มนั้น
 เป็นกลุ่มของฝ่ายนั้น (เฉพาะผู้ดูแลระบบ) · `ฝ่ายนี้` ดูว่ากลุ่มไหนเป็นของฝ่ายไหนและฝ่ายไหนยังไม่ผูก ·
@@ -66,6 +90,7 @@ npm install
 psql "$DATABASE_URL" -f db/schema.sql
 psql "$DATABASE_URL" -f db/seed.sql
 psql "$DATABASE_URL" -f db/enable-rls.sql
+psql "$DATABASE_URL" -f db/add-core-channel.sql   # ★ ระบบที่ใช้อยู่ก่อนแยกระบบต้องรันตัวนี้ด้วย
 ```
 
 **ตัวแปรสภาพแวดล้อม** — ดูรายการทั้งหมดใน `.env.example`
@@ -80,15 +105,35 @@ psql "$DATABASE_URL" -f db/enable-rls.sql
 ⚠️ `STORAGE_BUCKET_URL` ต้องเป็น bucket แบบ **public** (ภาพต้องแสดงในแอปได้)
 ส่วน `BACKUP_BUCKET_URL` ต้องเป็น bucket แบบ **private คนละตัวกัน** เพราะไฟล์สำรองมีข้อมูลส่วนบุคคล
 
-**LIFF** — ระบุ `liffId` ใน `public/config.js`
+**LIFF — ต้องมีสองตัว ใต้ LINE Login channel เดียวกัน**
+
+ต้องเป็น channel เดียวกันเท่านั้น เพราะ ID token ที่ LIFF ออกให้ผูกกับ channel ถ้าคนละ channel
+พนักงานที่ลงทะเบียนแล้วจะถูกมองว่ายังไม่ได้ลงทะเบียนเมื่อเข้าอีกระบบหนึ่ง
+
+| LIFF | ใส่ค่าที่ | หมายเหตุ |
+| --- | --- | --- |
+| ระบบกลาง | `public-core/config.js` (`liffId`) และ `wrangler.core.toml` | ปลายทางของปุ่ม "ไปหน้าลงทะเบียน" |
+| ระบบแจ้งปัญหา | `public/config.js` (`liffId`) และ `wrangler.toml` | ค่าเดิม ไม่ต้องเปลี่ยน |
+
+และใส่ LIFF ID **ของระบบกลาง** ลงใน `public/config.js` ช่อง `coreLiffId` ด้วย เพื่อให้ระบบแจ้งปัญหา
+พาคนที่ยังไม่ได้ลงทะเบียนไปถูกที่ · ถ้ายังไม่ตั้ง หน้าจะซ่อนปุ่มแล้วบอกให้ติดต่อผู้ดูแลแทน
+ไม่ปล่อยให้กดแล้วเงียบเหมือนปุ่มเสีย
+
+**ค่าตั้งค่าที่ Worker `core` ต้องมี** — `DATABASE_URL` · `LINE_LOGIN_CHANNEL_ID` ·
+`ADMIN_EMPLOYEE_CODES` (ตัวเลือก) ตั้งแยกที่ Worker ตัวนั้นเอง ค่าไม่ได้แชร์ข้าม Worker
+ส่วน `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` และค่าที่เกี่ยวกับไฟล์แนบ
+ไม่ต้องตั้งที่ `core` เพราะไม่ได้ส่งข้อความหรือรับ webhook
 
 ```bash
-npm run typecheck   # ตรวจชนิดข้อมูล
-npm run dev         # รันโลคัลด้วย wrangler
-npm run deploy      # deploy ขึ้น Cloudflare
+npm run typecheck    # ตรวจชนิดข้อมูล (ครอบคลุมทั้งสอง Worker)
+npm run dev          # รันระบบแจ้งปัญหาโลคัล
+npm run dev:core     # รันระบบกลางโลคัล
+npm run deploy       # deploy ระบบแจ้งปัญหา
+npm run deploy:core  # deploy ระบบกลาง
 ```
 
-Cloudflare จะ build และ deploy อัตโนมัติเมื่อมีการ push เข้า `main`
+Cloudflare จะ build และ deploy อัตโนมัติเมื่อมีการ push เข้า `main` — ต้องเชื่อม repo นี้
+เข้ากับ Worker **สองตัว** โดยตั้ง config path ของตัวที่สองเป็น `wrangler.core.toml`
 
 ---
 

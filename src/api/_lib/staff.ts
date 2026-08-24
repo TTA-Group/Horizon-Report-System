@@ -7,7 +7,7 @@
 // ใช้เฉพาะตอนงานค้างเกินกำหนดเท่านั้น ไม่ได้ใช้กับทุกเรื่องที่แจ้งเข้ามา เพราะแต่ละข้อความ
 // นับโควตารายเดือนของ OA ที่ใช้ร่วมกับระบบอื่น
 
-import { CHANNEL_KEY } from "./constants";
+import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./constants";
 import { db } from "./db";
 
 /**
@@ -20,7 +20,7 @@ export async function departmentStaffLineIds(departmentId: string): Promise<stri
     SELECT la.line_user_id
     FROM department_members dm
     JOIN employees e ON e.id = dm.employee_id AND e.status = 'active'
-    JOIN line_accounts la ON la.employee_id = dm.employee_id AND la.channel_key = ${CHANNEL_KEY}
+    JOIN line_accounts la ON la.employee_id = dm.employee_id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
     WHERE dm.department_id = ${departmentId}
   `;
   return rows.map((r) => r.line_user_id);
