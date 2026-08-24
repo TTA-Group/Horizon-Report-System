@@ -4,7 +4,7 @@
 // พอเพิ่มช่องใหม่บนการ์ด (เช่น กำหนดเสร็จ) จึงต้องไล่แก้ทุกไฟล์ และมักลืมสักไฟล์จนการ์ดจากคนละทาง
 // แสดงข้อมูลไม่เท่ากัน ไฟล์นี้เป็นที่เดียวที่รู้ว่าการ์ดต้องใช้อะไรบ้าง
 
-import { CATEGORY_BY_CODE, CHANNEL_KEY, type StatusCode, type UrgencyCode } from "./constants";
+import { CATEGORY_BY_CODE, CHANNEL_KEY, CHANNEL_KEYS_READ, type StatusCode, type UrgencyCode } from "./constants";
 import { db } from "./db";
 import { buildCompactFlex, buildTicketFlex, ratingAskCard, type TicketFlexInput } from "./flex";
 import { pushTo, textMessage, type LineMessage } from "./line";
@@ -54,7 +54,7 @@ export async function loadCardRow(id: string): Promise<CardRow | null> {
     FROM tickets t
     JOIN departments d ON d.id = t.department_id
     JOIN employees r ON r.id = t.reporter_id
-    LEFT JOIN line_accounts rl ON rl.employee_id = t.reporter_id AND rl.channel_key = ${CHANNEL_KEY}
+    LEFT JOIN line_accounts rl ON rl.employee_id = t.reporter_id AND rl.channel_key = ANY(${CHANNEL_KEYS_READ})
     LEFT JOIN employees a ON a.id = t.assignee_id
     WHERE t.id = ${id} LIMIT 1
   `;

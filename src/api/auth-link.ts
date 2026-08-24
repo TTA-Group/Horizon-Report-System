@@ -8,7 +8,7 @@
 // และฝ่ายบุคคลเพิ่มคนใหม่เองได้จากหน้าผู้ดูแล ทางลัดนี้จึงถูกปิด
 
 import { getSession, invalidateSessionByLineUserId } from "./_lib/auth";
-import { CHANNEL_KEY } from "./_lib/constants";
+import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 
@@ -38,7 +38,7 @@ export default async (req: Request): Promise<Response> =>
 
     const already = await sql`
       SELECT 1 FROM line_accounts
-      WHERE employee_id = ${employeeId} AND channel_key = ${CHANNEL_KEY} LIMIT 1
+      WHERE employee_id = ${employeeId} AND channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
     `;
     if (already.length > 0) {
       throw new HttpError(

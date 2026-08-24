@@ -1,0 +1,29 @@
+# การตั้งค่า Cloudflare Workers สำหรับ Horizon Core — ระบบกลางขององค์กร
+#
+# deploy แยกจากระบบแจ้งปัญหา:  npx wrangler deploy --config wrangler.core.toml
+#
+# Worker ตัวนี้ทำแค่ลงทะเบียนพนักงานกับหน้าจัดการข้อมูลของ HR ไม่มีงานตามเวลา
+# และไม่รับ webhook ของไลน์ (ตัวรับ webhook ยังเป็นระบบแจ้งปัญหาเหมือนเดิม)
+#
+# ใช้ฐานข้อมูลตัวเดียวกับระบบอื่น จึงต้องตั้ง DATABASE_URL, LINE_LOGIN_CHANNEL_ID
+# และ ADMIN_EMPLOYEE_CODES ที่ Worker ตัวนี้ด้วย (Settings → Variables and Secrets)
+# ค่าลับห้ามใส่ลงไฟล์นี้เพราะไฟล์นี้อยู่ใน repo สาธารณะ
+
+name = "core"
+main = "src/core.ts"
+compatibility_date = "2025-01-01"
+
+# postgres ต้องใช้ TCP · node:crypto ใช้ตรวจ ID token ของไลน์
+compatibility_flags = ["nodejs_compat"]
+
+# หน้าเว็บของระบบกลาง — คนละชุดกับ public/ ของระบบแจ้งปัญหา
+# ไม่ต้องใช้ run_worker_first เพราะหน้านี้ไม่ได้ถูกแชร์เป็นลิงก์ในแชท จึงไม่ต้องเติมโดเมนใน og:*
+[assets]
+directory = "./public-core"
+binding = "ASSETS"
+
+# LIFF ของระบบกลาง — คนละตัวกับของระบบแจ้งปัญหา สร้างเพิ่มใน LINE Developers Console
+# ใต้ LINE Login channel เดิม (ต้องเป็น channel เดิม ID token จึงใช้ร่วมกันได้)
+# ค่าเดียวกันนี้ต้องไปใส่ใน public-core/config.js ด้วย
+[vars]
+LIFF_ID = "ตั้งค่าให้ตรงกับ LIFF ของระบบกลาง"

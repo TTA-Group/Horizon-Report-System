@@ -7,7 +7,7 @@
 // และจำกัดจำนวนครั้งที่ลองต่อบัญชี LINE หนึ่งบัญชี
 
 import { getSession } from "./_lib/auth";
-import { CHANNEL_KEY } from "./_lib/constants";
+import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 
@@ -65,7 +65,7 @@ export default async (req: Request): Promise<Response> =>
     const e = rows[0];
     const linked = await sql`
       SELECT 1 FROM line_accounts
-      WHERE employee_id = ${e.id} AND channel_key = ${CHANNEL_KEY} LIMIT 1
+      WHERE employee_id = ${e.id} AND channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
     `;
 
     return json({

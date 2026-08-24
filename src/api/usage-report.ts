@@ -2,7 +2,7 @@
 //
 // รวมยอดของเดือนก่อนหน้าจาก message_logs แล้ว push สรุปให้ผู้ดูแลระบบ (ADMIN_EMPLOYEE_CODES)
 
-import { CHANNEL_KEY, adminCodes } from "./_lib/constants";
+import { CHANNEL_KEY, CHANNEL_KEYS_READ, adminCodes } from "./_lib/constants";
 import { assertCron } from "./_lib/cron";
 import { db } from "./_lib/db";
 import { json, run } from "./_lib/http";
@@ -33,7 +33,7 @@ export default async (req: Request): Promise<Response> =>
       const admins = await sql<{ line_user_id: string }[]>`
         SELECT la.line_user_id
         FROM employees e
-        JOIN line_accounts la ON la.employee_id = e.id AND la.channel_key = ${CHANNEL_KEY}
+        JOIN line_accounts la ON la.employee_id = e.id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
         WHERE e.employee_code = ANY(${codes})
       `;
       for (const a of admins) {

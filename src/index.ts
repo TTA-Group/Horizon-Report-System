@@ -12,8 +12,6 @@ import { safeErrorText } from "./api/_lib/http";
 
 import health from "./api/health";
 import authSession from "./api/auth-session";
-import authVerifyEmployee from "./api/auth-verify-employee";
-import authLink from "./api/auth-link";
 import masters from "./api/masters";
 import ticketsCreate from "./api/tickets-create";
 import ticketsDetail from "./api/tickets-detail";
@@ -25,11 +23,6 @@ import reportsSummary from "./api/reports-summary";
 import reportsView from "./api/reports-view";
 import ticketsTransfer from "./api/tickets-transfer";
 import uploads from "./api/uploads";
-import adminEmployees from "./api/admin-employees";
-import adminEmployeeCreate from "./api/admin-employee-create";
-import adminEmployeeSuspend from "./api/admin-employee-suspend";
-import adminEmployeeUnlink from "./api/admin-employee-unlink";
-import adminEmployeeDepartments from "./api/admin-employee-departments";
 import lineWebhook from "./api/line-webhook";
 import cronReminders from "./api/cron-reminders";
 
@@ -54,11 +47,11 @@ function route(pathname: string, method: string): Handler | null {
   const seg = pathname.split("/").filter(Boolean); // เช่น ['api','tickets','<id>','status']
   if (seg[0] !== "api") return null;
 
-  // /api/auth/*
+  // /api/auth/session — ระบบนี้แค่ "อ่าน" ว่าคนที่เข้ามาเป็นใครและมีสิทธิ์อะไร
+  // ส่วนการลงทะเบียนผูกบัญชี (verify-employee / link) ย้ายไปอยู่ที่ระบบกลางแล้ว
+  // มีที่เดียวเพื่อไม่ให้มีสองทางที่เขียนตาราง line_accounts ได้ (ดู src/core.ts)
   if (seg[1] === "auth" && seg.length === 3) {
     if (seg[2] === "session") return authSession;
-    if (seg[2] === "verify-employee") return authVerifyEmployee;
-    if (seg[2] === "link") return authLink;
     return null;
   }
 
@@ -81,15 +74,6 @@ function route(pathname: string, method: string): Handler | null {
     if (seg.length === 4 && seg[3] === "assess") return ticketsAssess;
     if (seg.length === 4 && seg[3] === "progress") return ticketsProgress;
     if (seg.length === 4 && seg[3] === "rate") return ticketsRate;
-    return null;
-  }
-
-  // /api/admin/employees (GET = รายชื่อ, POST = เพิ่มคน), /api/admin/employees/:id/{suspend,unlink}
-  if (seg[1] === "admin" && seg[2] === "employees") {
-    if (seg.length === 3) return method === "POST" ? adminEmployeeCreate : adminEmployees;
-    if (seg.length === 5 && seg[4] === "suspend") return adminEmployeeSuspend;
-    if (seg.length === 5 && seg[4] === "unlink") return adminEmployeeUnlink;
-    if (seg.length === 5 && seg[4] === "departments") return adminEmployeeDepartments;
     return null;
   }
 

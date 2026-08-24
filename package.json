@@ -9,7 +9,9 @@
   },
   "scripts": {
     "dev": "wrangler dev",
+    "dev:core": "wrangler dev --config wrangler.core.toml",
     "deploy": "wrangler deploy",
+    "deploy:core": "wrangler deploy --config wrangler.core.toml",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },

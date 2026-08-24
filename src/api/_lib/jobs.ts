@@ -1,6 +1,6 @@
 // ตรรกะของงานตามเวลาที่ใช้ร่วมกัน (เรียกได้ทั้งจาก scheduled function และ endpoint /api/cron/*)
 
-import { CATEGORY_BY_CODE, CHANNEL_KEY, type UrgencyCode } from "./constants";
+import { CATEGORY_BY_CODE, CHANNEL_KEY, CHANNEL_KEYS_READ, type UrgencyCode } from "./constants";
 import { db } from "./db";
 import { buildCompactFlex, buildTicketFlex, overdueCard, partsFollowUpCard } from "./flex";
 import { multicastTo, pushTo, textMessage } from "./line";
@@ -108,7 +108,7 @@ export async function runReminders(): Promise<{ checked: number; notified: numbe
     if (nextCount >= 2 && t.escalate_to) {
       const head = await sql<{ line_user_id: string }[]>`
         SELECT line_user_id FROM line_accounts
-        WHERE employee_id = ${t.escalate_to} AND channel_key = ${CHANNEL_KEY} LIMIT 1
+        WHERE employee_id = ${t.escalate_to} AND channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
       `;
       if (head.length > 0) {
         await pushTo(head[0].line_user_id, [textMessage(`เรื่อง ${t.ticket_no} ยังไม่มีผู้รับเกินกำหนด กรุณาติดตาม`), flex], {
@@ -181,7 +181,7 @@ export async function runProgressReminders(): Promise<{ checked: number; notifie
     JOIN departments d ON d.id = t.department_id
     JOIN employees r ON r.id = t.reporter_id
     LEFT JOIN employees a ON a.id = t.assignee_id
-    LEFT JOIN line_accounts la ON la.employee_id = t.assignee_id AND la.channel_key = ${CHANNEL_KEY}
+    LEFT JOIN line_accounts la ON la.employee_id = t.assignee_id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
     WHERE t.status = 'in_progress'
       AND (
         t.assessed_at IS NULL
@@ -252,7 +252,7 @@ export async function runProgressReminders(): Promise<{ checked: number; notifie
     if (escalate && t.escalate_to) {
       const head = await sql<{ line_user_id: string }[]>`
         SELECT line_user_id FROM line_accounts
-        WHERE employee_id = ${t.escalate_to} AND channel_key = ${CHANNEL_KEY} LIMIT 1
+        WHERE employee_id = ${t.escalate_to} AND channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
       `;
       if (head.length > 0) {
         const why =
