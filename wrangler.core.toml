@@ -22,8 +22,9 @@ compatibility_flags = ["nodejs_compat"]
 directory = "./public-core"
 binding = "ASSETS"
 
-# LIFF ของระบบกลาง — คนละตัวกับของระบบแจ้งปัญหา สร้างเพิ่มใน LINE Developers Console
-# ใต้ LINE Login channel เดิม (ต้องเป็น channel เดิม ID token จึงใช้ร่วมกันได้)
-# ค่าเดียวกันนี้ต้องไปใส่ใน public-core/config.js ด้วย
-[vars]
-LIFF_ID = "2008960303-Mo62V7fU"
+# ไม่มี [vars] — Worker ตัวนี้ไม่ต้องรู้ LIFF ID
+#
+# ฝั่งเซิร์ฟเวอร์อ่าน LIFF_ID ที่เดียวคือ _lib/flex.ts ซึ่งเป็นตัวประกอบลิงก์ "เปิดในแอป"
+# บนปุ่มของการ์ดที่ส่งเข้าไลน์ ระบบกลางไม่ได้ส่งการ์ดเข้าไลน์จึงไม่แตะไฟล์นั้นเลย
+#
+# LIFF ID ของระบบกลางอยู่ใน public-core/config.js ซึ่งเป็นฝั่งเบราว์เซอร์ คนละตัวกัน

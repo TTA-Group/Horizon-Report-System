@@ -112,17 +112,18 @@ psql "$DATABASE_URL" -f db/add-core-channel.sql   # ★ ระบบที่ใ
 
 | LIFF | ใส่ค่าที่ | หมายเหตุ |
 | --- | --- | --- |
-| ระบบกลาง | `public-core/config.js` (`liffId`) และ `wrangler.core.toml` | ปลายทางของปุ่ม "ไปหน้าลงทะเบียน" |
+| ระบบกลาง | `public-core/config.js` (`liffId`) เท่านั้น | ปลายทางของปุ่ม "ไปหน้าลงทะเบียน" · ฝั่ง Worker ไม่ต้องรู้ค่านี้ |
 | ระบบแจ้งปัญหา | `public/config.js` (`liffId`) และ `wrangler.toml` | ค่าเดิม ไม่ต้องเปลี่ยน |
 
 และใส่ LIFF ID **ของระบบกลาง** ลงใน `public/config.js` ช่อง `coreLiffId` ด้วย เพื่อให้ระบบแจ้งปัญหา
 พาคนที่ยังไม่ได้ลงทะเบียนไปถูกที่ · ถ้ายังไม่ตั้ง หน้าจะซ่อนปุ่มแล้วบอกให้ติดต่อผู้ดูแลแทน
 ไม่ปล่อยให้กดแล้วเงียบเหมือนปุ่มเสีย
 
-**ค่าตั้งค่าที่ Worker `core` ต้องมี** — `DATABASE_URL` · `LINE_LOGIN_CHANNEL_ID` ·
-`ADMIN_EMPLOYEE_CODES` (ตัวเลือก) ตั้งแยกที่ Worker ตัวนั้นเอง ค่าไม่ได้แชร์ข้าม Worker
-ส่วน `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` และค่าที่เกี่ยวกับไฟล์แนบ
-ไม่ต้องตั้งที่ `core` เพราะไม่ได้ส่งข้อความหรือรับ webhook
+**ค่าตั้งค่าที่ Worker `core` ต้องมี — แค่สองตัว** `DATABASE_URL` กับ `LINE_LOGIN_CHANNEL_ID`
+(เพิ่ม `ADMIN_EMPLOYEE_CODES` ได้ถ้าต้องการรายชื่อผู้ดูแลสำรอง) ตั้งแยกที่ Worker ตัวนั้นเอง
+ค่าไม่ได้แชร์ข้าม Worker · `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, ค่าที่เกี่ยวกับ
+ไฟล์แนบ และ `LIFF_ID` **ไม่ต้องตั้งที่ `core`** เพราะไม่ได้ส่งข้อความ ไม่ได้รับ webhook
+และไม่ได้สร้างการ์ดที่มีลิงก์เปิดแอป
 
 ```bash
 npm run typecheck    # ตรวจชนิดข้อมูล (ครอบคลุมทั้งสอง Worker)
