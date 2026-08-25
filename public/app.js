@@ -51,7 +51,11 @@ async function api(path, { method = "GET", body } = {}) {
     // ผู้ดูแลเพิ่งปลดสิทธิ์หรือระงับสิทธิ์ระหว่างที่เปิดแอปค้างไว้ — พาไปหน้าที่ถูกต้องเลย
     // ไม่ปล่อยให้กดต่อแล้วเจอข้อความปฏิเสธซ้ำ ๆ โดยไม่รู้ว่าเกิดอะไรขึ้น
     if (data.code === "not_linked" || data.code === "suspended") accessLost(data.code);
-    const err = new Error(data.error || `เกิดข้อผิดพลาด (${res.status})`);
+    // เซิร์ฟเวอร์ส่งสาเหตุจริงมาใน detail เฉพาะตอนพังแบบไม่คาดคิด (500) — เอามาต่อท้ายด้วย
+    // ไม่งั้นหน้าจอขึ้นแค่ "internal error" ซึ่งไม่ช่วยอะไรเลย ต้องไปเปิด /api/health เองถึงจะรู้
+    // ค่านี้ผ่าน safeErrorText มาแล้ว จึงไม่มี connection string หลุดออกมา และถูกตัดที่ 200 ตัวอักษร
+    const base = data.error || `เกิดข้อผิดพลาด (${res.status})`;
+    const err = new Error(data.detail ? `${base} — ${data.detail}` : base);
     err.code = data.code;
     throw err;
   }
