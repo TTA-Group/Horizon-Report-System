@@ -26,4 +26,4 @@ binding = "ASSETS"
 # ใต้ LINE Login channel เดิม (ต้องเป็น channel เดิม ID token จึงใช้ร่วมกันได้)
 # ค่าเดียวกันนี้ต้องไปใส่ใน public-core/config.js ด้วย
 [vars]
-LIFF_ID = "ตั้งค่าให้ตรงกับ LIFF ของระบบกลาง"
+LIFF_ID = "2008960303-Mo62V7fU"
