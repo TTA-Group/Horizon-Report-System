@@ -91,6 +91,45 @@ function setTab(id) {
   $$(".tabbar button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.tab === id)));
 }
 
+
+/**
+ * ล็อกอินของไลน์ค้างสถานะเก่าไว้ — ล้างแล้วลองใหม่ให้หนึ่งครั้ง
+ *
+ * อาการคือ "code_verifier does not match" เกิดเมื่อการล็อกอินรอบก่อนค้างครึ่งทาง
+ * (ปิดหน้าไปกลางคัน · เปิดซ้ำเร็วเกินไป · เปิดตอนที่ยังตั้งค่า LIFF ไม่เสร็จ)
+ * ตัวยืนยันที่เก็บไว้ในเครื่องจึงไม่ตรงกับรหัสที่ไลน์ส่งกลับมา
+ *
+ * ของเดิมขึ้นหน้า "เกิดข้อผิดพลาด" แล้วจบ ผู้ใช้ต้องไปปิดแอปไลน์ทั้งแอปเองถึงจะหาย
+ * ซึ่งไม่มีทางเดาได้ จึงล้างสถานะแล้วโหลดใหม่ให้เลย ทำครั้งเดียวพอ
+ * ถ้าครั้งที่สองยังพังก็แปลว่าเป็นปัญหาอื่นจริง ๆ ต้องให้เห็นข้อความจริงไม่ใช่วนซ้ำ
+ */
+const LOGIN_RETRY_KEY = "liff-login-retried";
+const LOGIN_STATE_ERROR = /code[_ ]?verifier|invalid_grant|state does not match/i;
+
+function recoverFromStaleLogin(err) {
+  const msg = (err && (err.message || err.toString())) || "";
+  if (!LOGIN_STATE_ERROR.test(msg)) return false;
+  try {
+    if (sessionStorage.getItem(LOGIN_RETRY_KEY)) return false; // ลองไปแล้วรอบหนึ่ง
+    sessionStorage.setItem(LOGIN_RETRY_KEY, "1");
+  } catch {
+    return false; // เบราว์เซอร์ปิด storage ไว้ — กันวนซ้ำไม่ได้ก็อย่าลองดีกว่า
+  }
+  try {
+    if (window.liff && liff.logout) liff.logout();
+  } catch {
+    /* ล้างไม่ได้ก็ไม่เป็นไร โหลดใหม่อาจพอ */
+  }
+  // ตัดเฉพาะพารามิเตอร์ของ oauth ที่หมดอายุแล้วออก ของเราเก็บไว้ครบ
+  // ไม่งั้นปุ่มบนการ์ดในไลน์จะพาเข้ามาแล้วลืมว่ากดมาจากเรื่องไหน
+  const url = new URL(location.href);
+  for (const k of ["code", "state", "error", "error_description", "liffClientId", "liffRedirectUri"]) {
+    url.searchParams.delete(k);
+  }
+  location.replace(url.toString());
+  return true;
+}
+
 /* ---------- boot ---------- */
 async function boot() {
   try {
@@ -109,8 +148,10 @@ async function boot() {
     mastersPromise = api("/api/masters").catch(() => null);
     deepLink = readDeepLink();
     session = await api("/api/auth/session", { method: "POST" });
+    try { sessionStorage.removeItem(LOGIN_RETRY_KEY); } catch { /* noop */ }
     routeBySession();
   } catch (e) {
+    if (recoverFromStaleLogin(e)) return;
     $("#err-msg").textContent = e.message || String(e);
     show("s-error");
   }
