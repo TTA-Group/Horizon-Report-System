@@ -7,7 +7,7 @@
  * apiBase    — เว้นว่างไว้ เพราะหน้าเว็บกับ API อยู่โดเมนเดียวกัน
  */
 window.APP_CONFIG = {
-  liffId: "ยังไม่ได้ตั้งค่า",
+  liffId: "2008960303-qy15ZTtu",
   coreLiffId: "2008960303-Mo62V7fU",
   apiBase: "",
 };
