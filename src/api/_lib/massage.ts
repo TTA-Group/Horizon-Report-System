@@ -45,6 +45,8 @@ const TH_MONTHS = [
   "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
 ];
 const TH_DOW = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+// ตัวย่อวันตามที่ใช้กันจริง ไม่ใช่การตัดสองตัวอักษรแรก (ศุกร์ ย่อว่า ศ. ไม่ใช่ ศุ.)
+const TH_DOW_SHORT = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
 
@@ -95,8 +97,8 @@ export function thaiDayLabel(day: string): string {
 /** "2026-09-04" -> "ศ. 4 ก.ย." — ใช้บนชิปเลือกวันที่ที่แคบ */
 export function thaiDayChip(day: string): string {
   const [y, m, d] = day.split("-").map(Number);
-  const dow = TH_DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-  return `${dow.slice(0, 2)}. ${d} ${TH_MONTHS[m - 1]}`;
+  const dow = TH_DOW_SHORT[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${dow} ${d} ${TH_MONTHS[m - 1]}`;
 }
 
 /** รอบเวลาแบบเต็ม "10:00" -> "10:00–10:30" */

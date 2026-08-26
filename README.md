@@ -22,14 +22,15 @@
 
 ---
 
-## สองระบบใน repo เดียว
+## สามระบบใน repo เดียว
 
-repo นี้ deploy เป็น **Worker สองตัว** ใช้ฐานข้อมูลเดียวกันและแชร์โค้ดใน `src/api/_lib/` ร่วมกัน
+repo นี้ deploy เป็น **Worker สามตัว** ใช้ฐานข้อมูลเดียวกันและแชร์โค้ดใน `src/api/_lib/` ร่วมกัน
 
 | Worker | ทำอะไร | ตั้งค่า | คำสั่ง deploy |
 | --- | --- | --- | --- |
 | `core` | ลงทะเบียนพนักงาน · หน้าจัดการทะเบียนของ HR | `wrangler.core.toml` · `public-core/` | `npm run deploy:core` |
 | `report` | ระบบแจ้งปัญหา (คิวงาน · รายงาน · webhook · งานตามเวลา) | `wrangler.toml` · `public/` | `npm run deploy` |
+| `massage` | ระบบจองคิวนวด (จอง · ยกเลิก · ฟอร์มเช็คชื่อ · เตือน) | `wrangler.massage.toml` · `public-massage/` | `npm run deploy:massage` |
 
 **ทำไมต้องแยก** — พนักงานต้องลงทะเบียนครั้งเดียวแล้วใช้ได้ทุกระบบ ถ้าหน้าลงทะเบียนฝังอยู่ใน
 ระบบแจ้งปัญหา ระบบที่สอง (จองคิวนวด) ก็ต้องมีหน้าลงทะเบียนของตัวเองอีกชุด กลายเป็นสองที่
@@ -44,17 +45,22 @@ repo นี้ deploy เป็น **Worker สองตัว** ใช้ฐา
 ```
 public-core/     หน้าเว็บ LIFF ของระบบกลาง — ลงทะเบียน + ทะเบียนพนักงาน (★ ตั้ง liffId ใน config.js)
 public/          หน้าเว็บ LIFF ของระบบแจ้งปัญหา (★ ตั้ง liffId และ coreLiffId ใน config.js)
+public-massage/  หน้าเว็บ LIFF ของระบบจองคิวนวด (★ ตั้ง liffId และ coreLiffId ใน config.js)
 src/core.ts      จุดเข้าของ Worker "core" — /api/auth/*, /api/admin/*, /api/masters, /api/health
 src/index.ts     จุดเข้าของ Worker "report" — /api/tickets*, /api/reports/*, webhook, งานตามเวลา
-src/api/         ตัวจัดการแต่ละ endpoint (ใช้ร่วมกันทั้งสอง Worker)
+src/massage.ts   จุดเข้าของ Worker "massage" — /api/massage/*, /api/cron/*, งานตามเวลา
+src/api/         ตัวจัดการแต่ละ endpoint (ใช้ร่วมกันทั้งสาม Worker)
   _lib/          โค้ดใช้ร่วม (db, auth, line, flex, jobs, reports, constants, env)
 db/              schema.sql · seed.sql · enable-rls.sql · cleanup-sample-data.sql · reset-tickets.sql
                  add-followup.sql (เพิ่มคอลัมน์ของขั้นตอนแจ้งผลตรวจสอบ)
                  add-rating.sql (เพิ่มคอลัมน์ความพึงพอใจหลังปิดงาน)
                  add-core-channel.sql (ย้ายการผูกบัญชีมาเป็นกุญแจกลาง — ★ ต้องรันตอนแยกระบบ)
                  import-employees.template.sql (นำเข้าพนักงานเป็นชุด — ห้ามใส่ข้อมูลจริงลงในที่เก็บโค้ด)
-wrangler.toml       การตั้งค่า Worker "report" (assets, nodejs_compat, cron triggers, LIFF_ID)
-wrangler.core.toml  การตั้งค่า Worker "core"
+                 massage-schema.sql (ตารางของระบบจองคิวนวด + วันหยุด + ค่าตั้งของระบบ)
+                 massage-seed.sql (รายชื่อหมอนวด ค่าตั้งเริ่มต้น และวันหยุดที่ตรงวันเดิมทุกปี)
+wrangler.toml          การตั้งค่า Worker "report" (assets, nodejs_compat, cron triggers, LIFF_ID)
+wrangler.core.toml     การตั้งค่า Worker "core"
+wrangler.massage.toml  การตั้งค่า Worker "massage"
 ```
 
 **API ของ `core`** — `/api/auth/session` ใครคือใครและมีสิทธิ์อะไร · `/api/auth/verify-employee`
@@ -74,8 +80,15 @@ wrangler.core.toml  การตั้งค่า Worker "core"
 ตั้งไว้แล้วหรือยัง (true/false เท่านั้น ไม่แสดงค่า) · ต่อฐานข้อมูล/LINE ได้หรือไม่ พร้อมเวลาที่ใช้ ·
 และ**ฝ่ายไหนยังไม่ผูกกลุ่ม หรือฝ่ายไหนใช้กลุ่มร่วมกัน** (ไม่แสดงรหัสกลุ่มจริง)
 
-**งานตามเวลา** เตือนซ้ำ (ทุก 15 นาที) · db-keepalive (รายวัน) · backup (รายสัปดาห์) ·
-cleanup-files (รายเดือน) · usage-report (ต้นเดือน)
+**API ของ `massage`** — `/api/massage/state` สถานะระบบ วันที่เปิดจอง สิทธิ์ที่เหลือ และคิวของตัวเอง ·
+`/api/massage/day` ตารางคิวว่างของวันหนึ่ง (บอกแค่ว่างหรือไม่ว่าง ไม่มีชื่อใครในนั้น) ·
+`/api/massage/book` กับ `/api/massage/cancel` · `/api/massage/admin/sheet` กับ `/api/massage/admin/attend`
+ฟอร์มเช็คชื่อและการกด มา/ไม่มา (เฉพาะผู้ดูแล) · `/api/massage/sheet?t=...` หน้าพร้อมพิมพ์
+เปิดได้ด้วยลิงก์ที่เซ็นกำกับอายุ 48 ชั่วโมง
+
+**งานตามเวลา** — `report`: เตือนซ้ำ (ทุก 15 นาที) · db-keepalive (รายวัน) · backup (รายสัปดาห์) ·
+cleanup-files (รายเดือน) · usage-report (ต้นเดือน) — `massage`: open-month (รายวัน 08:00) ·
+remind-eve (รายวัน 17:00) · remind-soon (ทุก 15 นาที ช่วง 09:00–16:45)
 
 ---
 

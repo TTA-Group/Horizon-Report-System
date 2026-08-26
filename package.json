@@ -10,8 +10,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "dev:core": "wrangler dev --config wrangler.core.toml",
+    "dev:massage": "wrangler dev --config wrangler.massage.toml",
     "deploy": "wrangler deploy",
     "deploy:core": "wrangler deploy --config wrangler.core.toml",
+    "deploy:massage": "wrangler deploy --config wrangler.massage.toml",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },
