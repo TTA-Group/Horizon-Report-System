@@ -40,6 +40,9 @@ export const SERVICE_ISODOW = 5;
 /** เวลาเปิดจองของวันที่ 1 ถ้าไม่ได้ตั้งค่าไว้ใน app_settings */
 export const DEFAULT_OPEN_HOUR = 9;
 
+/** จองได้วันละกี่คิวต่อคน — หนึ่ง เพื่อให้สิทธิ์ 2 ครั้งกลายเป็นสองวันคนละสัปดาห์ */
+export const DAILY_LIMIT = 1;
+
 const TH_MONTHS = [
   "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
   "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
@@ -101,11 +104,17 @@ export function thaiDayChip(day: string): string {
   return `${dow} ${d} ${TH_MONTHS[m - 1]}`;
 }
 
-/** รอบเวลาแบบเต็ม "10:00" -> "10:00–10:30" */
+/**
+ * รอบเวลาแบบเต็ม "10:00" -> "10.00-10.30"
+ *
+ * ใช้จุดคั่นชั่วโมงกับนาทีตามที่เขียนกันในเอกสารภาษาไทย ไม่ใช่ทวิภาคแบบนาฬิกาดิจิทัล
+ * ค่าที่เก็บในฐานข้อมูลยังเป็น TIME ปกติ (10:00) เปลี่ยนแค่ตอนแสดงผล
+ */
 export function slotLabel(slot: string): string {
   const [hh, mm] = slot.split(":").map(Number);
   const end = hh * 60 + mm + SLOT_MINUTES;
-  return `${slot}–${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`;
+  const dot = (h: number, m: number) => `${String(h).padStart(2, "0")}.${String(m).padStart(2, "0")}`;
+  return `${dot(hh, mm)}-${dot(Math.floor(end / 60), end % 60)}`;
 }
 
 /** วันศุกร์ทุกวันของเดือนที่ day อยู่ (ยังไม่ตัดวันหยุด) */
@@ -133,6 +142,22 @@ async function settings(): Promise<Map<string, string>> {
 function openHourOf(s: Map<string, string>): number {
   const raw = Number(s.get("massage.open_hour"));
   return Number.isInteger(raw) && raw >= 0 && raw <= 23 ? raw : DEFAULT_OPEN_HOUR;
+}
+
+/**
+ * เดือนแรกที่เปิดให้จอง ("YYYY-MM") · คืน null เมื่อไม่ได้ตั้งไว้ = เปิดตั้งแต่เดือนไหนก็ได้
+ *
+ * มีไว้ใช้ตอนขึ้นระบบใหม่ ถ้าเปลี่ยนระบบกลางเดือน เดือนนั้นจะเหลือวันศุกร์แค่วันสองวัน
+ * ซึ่งไม่พอให้ทุกคนได้ใช้สิทธิ์ และทำให้เดือนแรกดูเหมือนระบบมีคิวน้อยผิดปกติ
+ */
+function startMonthOf(s: Map<string, string>): string | null {
+  const raw = (s.get("massage.start_month") ?? "").trim();
+  return /^\d{4}-\d{2}$/.test(raw) ? raw : null;
+}
+
+/** เดือนของวันนี้ยังไม่ถึงเดือนแรกที่เปิดจองหรือไม่ */
+function beforeStartMonth(day: string, start: string | null): boolean {
+  return start !== null && day.slice(0, 7) < start;
 }
 
 /** ฝ่ายที่ดูแลคิวนวดหน้างาน ถ้าไม่ได้ตั้งไว้ใน app_settings */
@@ -165,6 +190,9 @@ export async function assertMassageStaff(s: Session): Promise<void> {
  * วันที่ถูกปิดด้วยมือไปแล้วจะไม่ถูกเปิดกลับ (ON CONFLICT DO NOTHING)
  */
 export async function ensureMonthDays(day: string): Promise<string[]> {
+  // เดือนที่ยังไม่ถึงกำหนดเปิด ไม่ต้องสร้างวันไว้ให้รก
+  if (beforeStartMonth(day, startMonthOf(await settings()))) return [];
+
   const candidates = serviceDaysOfMonth(day);
   if (candidates.length === 0) return [];
 
@@ -222,6 +250,14 @@ export async function massageState(employeeId: string, now = new Date()): Promis
   }
 
   const openHour = openHourOf(cfg);
+  const start = startMonthOf(cfg);
+
+  // ยังไม่ถึงเดือนแรกที่เปิดให้จอง — บอกวันเวลาที่จะเปิดไปเลย
+  if (beforeStartMonth(today, start)) {
+    const at = monthOpensAt(`${start}-01`, openHour);
+    return { open: false, reason: "not_yet", opensAt: at.toISOString(), days: [], ...quota };
+  }
+
   const opensAt = monthOpensAt(today, openHour);
   if (now < opensAt) {
     return { open: false, reason: "not_yet", opensAt: opensAt.toISOString(), days: [], ...quota };
@@ -419,7 +455,7 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
   if (cfg.get("massage.enabled") === "false") {
     throw new HttpError(409, "ระบบจองปิดให้บริการชั่วคราว");
   }
-  if (now < monthOpensAt(day, openHourOf(cfg))) {
+  if (beforeStartMonth(day, startMonthOf(cfg)) || now < monthOpensAt(day, openHourOf(cfg))) {
     throw new HttpError(409, "ยังไม่ถึงเวลาเปิดจองของเดือนนี้");
   }
 
@@ -450,6 +486,16 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
         throw new HttpError(409, `เดือนนี้ใช้สิทธิ์ครบ ${MONTHLY_QUOTA} ครั้งแล้ว`, "quota_used");
       }
 
+      // วันละคิวเดียว — เช็คตรงนี้เพื่อให้ได้ข้อความที่บอกสาเหตุชัด ๆ ส่วนการกันจริง
+      // เมื่อกดพร้อมกันสองเครื่องอยู่ที่ดัชนี uq_massage_person_day ในฐานข้อมูล
+      const sameDay = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM massage_bookings
+        WHERE employee_id = ${employeeId} AND status = 'booked' AND day = ${day}::date
+      `;
+      if ((sameDay[0]?.n ?? 0) >= DAILY_LIMIT) {
+        throw new HttpError(409, "วันนี้คุณจองไว้แล้ว 1 คิว จองได้วันละคิวเดียว", "same_day");
+      }
+
       const ins = await sql<{ id: string }[]>`
         INSERT INTO massage_bookings (day, slot_start, therapist_id, employee_id)
         VALUES (${day}::date, ${slot}::time, ${therapistId}, ${employeeId})
@@ -460,8 +506,8 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
   } catch (e) {
     if (isUniqueViolation(e)) {
       // แยกสองกรณีให้ชัด เพราะสิ่งที่ผู้ใช้ต้องทำต่อไม่เหมือนกัน
-      if (violatedConstraint(e) === "uq_massage_person_slot") {
-        throw new HttpError(409, "คุณจองรอบเวลานี้ไว้แล้ว เลือกรอบอื่นได้เลย", "own_slot");
+      if (violatedConstraint(e) === "uq_massage_person_day") {
+        throw new HttpError(409, "วันนี้คุณจองไว้แล้ว 1 คิว จองได้วันละคิวเดียว", "same_day");
       }
       throw new HttpError(409, "คิวนี้เพิ่งถูกจองไปเมื่อสักครู่ กรุณาเลือกรอบอื่น", "slot_taken");
     }

@@ -116,9 +116,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_massage_slot
   ON massage_bookings (day, slot_start, therapist_id)
   WHERE status = 'booked';
 
--- คนเดียวอยู่ได้รอบละที่เดียว (ระบบเดิมไม่ได้กันไว้ จองซ้อนเวลาตัวเองกับหมอนวดคนละคนได้)
-CREATE UNIQUE INDEX IF NOT EXISTS uq_massage_person_slot
-  ON massage_bookings (day, slot_start, employee_id)
+-- คนเดียวจองได้วันละคิวเดียว
+--
+-- กันสองอย่างพร้อมกันด้วยดัชนีเดียว:
+--   1. จองซ้อนเวลาตัวเองกับหมอนวดคนละคน (ระบบเดิมไม่ได้กันไว้)
+--   2. จองรอบติดกันสองรอบเพื่อนวดยาวหนึ่งชั่วโมง
+--
+-- แรงกว่าการห้ามเฉพาะรอบติดกัน เพราะคนที่จอง 10:00 กับ 14:00 วันเดียวกันก็ยังกินคิว
+-- ไปสองคิวของวันนั้น ทั้งที่คนอื่นยังไม่ได้เลยสักคิว สิทธิ์ 2 ครั้งต่อเดือนจึงกลายเป็น
+-- "สองวันคนละสัปดาห์" ซึ่งกระจายกว่า
+CREATE UNIQUE INDEX IF NOT EXISTS uq_massage_person_day
+  ON massage_bookings (day, employee_id)
   WHERE status = 'booked';
 
 -- นับสิทธิ์รายเดือนและดึง "คิวของฉัน"

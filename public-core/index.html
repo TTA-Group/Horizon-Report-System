@@ -135,6 +135,23 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .empty{text-align:center;color:var(--slate);font-size:13px;padding:40px 0}
 
 .section{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);margin:4px 0 10px}
+
+/* ฟอร์มเช็คชื่อคิวนวด — งานของผู้ดูแลหน้างาน อยู่ในแอปเดียวกับทะเบียนพนักงาน */
+.tally{display:flex;gap:8px;margin:12px 0 14px}
+.tally div{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:10px 4px;text-align:center;font-size:10.5px;color:var(--slate);line-height:1.4}
+.tally b{display:block;font-size:19px;color:var(--ink);font-weight:600;
+  font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.srow{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;margin-bottom:9px}
+.srow .head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.srow .t{font-size:12.5px;color:var(--slate);font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.srow .who{font-size:11.5px;color:var(--slate)}
+.srow .nm{font-size:14.5px;font-weight:600;margin-top:3px}
+.srow .acts{display:flex;gap:8px;margin-top:11px}
+.srow .acts button{flex:1;font-family:inherit;font-size:13px;font-weight:600;padding:10px;
+  border-radius:11px;border:1.5px solid var(--line);background:var(--surface);color:var(--slate);cursor:pointer}
+.srow .acts button[aria-pressed="true"][data-v="present"]{background:var(--green-soft);border-color:var(--green);color:#0B7A3E}
+.srow .acts button[aria-pressed="true"][data-v="no_show"]{background:#FBE6E1;border-color:var(--alert);color:#B0331B}
 .center{text-align:center;padding:40px 20px}
 .center h2{font-size:17px;font-weight:600;margin:14px 0 6px}
 .center p{font-size:13px;color:var(--slate);line-height:1.6}
@@ -389,7 +406,22 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       <div class="kv2"><b>ชั้นที่ปฏิบัติงาน</b><span id="mg-floor">—</span></div>
     </div>
     <button class="send" id="mg-add">+ เพิ่มพนักงานใหม่</button>
+    <button class="send" id="mg-sheet" style="display:none;margin-top:10px;background:#fff;color:#0B7A3E;box-shadow:none;border:1.5px solid var(--green)">ฟอร์มเช็คชื่อคิวนวด</button>
     <button class="ghost" id="mg-close">ปิดหน้านี้</button>
+  </section>
+
+  <!-- ฟอร์มเช็คชื่อคิวนวด -->
+  <section class="screen" id="s-sheet">
+    <div class="section">ฟอร์มเช็คชื่อคิวนวด</div>
+    <label class="q">เลือกวันที่</label>
+    <select id="sheet-day"></select>
+
+    <div class="tally" id="sheet-tally"></div>
+    <button class="send" id="sheet-download" style="background:#fff;color:#0B7A3E;box-shadow:none;border:1.5px solid var(--green)">ดาวน์โหลดฟอร์มพร้อมพิมพ์</button>
+    <p class="tip" style="text-align:center">เปิดในเบราว์เซอร์ของเครื่องแล้วเลือก “บันทึกเป็น PDF” หรือสั่งพิมพ์ลงกระดาษ</p>
+
+    <div style="margin-top:18px" id="sheet-rows"></div>
+    <button class="ghost" id="sheet-back">กลับไปหน้าจัดการ</button>
   </section>
 
   <!-- admin (HR) -->

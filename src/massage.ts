@@ -20,9 +20,6 @@ import massageState from "./api/massage-state";
 import massageDay from "./api/massage-day";
 import massageBook from "./api/massage-book";
 import massageCancel from "./api/massage-cancel";
-import massageSheet from "./api/massage-sheet";
-import massageAdminSheet from "./api/massage-admin-sheet";
-import massageAttend from "./api/massage-attend";
 
 import massageCron from "./api/massage-cron";
 import massageOpenMonth from "./api/massage-open-month";
@@ -51,15 +48,10 @@ function route(pathname: string, method: string): Handler | null {
       if (seg[2] === "day") return massageDay;
       if (seg[2] === "book") return method === "POST" ? massageBook : null;
       if (seg[2] === "cancel") return method === "POST" ? massageCancel : null;
-      // หน้าฟอร์มพร้อมพิมพ์ — เปิดได้ด้วยลิงก์ที่เซ็นกำกับ ไม่ต้องล็อกอิน
-      if (seg[2] === "sheet") return massageSheet;
       return null;
     }
-    if (seg.length === 4 && seg[2] === "admin") {
-      if (seg[3] === "sheet") return massageAdminSheet;
-      if (seg[3] === "attend") return method === "POST" ? massageAttend : null;
-      return null;
-    }
+    // ฟอร์มเช็คชื่อกับการกด มา/ไม่มา ย้ายไปอยู่หน้าจัดการของระบบกลางแล้ว (ดู src/core.ts)
+    // ผู้ดูแลจะได้ทำงานทะเบียนพนักงานกับเช็คชื่อคิวนวดจบในแอปเดียว ไม่ต้องสลับไปมา
     return null;
   }
 

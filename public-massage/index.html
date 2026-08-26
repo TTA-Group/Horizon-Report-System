@@ -14,16 +14,16 @@
 <noscript><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" /></noscript>
 
 <style>
-/* หน้าตายกมาจากหน้าจองเดิมทั้งหมด (การ์ดขาวมุมมน โลโก้ด้านบน ปุ่มเขียวไล่เฉด ฟอนต์ Sarabun)
-   เพื่อให้คนที่เคยใช้ระบบเดิมไม่ต้องเรียนรู้อะไรใหม่
+/* หน้าตายกมาจากหน้าจองเดิม (การ์ดขาวมุมมน โลโก้ด้านบน ปุ่มเขียวไล่เฉด ฟอนต์ Sarabun)
+   แต่เขียน CSS เองทั้งหมด ไม่ดึง Bootstrap กับ SweetAlert2 จาก CDN
 
-   ต่างจากของเดิมอย่างเดียวคือไม่ได้ดึง Bootstrap กับ SweetAlert2 จาก CDN แล้ว
-   หน้าตาเหมือนกันทุกอย่าง แต่ไม่ต้องรอโหลดไฟล์จากเซิร์ฟเวอร์ภายนอกสองก้อนก่อนหน้าจะขึ้น
-   ซึ่งใน LIFF บนเน็ตมือถือคือความต่างที่รู้สึกได้ และไม่ต้องพึ่งว่าเว็บนอกจะยังอยู่ */
+   การเลือกคิวเป็นแบบ "เลือกเวลาก่อน แล้วค่อยเลือกหมอนวด" ทีละขั้น ไม่ใช่ตารางจุด 32 ช่อง
+   เพราะบนมือถือ ช่องขนาดเท่าจุดกดยากและอ่านไม่ออกว่าช่องไหนคือใครกับกี่โมง
+   ทุกอย่างเขียนเป็นตัวหนังสือเต็ม — เวลา 10.00-10.30 ชื่อหมอนวดเต็ม ช่องที่ไม่ว่างเขียนว่าจองแล้ว */
 :root{
-  --bg:#f0f2f5; --green:#00B900; --green2:#02c202; --green-dark:#008500;
-  --red:#ff4b4b; --red2:#ff0000; --ink:#333; --slate:#555; --muted:#888;
-  --line:#eee; --field:#f9f9f9;
+  --bg:#f0f2f5; --green:#00B900; --green2:#02c202; --green-dark:#00840c;
+  --red:#ff4b4b; --red2:#ff0000; --ink:#333; --slate:#555; --muted:#8a8f94;
+  --line:#eee; --field:#f9f9f9; --border:#e3e6e8;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);font-family:'Sarabun',system-ui,sans-serif;color:var(--ink);
@@ -33,140 +33,132 @@ body{background:var(--bg);font-family:'Sarabun',system-ui,sans-serif;color:var(-
 .card-custom{border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,.1);background:#fff;
   padding:25px;position:relative;overflow:hidden}
 
-/* หัวการ์ด — ใช้ไฟล์โลโก้ถ้ามี ถ้าไม่มีก็ถอยไปเป็นตัวอักษร (ดู logoFallback ใน app.js) */
 .card-header-img{width:100%;height:auto;max-height:200px;object-fit:contain;display:block;
   border-radius:15px;margin-bottom:20px}
-.wordmark{text-align:center;margin-bottom:22px;padding:14px 0 16px;
-  border-bottom:1px solid var(--line)}
+.wordmark{text-align:center;margin-bottom:22px;padding:14px 0 16px;border-bottom:1px solid var(--line)}
 .wordmark b{display:block;font-size:23px;font-weight:700;color:var(--green);letter-spacing:.02em}
 .wordmark span{display:block;font-size:12px;color:var(--muted);margin-top:2px;letter-spacing:.14em}
 
-.header-text{color:var(--green);font-weight:700;margin-bottom:20px;text-align:center;font-size:20px}
-.welcome{text-align:center;font-size:14px;color:var(--green);font-weight:600;margin-bottom:4px}
-.welcome small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:2px}
+.welcome{text-align:center;font-size:15px;color:var(--green-dark);font-weight:600;margin-bottom:4px}
+.welcome small{display:block;color:var(--muted);font-weight:400;font-size:12.5px;margin-top:2px}
 
-.quota{display:flex;align-items:center;justify-content:center;gap:8px;margin:14px 0 4px;
-  background:#f1faf1;border-radius:12px;padding:11px 14px;font-size:13.5px;color:var(--slate)}
-.quota b{color:var(--green-dark);font-weight:700}
+/* ห้ามใช้ flex ตรงนี้ — ตัวเลขอยู่ในแท็ก b ซึ่งจะกลายเป็น flex item แล้วช่องว่างรอบ ๆ หายไปหมด
+   กลายเป็น "เหลือสิทธิ์อีก2จาก2ครั้ง" ติดกันเป็นพืด */
+.quota{text-align:center;margin:16px 0 0;
+  background:#f1faf1;border-radius:12px;padding:13px 14px;font-size:14.5px;color:var(--slate)}
+.quota b{color:var(--green-dark);font-weight:700;font-size:16px}
 .quota.out{background:#fff4f4}
 .quota.out b{color:var(--red2)}
 
-hr.sep{border:0;border-top:1px solid #ddd;margin:22px 0;opacity:.8}
+.linkbar{width:100%;margin-top:10px;background:#fff;border:1.5px solid var(--green);
+  color:var(--green-dark);border-radius:12px;padding:12px;font-family:inherit;font-size:14.5px;
+  font-weight:600;cursor:pointer}
 
-.form-label{font-weight:600;color:var(--slate);font-size:14px;display:block;margin-bottom:8px}
-.form-text{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.55}
-.form-select{width:100%;font-family:inherit;font-size:15px;color:var(--ink);border-radius:10px;
-  padding:12px;border:1px solid var(--line);background:var(--field);outline:none;appearance:none;
-  background-image:linear-gradient(45deg,transparent 50%,#999 50%),linear-gradient(135deg,#999 50%,transparent 50%);
-  background-position:calc(100% - 18px) 21px,calc(100% - 13px) 21px;background-size:5px 5px;background-repeat:no-repeat}
-.form-select:focus{border-color:var(--green);background-color:#fff}
+hr.sep{border:0;border-top:1px solid var(--line);margin:22px 0}
 
-/* ชิปเลือกวัน — เลื่อนแนวนอนได้เมื่อมีหลายวัน */
-.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin:0 -3px;scrollbar-width:none}
+.form-label{font-weight:700;color:var(--ink);font-size:15px;display:block;margin-bottom:10px}
+.form-text{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.6}
+
+/* ── ชิปเลือกวัน ── */
+.days{display:flex;gap:8px;overflow-x:auto;padding:2px 3px 6px;margin:0 -3px;scrollbar-width:none}
 .days::-webkit-scrollbar{display:none}
-.day{flex:0 0 auto;font-family:inherit;font-size:13px;font-weight:600;color:var(--slate);
-  background:var(--field);border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;
-  cursor:pointer;transition:.15s;line-height:1.3;text-align:center}
-.day small{display:block;font-size:10.5px;font-weight:400;color:var(--muted);margin-top:1px}
-.day[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#fff}
-.day[aria-pressed="true"] small{color:rgba(255,255,255,.85)}
-.day[disabled]{opacity:.45;cursor:not-allowed}
+.day{flex:0 0 auto;font-family:inherit;font-size:14px;font-weight:600;color:var(--ink);
+  background:#fff;border:2px solid var(--border);border-radius:14px;padding:11px 15px;
+  cursor:pointer;transition:.15s;line-height:1.35;text-align:center;min-width:104px}
+.day small{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin-top:2px}
+.day[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#fff;
+  box-shadow:0 4px 12px -4px rgba(0,185,0,.6)}
+.day[aria-pressed="true"] small{color:rgba(255,255,255,.9)}
+.day[disabled]{background:var(--field);border-color:var(--line);color:#b6bbc0;cursor:not-allowed}
+.day[disabled] small{color:#b6bbc0}
 
-/* ตารางรอบเวลา x หมอนวด */
-.grid{margin-top:14px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.grow{display:grid;grid-template-columns:52px repeat(var(--cols,4),1fr);gap:0}
-.ghead{background:var(--field);font-size:10px;font-weight:600;color:var(--slate);
-  text-align:center;padding:8px 2px;line-height:1.3;border-bottom:1px solid var(--line);
-  display:flex;align-items:center;justify-content:center;min-height:38px}
-.gtime{font-size:11px;color:var(--muted);display:flex;align-items:center;justify-content:center;
-  background:var(--field);border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
-.cell{border:0;border-bottom:1px solid var(--line);border-left:1px solid var(--line);
-  background:#fff;font-family:inherit;height:40px;cursor:pointer;transition:.12s;
-  display:flex;align-items:center;justify-content:center;font-size:11px;color:#bbb;padding:0}
-.cell::after{content:"";width:9px;height:9px;border-radius:50%;background:#dff3e0}
-.cell[aria-pressed="true"]{background:var(--green)}
-.cell[aria-pressed="true"]::after{width:14px;height:14px;background:#fff}
-.cell.taken{background:#f4f5f6;cursor:not-allowed}
-.cell.taken::after{background:#d7dbdf}
-.cell.mine{background:#eafaf0;cursor:not-allowed}
-.cell.mine::after{background:var(--green);box-shadow:0 0 0 3px rgba(0,185,0,.18)}
-.cell.past{background:#fafafa;cursor:not-allowed}
-.cell.past::after{background:#ececec}
-.gbreak{grid-column:1/-1;background:var(--field);color:var(--muted);font-size:10.5px;
-  text-align:center;padding:6px;letter-spacing:.1em;border-bottom:1px solid var(--line)}
+/* ── รายการรอบเวลา (กดเพื่อกางดูหมอนวด) ── */
+.slots{display:grid;gap:9px;margin-top:4px}
+.slot{border:2px solid var(--border);border-radius:14px;background:#fff;overflow:hidden;transition:.15s}
+.slot.on{border-color:var(--green)}
+.slot.full{background:var(--field);border-color:var(--line)}
+.slothead{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-family:inherit;background:none;border:0;padding:15px 16px;cursor:pointer;text-align:left}
+.slothead .t{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:.01em;
+  font-variant-numeric:tabular-nums}
+.slot.full .slothead .t{color:#a8adb2}
+.slothead .r{display:flex;align-items:center;gap:9px}
+.slothead .f{font-size:13px;font-weight:600;color:var(--green-dark)}
+.slot.full .slothead .f{color:#a8adb2}
+.slothead .caret{width:9px;height:9px;border-right:2.5px solid #b0b5ba;border-bottom:2.5px solid #b0b5ba;
+  transform:rotate(45deg) translate(-2px,-2px);transition:.2s}
+.slot.on .slothead .caret{transform:rotate(-135deg) translate(-3px,-3px);border-color:var(--green)}
+.slot.full .slothead .caret{display:none}
 
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:11.5px;color:var(--muted)}
-.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
-.legend .lv{background:#dff3e0}.legend .lt{background:#d7dbdf}
-.legend .lm{background:var(--green)}.legend .lp{background:#ececec}
+.tlist{display:none;padding:0 12px 12px;gap:8px;grid-template-columns:1fr}
+.slot.on .tlist{display:grid}
+.tbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  font-family:inherit;font-size:15px;font-weight:600;color:var(--ink);text-align:left;
+  background:#fff;border:2px solid var(--border);border-radius:12px;padding:14px 15px;cursor:pointer;transition:.12s}
+.tbtn .tag{font-size:12.5px;font-weight:700;color:var(--green-dark);white-space:nowrap}
+.tbtn[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#fff}
+.tbtn[aria-pressed="true"] .tag{color:#fff}
+.tbtn.taken{background:var(--field);border-color:var(--line);color:#a8adb2;cursor:not-allowed}
+.tbtn.taken .tag{color:#c0433a}
+.tbtn.mine{background:#eafaf0;border-color:var(--green)}
+.tbtn.mine .tag{color:var(--green-dark)}
 
-.pickinfo{margin-top:14px;background:#f1faf1;border-radius:12px;padding:12px 14px;
-  font-size:13.5px;color:var(--slate);line-height:1.6;display:none}
+.pickinfo{margin-top:16px;background:#f1faf1;border:1.5px solid #cfe9d4;border-radius:14px;
+  padding:14px 16px;font-size:15px;color:var(--slate);line-height:1.7;display:none}
 .pickinfo.on{display:block}
 .pickinfo b{color:var(--green-dark)}
 
 .btn-submit{background:linear-gradient(45deg,var(--green),var(--green2));color:#fff;border-radius:50px;
-  padding:15px;width:100%;font-weight:700;border:0;font-size:18px;margin-top:20px;font-family:inherit;
+  padding:15px;width:100%;font-weight:700;border:0;font-size:18px;margin-top:18px;font-family:inherit;
   box-shadow:0 5px 15px rgba(0,185,0,.3);transition:.2s;cursor:pointer}
 .btn-submit:disabled{background:#ccc;box-shadow:none;cursor:not-allowed}
 .btn-submit:active:not(:disabled){transform:translateY(1px)}
 .btn-cancel{background:linear-gradient(45deg,var(--red),var(--red2));color:#fff;border-radius:50px;
-  padding:15px;width:100%;font-weight:700;border:0;font-size:18px;margin-top:20px;font-family:inherit;
+  padding:15px;width:100%;font-weight:700;border:0;font-size:18px;margin-top:18px;font-family:inherit;
   box-shadow:0 5px 15px rgba(255,0,0,.3);transition:.2s;cursor:pointer}
-.btn-cancel:disabled{background:#ccc;box-shadow:none;cursor:not-allowed}
-.btn-ghost{background:none;border:0;color:#666;font-family:inherit;font-size:14px;padding:12px;
+.btn-ghost{background:none;border:0;color:#666;font-family:inherit;font-size:15px;padding:14px;
   width:100%;margin-top:6px;cursor:pointer}
-.btn-outline{background:#fff;border:1.5px solid var(--green);color:var(--green-dark);border-radius:50px;
-  padding:13px;width:100%;font-weight:600;font-size:15px;font-family:inherit;margin-top:12px;cursor:pointer}
+.btn-outline{background:#fff;border:2px solid var(--green);color:var(--green-dark);border-radius:50px;
+  padding:14px;width:100%;font-weight:700;font-size:16px;font-family:inherit;margin-top:12px;cursor:pointer}
 
-/* คิวที่จองไว้ */
-.mine-list{display:grid;gap:10px}
-.mycard{border:1.5px solid #e3eee5;background:#fbfffc;border-radius:14px;padding:14px}
-.mycard.off{border-color:var(--line);background:#fafafa;opacity:.75}
-.myday{font-size:14px;font-weight:600}
-.mytime{font-size:20px;font-weight:700;color:var(--green);margin:3px 0 1px;font-variant-numeric:tabular-nums}
+/* ── คิวของฉัน ── */
+.okbadge{text-align:center;margin-bottom:22px}
+.okbadge .ic{width:66px;height:66px;border-radius:50%;background:#eafaf0;color:var(--green);
+  display:grid;place-items:center;font-size:34px;margin:0 auto 12px}
+.okbadge b{display:block;font-size:21px;font-weight:700;color:var(--green-dark)}
+.okbadge span{display:block;font-size:13.5px;color:var(--muted);margin-top:4px;line-height:1.6}
+
+.mine-list{display:grid;gap:12px}
+.mycard{border:2px solid #d9ecdd;background:#fbfffc;border-radius:16px;padding:16px}
+.mycard.off{border-color:var(--line);background:#fafafa}
+.myday{font-size:15px;font-weight:700}
+.mytime{font-size:26px;font-weight:700;color:var(--green-dark);margin:5px 0 2px;
+  font-variant-numeric:tabular-nums;letter-spacing:.01em}
 .mycard.off .mytime{color:#aaa;text-decoration:line-through}
-.mywho{font-size:12.5px;color:var(--muted)}
-.mycard .btn-cancel{padding:10px;font-size:14px;margin-top:12px;box-shadow:none}
-.mynote{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5}
+.mywho{font-size:14px;color:var(--slate);font-weight:600}
+.mycard .btn-cancel{padding:11px;font-size:15px;margin-top:14px;box-shadow:none}
+.mynote{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.55;
+  background:var(--field);border-radius:10px;padding:9px 11px}
 
-.empty{text-align:center;color:var(--muted);font-size:13.5px;padding:26px 10px;line-height:1.7}
+.empty{text-align:center;color:var(--muted);font-size:14px;padding:26px 10px;line-height:1.8}
 
-/* หน้าปิดระบบ · หน้าลงทะเบียน · หน้าแจ้งเตือน */
+/* ── หน้าปิดระบบ · ลงทะเบียน · แจ้งเตือน ── */
 .center{text-align:center;padding:10px 4px 6px}
 .center .big{font-size:22px;font-weight:700;margin-bottom:12px}
 .center .big.red{color:#dc3545}
-.center .big.green{color:var(--green)}
-.center p{color:var(--slate);font-size:15px;line-height:1.7}
-.center .when{margin-top:16px;background:var(--field);border-radius:12px;padding:14px;
-  font-size:14px;color:var(--slate);line-height:1.6}
-.center .when b{color:var(--ink)}
+.center p{color:var(--slate);font-size:15px;line-height:1.75}
+.center .when{margin-top:18px;background:var(--field);border-radius:14px;padding:16px;
+  font-size:15px;color:var(--slate);line-height:1.7}
+.center .when b{color:var(--ink);font-size:16px}
 
 .spinner{width:34px;height:34px;border:3px solid #dbe5db;border-top-color:var(--green);
   border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.4s}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.4s}.slot,.tbtn,.day{transition:none}}
 .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;
   height:230px;color:var(--muted);font-size:14px;font-weight:600}
 
-/* ฟอร์มเช็คชื่อของผู้ดูแล */
-.sheet-tally{display:flex;gap:10px;margin:14px 0 4px}
-.sheet-tally div{flex:1;background:var(--field);border-radius:12px;padding:10px 6px;text-align:center;
-  font-size:11px;color:var(--muted);line-height:1.4}
-.sheet-tally b{display:block;font-size:19px;color:var(--ink);font-weight:700;
-  font-variant-numeric:tabular-nums}
-.srow{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px}
-.srow .head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
-.srow .t{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.srow .who{font-size:11.5px;color:var(--muted)}
-.srow .nm{font-size:14.5px;font-weight:600;margin-top:2px}
-.srow .acts{display:flex;gap:8px;margin-top:10px}
-.srow .acts button{flex:1;font-family:inherit;font-size:13px;font-weight:600;padding:9px;
-  border-radius:10px;border:1.5px solid var(--line);background:#fff;color:var(--slate);cursor:pointer}
-.srow .acts button[aria-pressed="true"][data-v="present"]{background:#eafaf0;border-color:var(--green);color:var(--green-dark)}
-.srow .acts button[aria-pressed="true"][data-v="no_show"]{background:#fdecea;border-color:var(--red);color:#c62828}
-
-/* modal แทน SweetAlert2 */
+/* ── modal แทน SweetAlert2 ── */
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:40;
   align-items:center;justify-content:center;padding:24px}
 .backdrop.on{display:flex}
@@ -177,17 +169,17 @@ hr.sep{border:0;border-top:1px solid #ddd;margin:22px 0;opacity:.8}
 .modal .ic.warn{background:#fff6e2;color:#e0a800}
 .modal .ic.err{background:#fdecea;color:var(--red2)}
 .modal h3{font-size:19px;font-weight:700;margin-bottom:8px}
-.modal p{font-size:14.5px;color:var(--slate);line-height:1.65}
+.modal p{font-size:15px;color:var(--slate);line-height:1.7;white-space:pre-line}
 .modal .btns{display:flex;gap:10px;margin-top:20px}
-.modal .btns button{flex:1;font-family:inherit;font-size:15px;font-weight:600;padding:12px;
+.modal .btns button{flex:1;font-family:inherit;font-size:15px;font-weight:700;padding:13px;
   border-radius:50px;border:0;cursor:pointer}
 .modal .btns .go{background:var(--green);color:#fff}
 .modal .btns .go.danger{background:var(--red2)}
 .modal .btns .no{background:#eceff1;color:var(--slate)}
 
 #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:#2b3238;color:#fff;
-  font-size:13.5px;padding:12px 20px;border-radius:30px;opacity:0;pointer-events:none;transition:.25s;
-  z-index:50;max-width:88%;text-align:center;line-height:1.5}
+  font-size:14px;padding:13px 22px;border-radius:30px;opacity:0;pointer-events:none;transition:.25s;
+  z-index:50;max-width:88%;text-align:center;line-height:1.55}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 
 .screen{display:none}
@@ -243,53 +235,44 @@ hr.sep{border:0;border-top:1px solid #ddd;margin:22px 0;opacity:.8}
         <p id="closed-body"></p>
         <div class="when" id="closed-when" style="display:none"></div>
       </div>
-      <div id="closed-mine" style="margin-top:22px"></div>
+      <button class="linkbar" id="closed-mine" style="display:none;margin-top:22px">ดูคิวของฉัน</button>
       <button class="btn-ghost" data-close>ปิดหน้านี้</button>
     </section>
 
-    <!-- หน้าหลัก: คิวของฉัน + จองคิวใหม่ -->
-    <section class="screen" id="s-main">
+    <!-- หน้าจอง -->
+    <section class="screen" id="s-book">
       <div class="welcome" id="welcome"></div>
       <div class="quota" id="quota"></div>
+      <button class="linkbar" id="btn-mine" style="display:none">ดูคิวของฉัน</button>
 
-      <div id="mine-wrap" style="display:none">
-        <hr class="sep" />
-        <label class="form-label">คิวของคุณเดือนนี้</label>
-        <div class="mine-list" id="mine-list"></div>
+      <hr class="sep" />
+
+      <label class="form-label">1 · เลือกวันที่</label>
+      <div class="days" id="days"></div>
+
+      <label class="form-label" style="margin-top:24px">2 · เลือกเวลาและหมอนวด</label>
+      <div class="slots" id="slots"></div>
+
+      <div class="pickinfo" id="pickinfo"></div>
+      <button class="btn-submit" id="btn-book" disabled>ยืนยันการจอง</button>
+      <p class="form-text" style="text-align:center">
+        จองได้ 2 ครั้งต่อเดือน วันละ 1 คิว · ยกเลิกได้จนถึงก่อนรอบเริ่ม 15 นาที
+      </p>
+    </section>
+
+    <!-- คิวของฉัน (แสดงหลังจองสำเร็จ และเข้าถึงได้จากปุ่มด้านบนของหน้าจอง) -->
+    <section class="screen" id="s-mine">
+      <div class="okbadge" id="ok-badge" style="display:none">
+        <div class="ic">✓</div>
+        <b>จองคิวสำเร็จ</b>
+        <span>ระบบส่งการ์ดยืนยันไปที่ไลน์ของคุณแล้ว</span>
       </div>
 
-      <div id="book-wrap">
-        <hr class="sep" />
-        <h3 class="header-text" style="font-size:17px;margin-bottom:16px">จองคิวนวด</h3>
+      <label class="form-label" id="mine-title">คิวของคุณเดือนนี้</label>
+      <div class="mine-list" id="mine-list"></div>
 
-        <label class="form-label">เลือกวันที่</label>
-        <div class="days" id="days"></div>
-
-        <label class="form-label" style="margin-top:20px">เลือกรอบเวลาและหมอนวด</label>
-        <div class="grid"><div class="grow" id="grid"></div></div>
-        <div class="legend">
-          <span><i class="lv"></i>ว่าง</span>
-          <span><i class="lt"></i>ถูกจองแล้ว</span>
-          <span><i class="lm"></i>คิวของคุณ</span>
-          <span><i class="lp"></i>เลยเวลาแล้ว</span>
-        </div>
-
-        <div class="pickinfo" id="pickinfo"></div>
-        <button class="btn-submit" id="btn-book" disabled>ยืนยันการจอง</button>
-        <p class="form-text" style="text-align:center">
-          จองได้ 2 ครั้งต่อเดือน · ยกเลิกได้จนถึงก่อนรอบเริ่ม 15 นาที
-        </p>
-      </div>
-
-      <div id="quota-full" style="display:none">
-        <hr class="sep" />
-        <div class="empty">
-          เดือนนี้คุณใช้สิทธิ์ครบ 2 ครั้งแล้ว<br>
-          หากต้องการเปลี่ยนรอบ ให้ยกเลิกคิวเดิมก่อน แล้วจองใหม่ได้เลย
-        </div>
-      </div>
-
-      <button class="btn-outline" id="btn-admin" style="display:none">ฟอร์มเช็คชื่อ (ผู้ดูแล)</button>
+      <button class="btn-outline" id="btn-book-more">กลับไปหน้าจอง</button>
+      <button class="btn-ghost" id="btn-mine-close">ปิดหน้านี้</button>
     </section>
 
     <!-- ยกเลิกคิว (เข้ามาจากปุ่มบนการ์ดในไลน์) -->
@@ -301,23 +284,6 @@ hr.sep{border:0;border-top:1px solid #ddd;margin:22px 0;opacity:.8}
       </div>
       <button class="btn-cancel" id="btn-cancel-confirm">ยืนยันการยกเลิก</button>
       <button class="btn-ghost" id="btn-cancel-back">กลับไปหน้าจอง</button>
-    </section>
-
-    <!-- ฟอร์มเช็คชื่อของผู้ดูแล -->
-    <section class="screen" id="s-admin">
-      <h3 class="header-text" style="font-size:18px">ฟอร์มเช็คชื่อคิวนวด</h3>
-      <label class="form-label">เลือกวันที่</label>
-      <select class="form-select" id="sheet-day"></select>
-
-      <div class="sheet-tally" id="sheet-tally"></div>
-      <button class="btn-outline" id="btn-download">ดาวน์โหลดฟอร์มพร้อมพิมพ์</button>
-      <p class="form-text" style="text-align:center">
-        เปิดในเบราว์เซอร์ของเครื่องแล้วเลือก “บันทึกเป็น PDF” หรือสั่งพิมพ์ลงกระดาษ
-      </p>
-
-      <hr class="sep" />
-      <div id="sheet-rows"></div>
-      <button class="btn-ghost" id="btn-admin-back">กลับไปหน้าจอง</button>
     </section>
 
   </div>
