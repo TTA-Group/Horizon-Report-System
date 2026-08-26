@@ -21,6 +21,9 @@ let currentDay = null;
 let availability = null;
 let openSlot = null; // รอบเวลาที่กางอยู่
 let pick = null; // { slot, slotLabel, therapistId, therapistName }
+let sheet = null; // ฟอร์มเช็คชื่อที่กำลังเปิดอยู่ (ฝั่งผู้ดูแล)
+let sheetOptions = [];
+let downloadPath = null;
 
 /* ---------- helpers ---------- */
 
@@ -192,9 +195,12 @@ async function boot() {
     if (!session.linked) return show("s-register");
     if (session.employee && session.employee.status === "suspended") return show("s-suspended");
 
-    const cancelId = (params().get("cancel") || "").trim();
+    const p = params();
+    const cancelId = (p.get("cancel") || "").trim();
     await loadState();
     if (cancelId) return openCancel(cancelId);
+    // เปิดจากปุ่ม "ฟอร์มเช็คชื่อคิวนวด" ในหน้าจัดการของระบบกลาง
+    if (p.get("admin") === "1" && state.canManage) return goAdmin();
     route();
   } catch (e) {
     if (e && e.handled) return;
@@ -507,6 +513,98 @@ function openCancel(id) {
   show("s-cancel");
 }
 
+/* ---------- ฟอร์มเช็คชื่อของผู้ดูแล ---------- */
+
+async function goAdmin(day) {
+  show("s-loading");
+  $("#loading-text").textContent = "กำลังโหลดฟอร์มเช็คชื่อ...";
+  try {
+    const r = await api(`/api/massage/admin/sheet${day ? `?day=${encodeURIComponent(day)}` : ""}`);
+    sheetOptions = r.options || [];
+    sheet = r.sheet;
+    downloadPath = r.downloadPath || null;
+    renderSheet();
+  } catch (e) {
+    if (e && e.handled) return;
+    await dialog({ icon: "err", title: "เปิดฟอร์มไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+    route();
+  }
+}
+
+function renderSheet() {
+  const sel = $("#sheet-day");
+  sel.innerHTML = sheetOptions
+    .map((o) => `<option value="${escapeHtml(o.day)}"${sheet && o.day === sheet.day ? " selected" : ""}>${escapeHtml(o.label)}</option>`)
+    .join("");
+
+  if (!sheet) {
+    $("#sheet-tally").innerHTML = "";
+    $("#sheet-rows").innerHTML = `<div class="empty">ยังไม่มีวันให้บริการในช่วงนี้</div>`;
+    $("#btn-download").style.display = "none";
+    show("s-admin");
+    return;
+  }
+
+  $("#btn-download").style.display = downloadPath ? "" : "none";
+  $("#sheet-tally").innerHTML = `
+    <div><b>${sheet.booked}</b>จองแล้ว</div>
+    <div><b>${sheet.total - sheet.booked}</b>ว่าง</div>
+    <div><b>${sheet.present}</b>มาแล้ว</div>
+    <div><b>${sheet.noShow}</b>ไม่มา</div>`;
+
+  const rows = [];
+  for (const r of sheet.rows) {
+    r.cells.forEach((c, i) => {
+      if (!c.bookingId) return;
+      const who = sheet.therapists[i];
+      rows.push(`<div class="srow">
+        <div class="head">
+          <span class="t">${escapeHtml(r.label)}</span>
+          <span class="who">${escapeHtml(who ? who.name : "")}</span>
+        </div>
+        <div class="nm">${escapeHtml(c.name || "")}</div>
+        <div class="who">${escapeHtml(c.dept || "")}</div>
+        <div class="acts">
+          <button data-att="${escapeHtml(c.bookingId)}" data-v="present"
+            aria-pressed="${c.attended === "present"}">มา</button>
+          <button data-att="${escapeHtml(c.bookingId)}" data-v="no_show"
+            aria-pressed="${c.attended === "no_show"}">ไม่มา</button>
+        </div>
+      </div>`);
+    });
+  }
+  $("#sheet-rows").innerHTML = rows.length
+    ? rows.join("")
+    : `<div class="empty">วันนี้ยังไม่มีใครจองคิว</div>`;
+  show("s-admin");
+}
+
+async function markAttend(id, value) {
+  // กดปุ่มเดิมซ้ำ = ล้างการเช็คกลับไปเป็นยังไม่ได้เช็ค
+  const cell = sheet.rows.flatMap((r) => r.cells).find((c) => c.bookingId === id);
+  const next = cell && cell.attended === value ? null : value;
+  try {
+    await api("/api/massage/admin/attend", { method: "POST", body: { id, attended: next } });
+    await goAdmin(sheet.day);
+  } catch (e) {
+    if (e && e.handled) return;
+    toast(e.message || "บันทึกไม่สำเร็จ");
+  }
+}
+
+/**
+ * เปิดฟอร์มพร้อมพิมพ์ที่เบราว์เซอร์ของเครื่อง
+ *
+ * ต้องออกไปข้างนอกเพราะเบราว์เซอร์ในแอปไลน์สั่งพิมพ์และบันทึกไฟล์ได้ไม่แน่นอน
+ * พอเปิดข้างนอกแล้วหน้าจะเด้งหน้าต่างสั่งพิมพ์ให้เอง เลือก "บันทึกเป็น PDF" ได้เลย
+ */
+function downloadSheet() {
+  if (!downloadPath) return;
+  const url = location.origin + downloadPath;
+  if (window.liff && liff.openWindow) liff.openWindow({ url, external: true });
+  else window.open(url, "_blank");
+}
+
 /* ---------- wiring ---------- */
 
 function bind() {
@@ -560,6 +658,8 @@ function bind() {
   document.addEventListener("click", (e) => {
     const c = e.target.closest("[data-cancel]");
     if (c) cancelBooking(c.dataset.cancel);
+    const a = e.target.closest("[data-att]");
+    if (a) markAttend(a.dataset.att, a.dataset.v);
     const x = e.target.closest("[data-close]");
     if (x) closeWindow();
   });
@@ -569,6 +669,10 @@ function bind() {
     if (id) await cancelBooking(id);
   };
   $("#btn-cancel-back").onclick = () => route();
+
+  $("#btn-admin-back").onclick = () => route();
+  $("#sheet-day").onchange = (e) => goAdmin(e.target.value);
+  $("#btn-download").onclick = downloadSheet;
 
   $("#btn-go-core").onclick = () => {
     const url = `https://liff.line.me/${CFG.coreLiffId}?back=${encodeURIComponent(CFG.liffId || "")}`;

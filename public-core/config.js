@@ -5,6 +5,8 @@
 window.APP_CONFIG = {
   // LIFF ID ของ "ระบบกลาง" จาก LINE Developers Console
   liffId: "2008960303-Mo62V7fU",
+  // LIFF ID ของ "ระบบจองคิวนวด" — ใช้แค่เปิดฟอร์มเช็คชื่อจากหน้าจัดการ
+  massageLiffId: "2008960303-qy15ZTtu",
   // ฐานของ API — เว้นว่างไว้เมื่อหน้าเว็บกับ API อยู่โดเมนเดียวกัน (ค่าปกติของระบบนี้)
   apiBase: "",
 };

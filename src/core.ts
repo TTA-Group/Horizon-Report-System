@@ -1,13 +1,11 @@
 // จุดเข้าของ Worker "core" — ระบบกลางขององค์กร
 //
-// เป็นแอปของ "ผู้ดูแล" และของ "คนที่ยังไม่ได้ลงทะเบียน" — ลงทะเบียนพนักงาน (ผูกบัญชีไลน์
-// กับรหัสพนักงาน) · หน้าจัดการทะเบียนของ HR · และฟอร์มเช็คชื่อคิวนวด
+// ทำสองอย่างเท่านั้น: ลงทะเบียนพนักงาน (ผูกบัญชีไลน์กับรหัสพนักงาน) และหน้าจัดการข้อมูลของ HR
+// ไม่มีตรรกะของระบบแจ้งปัญหาหรือระบบจองคิวนวดอยู่ในนี้เลย — เป็นกติกาเดียวกับ "ชั้นที่ 1"
+// ในโครงข้อมูล (ดู spec.md หัวข้อ 3) ของที่ใส่เพิ่มเข้ามาต้องเป็นของที่ทุกระบบใช้ร่วมกันได้จริง
 //
-// ตรรกะของระบบแจ้งปัญหาไม่มีอยู่ในนี้เลย ส่วนของระบบจองคิวนวดมีเฉพาะ "ฟอร์มเช็คชื่อ"
-// ซึ่งเป็นงานของผู้ดูแลหน้างาน ไม่ใช่งานของคนจอง การจองทั้งหมดยังอยู่ที่ Worker massage
-//
-// กติกาสำหรับของที่จะใส่เพิ่มในอนาคต: ต้องเป็นของกลางที่ทุกระบบใช้ร่วมกัน หรือเป็นงานของ
-// ผู้ดูแลที่ควรทำจบในแอปเดียว — ไม่ใช่ฟีเจอร์ที่พนักงานทั่วไปใช้ในระบบใดระบบหนึ่ง
+// หน้าจัดการมีปุ่มเปิด "ฟอร์มเช็คชื่อคิวนวด" ซึ่งเป็นแค่ลิงก์ไปเปิดแอปจองคิว
+// ตัวฟอร์มกับ API ยังอยู่ที่ Worker massage ทั้งหมด ที่นี่ไม่ได้แตะข้อมูลคิวนวดเลย
 //
 // พนักงานลงทะเบียนที่นี่ครั้งเดียว แล้วใช้ได้ทุกระบบบน LINE OA เดียวกัน เพราะการผูกบัญชี
 // ถูกเก็บด้วยกุญแจกลาง (CHANNEL_KEY = "core") ไม่ใช่กุญแจของระบบใดระบบหนึ่ง
@@ -30,14 +28,6 @@ import adminEmployeeUnlink from "./api/admin-employee-unlink";
 import adminEmployeeDepartments from "./api/admin-employee-departments";
 import masters from "./api/masters";
 
-// ฟอร์มเช็คชื่อคิวนวด — ย้ายมาจาก Worker massage ให้ผู้ดูแลทำงานจบในแอปเดียว
-//
-// ยอมรับว่านี่คือการดึงของจากระบบอื่นเข้ามาใน core ซึ่งขัดกับหลักที่เขียนไว้ด้านบน
-// เหตุผลที่ยอม: การเช็คชื่อเป็นงานของผู้ดูแล ไม่ใช่งานของคนจอง และ core คือแอปของผู้ดูแลอยู่แล้ว
-// สิ่งที่ยังแยกกันชัดเจนคือ "การจอง" ทั้งหมดยังอยู่ที่ Worker massage — ที่นี่แค่อ่านตารางกับกดเช็คชื่อ
-import massageSheet from "./api/massage-sheet";
-import massageAdminSheet from "./api/massage-admin-sheet";
-import massageAttend from "./api/massage-attend";
 
 interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
@@ -72,18 +62,24 @@ function route(pathname: string, method: string): Handler | null {
     return null;
   }
 
-  // ฟอร์มเช็คชื่อคิวนวด (ดูหมายเหตุตรงส่วน import)
-  if (seg[1] === "massage") {
-    // หน้าพร้อมพิมพ์ — เปิดได้ด้วยลิงก์ที่เซ็นกำกับ ไม่ต้องล็อกอิน
-    if (seg.length === 3 && seg[2] === "sheet") return massageSheet;
-    if (seg.length === 4 && seg[2] === "admin") {
-      if (seg[3] === "sheet") return massageAdminSheet;
-      if (seg[3] === "attend") return method === "POST" ? massageAttend : null;
-    }
-    return null;
-  }
-
   return null;
+}
+
+/**
+ * ห้ามเก็บสำเนา config.js ไว้ที่ไหนทั้งสิ้น
+ *
+ * ไฟล์นี้เล็กมากแต่สำคัญมาก — ข้างในมีรหัส LIFF ซึ่งถ้าเบราว์เซอร์หรือตัวกลางเก็บของเก่าไว้
+ * หน้าเว็บจะขึ้นว่า "ยังไม่ได้ตั้งค่า LIFF" ทั้งที่ deploy ค่าใหม่ไปแล้ว
+ * อาการนี้เคยเกิดมาแล้วครั้งหนึ่ง และหลอกมากเพราะดูเหมือน deploy ไม่ขึ้น
+ *
+ * ยอมโหลดใหม่ทุกครั้ง (ไฟล์ไม่ถึงหนึ่งกิโลไบต์) แลกกับการไม่ต้องมานั่งไล่ว่าทำไมค่าไม่เปลี่ยน
+ */
+function noStore(res: Response): Response {
+  const headers = new Headers(res.headers);
+  headers.set("cache-control", "no-store, must-revalidate");
+  headers.delete("etag");
+  headers.delete("last-modified");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
 function jsonResponse(data: unknown, status: number): Response {
@@ -109,7 +105,10 @@ export default {
       }
     }
 
-    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    if (!url.pathname.startsWith("/api/")) {
+      const res = await env.ASSETS.fetch(request);
+      return url.pathname === "/config.js" ? noStore(res) : res;
+    }
 
     return jsonResponse({ error: "not found" }, 404);
   },
