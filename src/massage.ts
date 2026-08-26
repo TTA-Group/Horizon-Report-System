@@ -89,6 +89,23 @@ function normalizeCron(expr: string): string {
 }
 const CRON_LOOKUP = new Map(Object.entries(CRON_JOBS).map(([k, v]) => [normalizeCron(k), v]));
 
+/**
+ * ห้ามเก็บสำเนา config.js ไว้ที่ไหนทั้งสิ้น
+ *
+ * ไฟล์นี้เล็กมากแต่สำคัญมาก — ข้างในมีรหัส LIFF ซึ่งถ้าเบราว์เซอร์หรือตัวกลางเก็บของเก่าไว้
+ * หน้าเว็บจะขึ้นว่า "ยังไม่ได้ตั้งค่า LIFF" ทั้งที่ deploy ค่าใหม่ไปแล้ว
+ * อาการนี้เคยเกิดตอนตั้งระบบกลางมาแล้วครั้งหนึ่ง และหลอกมากเพราะดูเหมือน deploy ไม่ขึ้น
+ *
+ * ยอมโหลดใหม่ทุกครั้ง (ไฟล์ไม่ถึงหนึ่งกิโลไบต์) แลกกับการไม่ต้องมานั่งไล่ว่าทำไมค่าไม่เปลี่ยน
+ */
+function noStore(res: Response): Response {
+  const headers = new Headers(res.headers);
+  headers.set("cache-control", "no-store, must-revalidate");
+  headers.delete("etag");
+  headers.delete("last-modified");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 function jsonResponse(data: unknown, status: number): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -112,7 +129,10 @@ export default {
       }
     }
 
-    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    if (!url.pathname.startsWith("/api/")) {
+      const res = await env.ASSETS.fetch(request);
+      return url.pathname === "/config.js" ? noStore(res) : res;
+    }
 
     return jsonResponse({ error: "not found" }, 404);
   },
