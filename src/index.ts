@@ -9,6 +9,7 @@
 import { withDbScope } from "./api/_lib/db";
 import { setEnv } from "./api/_lib/env";
 import { safeErrorText } from "./api/_lib/http";
+import { serveAsset } from "./api/_lib/assets";
 
 import health from "./api/health";
 import authSession from "./api/auth-session";
@@ -161,7 +162,7 @@ export default {
 
     // ไม่ใช่ /api/* -> ส่งให้ไฟล์หน้าเว็บใน public/
     if (!url.pathname.startsWith("/api/")) {
-      return absolutizeMeta(await env.ASSETS.fetch(request), url.origin);
+      return serveAsset(absolutizeMeta(await env.ASSETS.fetch(request), url.origin), url.pathname);
     }
 
     return jsonResponse({ error: "not found" }, 404);
