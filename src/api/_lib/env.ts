@@ -16,6 +16,12 @@ export function setEnv(env: EnvBag | null | undefined): void {
   if (env) RUNTIME_ENV = env;
 }
 
+/** อ่าน binding ที่ไม่ใช่ข้อความ (เช่น version_metadata ที่เป็นอ็อบเจ็กต์) */
+export function envBinding<T>(key: string): T | undefined {
+  const v = RUNTIME_ENV?.[key];
+  return v === undefined || v === null ? undefined : (v as T);
+}
+
 /** อ่านค่าตั้งค่าหนึ่งตัว — คืน undefined ถ้าไม่ได้ตั้งไว้ */
 export function envVar(key: string): string | undefined {
   const fromWorker = RUNTIME_ENV?.[key];
