@@ -1,11 +1,12 @@
 // งานตามเวลา — เตือนคนที่คิวนวดกำลังจะถึงในอีกประมาณครึ่งชั่วโมง
 
-import { assertCron } from "./_lib/cron";
-import { json, run } from "./_lib/http";
+import { requireCron } from "./_lib/cron";
+import { json, methodGuard, run } from "./_lib/http";
 import { runMassageSoonReminders } from "./_lib/massage-jobs";
 
 export default async (req: Request): Promise<Response> =>
   run(async () => {
-    assertCron(req);
+    methodGuard(req, "POST");
+    requireCron(req);
     return json(await runMassageSoonReminders());
   });

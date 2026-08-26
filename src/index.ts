@@ -27,10 +27,7 @@ import lineWebhook from "./api/line-webhook";
 import cronReminders from "./api/cron-reminders";
 
 import reminders from "./api/reminders";
-import dbKeepalive from "./api/db-keepalive";
-import backup from "./api/backup";
-import cleanupFiles from "./api/cleanup-files";
-import usageReport from "./api/usage-report";
+import dailyJobs from "./api/daily-jobs";
 
 interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
@@ -87,20 +84,24 @@ function route(pathname: string, method: string): Handler | null {
   // /api/line/webhook
   if (seg[1] === "line" && seg[2] === "webhook" && seg.length === 3) return lineWebhook;
 
-  // /api/cron/reminders
+  // /api/cron/reminders — เรียกด้วยมือได้ ต้องมี header x-cron-secret ตรงกับ CRON_SECRET
+  //
+  // งานรายวัน (daily-jobs) ไม่เปิดเป็น URL โดยตั้งใจ เพราะข้างในมีการสำรองข้อมูลพนักงาน
+  // ทั้งองค์กรและการส่งข้อความหาผู้ดูแล ปล่อยให้ยิงจากภายนอกได้ไม่คุ้มกับประโยชน์ที่ได้
+  // ตัว Cloudflare เรียกผ่าน scheduled() ซึ่งไม่ผ่านเส้นทางนี้อยู่แล้ว
   if (seg[1] === "cron" && seg[2] === "reminders" && seg.length === 3) return cronReminders;
 
   return null;
 }
 
 // งานตามเวลา — คีย์ต้องตรงกับที่ตั้งไว้ใน wrangler.toml
-// หมายเหตุ: Cloudflare ไม่รับเลข 0 ในช่องวันของสัปดาห์ จึงใช้ SUN แทน
+//
+// Cloudflare แผนฟรีให้ตั้ง cron ได้ 5 ตัว "ต่อบัญชี" ไม่ใช่ต่อ Worker ระบบนี้เคยใช้ครบ 5 ตัว
+// คนเดียวจนระบบที่สามตั้ง cron เพิ่มไม่ได้เลย จึงยุบงานรายวัน/รายสัปดาห์/รายเดือน
+// มาอยู่ใน cron ตัวเดียว แล้วให้ daily-jobs.ts ดูปฏิทินเองว่าวันนี้ต้องทำงานไหนบ้าง
 const CRON_JOBS: Record<string, Handler> = {
   "*/15 * * * *": reminders,
-  "0 3 * * *": dbKeepalive,
-  "0 4 * * SUN": backup,
-  "0 5 1 * *": cleanupFiles,
-  "0 6 1 * *": usageReport,
+  "0 3 * * *": dailyJobs, // db-keepalive ทุกวัน · backup วันอาทิตย์ · cleanup-files + usage-report วันที่ 1
 };
 
 /** ปรับรูปแบบ cron ให้เทียบกันได้ เผื่อช่องว่าง/ตัวพิมพ์ต่างกันเล็กน้อย */

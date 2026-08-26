@@ -24,6 +24,7 @@ import massageSheet from "./api/massage-sheet";
 import massageAdminSheet from "./api/massage-admin-sheet";
 import massageAttend from "./api/massage-attend";
 
+import massageCron from "./api/massage-cron";
 import massageOpenMonth from "./api/massage-open-month";
 import massageRemindEve from "./api/massage-remind-eve";
 import massageRemindSoon from "./api/massage-remind-soon";
@@ -62,6 +63,9 @@ function route(pathname: string, method: string): Handler | null {
     return null;
   }
 
+  // สามเส้นทางนี้ไว้สั่งทีละงานด้วยมือตอนไล่ปัญหา ต้องมี header x-cron-secret เสมอ
+  //
+  // ตัวรวม (massage-cron) ที่ cron เรียกจริงไม่เปิดเป็น URL — เรียกผ่าน scheduled() เท่านั้น
   if (seg[1] === "cron" && seg.length === 3) {
     if (seg[2] === "open-month") return massageOpenMonth;
     if (seg[2] === "remind-eve") return massageRemindEve;
@@ -72,11 +76,12 @@ function route(pathname: string, method: string): Handler | null {
   return null;
 }
 
-// งานตามเวลา — คีย์ต้องตรงกับที่ตั้งไว้ใน wrangler.massage.toml (เวลาเป็น UTC)
+// งานตามเวลา — คีย์ต้องตรงกับที่ตั้งไว้ใน wrangler.massage.toml
+//
+// ใช้ cron ตัวเดียวเพราะแผนฟรีของ Cloudflare ให้ตั้งได้ 5 ตัวต่อบัญชี ซึ่งต้องแบ่งกันสามระบบ
+// ตัวจัดการเป็นคนดูนาฬิกาเองว่าถึงเวลาของงานไหน (ดู api/massage-cron.ts)
 const CRON_JOBS: Record<string, Handler> = {
-  "0 1 * * *": massageOpenMonth,      // 08:00 น. เวลาไทย ทุกวัน
-  "0 10 * * *": massageRemindEve,     // 17:00 น. เวลาไทย ทุกวัน
-  "*/15 2-9 * * *": massageRemindSoon, // 09:00–16:45 น. เวลาไทย
+  "*/15 * * * *": massageCron,
 };
 
 function normalizeCron(expr: string): string {
