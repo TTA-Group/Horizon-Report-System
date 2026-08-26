@@ -374,8 +374,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   <!-- ลงทะเบียนแล้ว — ใช้สองกรณี: ปิดหน้าต่างเองไม่ได้ กับเป็นแท็บ "บัญชีของฉัน" ของฝ่ายบุคคล
        คนทั่วไปที่ลงทะเบียนเสร็จจะไม่มาหยุดที่หน้านี้ ระบบพากลับหรือปิดให้เลย -->
   <section class="screen" id="s-done"><div class="center">
-    <h2>ลงทะเบียนไว้แล้ว</h2>
+    <h2 id="done-title">ลงทะเบียนไว้แล้ว</h2>
     <p id="done-name" style="font-weight:600;color:var(--ink)"></p>
+    <p id="done-hint" style="display:none">กำลังปิดหน้านี้…</p>
     <p>ใช้บริการระบบภายในของบริษัทได้จากเมนูด้านล่างของแชทไลน์<br>
       ไม่ต้องลงทะเบียนซ้ำอีก แม้จะเป็นระบบใหม่ที่เปิดเพิ่มภายหลัง</p>
     <button class="ghost" id="btn-close" style="margin-top:18px">ปิดหน้านี้</button>
