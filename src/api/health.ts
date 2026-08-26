@@ -105,6 +105,53 @@ export default async (req: Request): Promise<Response> =>
       }
     }
 
+    // ระบบจองคิวนวด — ตรวจว่ารันไฟล์ schema กับ seed แล้วหรือยัง และเดือนนี้มีวันให้จองหรือเปล่า
+    // แยกออกมาจาก migrations ด้านบนเพราะเป็นคนละระบบ ตารางอาจยังไม่มีเลยก็ได้
+    let massage: Record<string, unknown> = { ok: false, error: "ตรวจไม่ได้เพราะต่อฐานข้อมูลไม่ได้" };
+    if (database.ok === true) {
+      try {
+        const sql = db();
+        const tables = await sql<{ table_name: string }[]>`
+          SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public'
+            AND table_name IN ('company_holidays','app_settings','massage_therapists','massage_days','massage_bookings')
+        `;
+        if (tables.length < 5) {
+          const have = new Set(tables.map((t) => t.table_name));
+          massage = {
+            ok: false,
+            error: "ยังไม่ได้รัน db/massage-schema.sql",
+            missing: ["company_holidays", "app_settings", "massage_therapists", "massage_days", "massage_bookings"].filter(
+              (t) => !have.has(t),
+            ),
+          };
+        } else {
+          const [t] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM massage_therapists WHERE is_active = true`;
+          const [d] = await sql<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM massage_days
+            WHERE day >= date_trunc('month', CURRENT_DATE) AND day < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
+          `;
+          const [h] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM company_holidays WHERE day >= CURRENT_DATE`;
+          const cfg = await sql<{ key: string; value: string }[]>`
+            SELECT key, value FROM app_settings WHERE key LIKE 'massage.%' ORDER BY key
+          `;
+          const seeded = t.n > 0 && cfg.length > 0;
+          massage = {
+            ok: seeded,
+            ...(seeded ? {} : { error: "ยังไม่ได้รัน db/massage-seed.sql" }),
+            therapists: t.n,
+            days_this_month: d.n,
+            holidays_ahead: h.n,
+            // ค่าตั้งของระบบจองไม่ใช่ความลับ (สวิตช์เปิด/ปิด · เวลาเปิดจอง · รหัสฝ่ายผู้ดูแล)
+            settings: Object.fromEntries(cfg.map((c) => [c.key, c.value])),
+          };
+        }
+      } catch (e) {
+        console.error("[health] massage", e);
+        massage = { ok: false, error: safeErrorText(e) };
+      }
+    }
+
     let line: Record<string, unknown>;
     const lineStart = Date.now();
     try {
@@ -121,6 +168,7 @@ export default async (req: Request): Promise<Response> =>
       database,
       migrations,
       groups,
+      massage,
       line,
     });
   });

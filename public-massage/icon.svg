@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TTA Report">
+  <rect width="64" height="64" rx="15" fill="#06C755"/>
+  <g fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 12 15 21.5v13.4C15 46.3 22 53.6 32 56c10-2.4 17-9.7 17-21.1V21.5Z"/>
+    <path d="M32 25v11"/>
+    <path d="M32 43.2v.1"/>
+  </g>
+</svg>
