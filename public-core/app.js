@@ -56,12 +56,6 @@ let adminView = "active"; // หน้าที่กำลังดู: "active
 // โดยไม่ต้องยิงถามเซิร์ฟเวอร์ซ้ำ (รายการนี้เพิ่งโหลดมาหมาด ๆ อยู่แล้ว)
 const adminEmployeeIndex = new Map();
 let sheetPick = null; // ตัวรับค่าเมื่อเลือกจาก bottom sheet
-
-// ฟอร์มเช็คชื่อคิวนวด — งานของผู้ดูแลหน้างาน ย้ายมาอยู่ในแอปนี้เพื่อให้ทำงานจบในที่เดียว
-// ไม่ต้องสลับไปเปิดแอปจองคิว
-let checkSheet = null; // ตารางของวันที่กำลังเปิดอยู่
-let checkOptions = []; // วันให้เลือกในรายการ
-let checkDownload = null; // ลิงก์หน้าพร้อมพิมพ์ (เซ็นกำกับ หมดอายุ 48 ชั่วโมง)
 let mastersPromise = null; // /api/masters ไม่ต้องใช้สิทธิ์ ยิงคู่ขนานได้ตั้งแต่ต้น
 
 /* ---------- helpers ---------- */
@@ -226,15 +220,22 @@ function enterApp() {
     $("#tabbar").style.display = "flex";
     return goMe();
   }
-
-  // คนที่ดูแลคิวนวดหน้างานมักไม่ใช่ฝ่ายบุคคล แต่ต้องเข้าถึงฟอร์มเช็คชื่อซึ่งย้ายมาอยู่ที่นี่แล้ว
-  // ถ้าไม่เปิดทางให้ การย้ายฟอร์มมาที่นี่จะกลายเป็นการล็อกคนที่ต้องใช้จริงออกไปเงียบ ๆ
-  // ให้เข้าหน้าจัดการได้เหมือนกัน แต่เห็นเฉพาะฟอร์มเช็คชื่อ ไม่เห็นทะเบียนพนักงาน
   $("#tabbar").style.display = "none";
-  probeCheckSheet().then((allowed) => {
-    if (allowed) return goMe({ sheetOnly: true });
-    leaveAfterRegister();
-  });
+  leaveAfterRegister();
+}
+
+/**
+ * เปิด "ฟอร์มเช็คชื่อคิวนวด" ซึ่งอยู่ในแอปจองคิว
+ *
+ * ที่นี่เป็นแค่ทางเข้า ไม่ได้ย้ายตัวฟอร์มมา เพราะข้อมูลคิวนวดเป็นของระบบจองคิว
+ * ระบบกลางไม่ควรรู้จักตารางคิวหรือสิทธิ์ของระบบนั้น ใครเปิดฟอร์มได้ให้แอปจองคิวตัดสินเอง
+ */
+function openMassageSheet() {
+  const id = CFG.massageLiffId;
+  if (!id || id.includes("ตั้งค่า")) return toast("ยังไม่ได้ตั้งค่าแอปจองคิวนวด");
+  const url = `https://liff.line.me/${id}?admin=1`;
+  if (window.liff && liff.openWindow) liff.openWindow({ url, external: false });
+  else window.location.href = url;
 }
 
 /** หน้าสรุปของคนที่ลงทะเบียนแล้ว — ใช้เมื่อปิดหน้าต่างเองไม่ได้ และเป็นแท็บของฝ่ายบุคคล */
@@ -248,122 +249,15 @@ function showDone() {
 }
 
 /** หน้าจัดการของฝ่ายบุคคล — งานที่ทำบ่อยที่สุดอยู่เป็นปุ่มใหญ่ปุ่มเดียว ไม่ต้องไปหาในแท็บอื่น */
-function goMe({ sheetOnly = false } = {}) {
+function goMe() {
   const emp = session.employee || {};
   $("#mg-name").textContent = emp.full_name || "—";
   $("#mg-code").textContent = emp.employee_code || "—";
   $("#mg-dept").textContent = emp.department_name || "—";
   $("#mg-floor").textContent = emp.floor || "—";
   $("#mg-close").style.display = canCloseWindow() ? "" : "none";
-  // คนที่เข้ามาได้เพราะดูแลคิวนวดอย่างเดียว ไม่ต้องเห็นปุ่มเพิ่มพนักงาน (กดไปก็ถูกปฏิเสธ)
-  $("#mg-add").style.display = sheetOnly ? "none" : "";
   setTab("me");
   show("s-manage");
-  if (!sheetOnly) probeCheckSheet();
-}
-
-/**
- * ปุ่มฟอร์มเช็คชื่อจะโผล่ก็ต่อเมื่อคนคนนี้เปิดได้จริง
- *
- * ฝั่งเซิร์ฟเวอร์ตัดสินจากฝ่ายที่ตั้งไว้ใน app_settings ซึ่งหน้าเว็บไม่รู้ค่านั้น
- * จะเดาจากรายชื่อฝ่ายก็เสี่ยงได้ปุ่มที่กดแล้วเจอ 403 ซึ่งแย่กว่าไม่มีปุ่ม
- * จึงลองยิงถามหนึ่งครั้ง ได้ผลก็โชว์ปุ่มพร้อมข้อมูลที่โหลดมาแล้ว กดปุ๊บเปิดทันที
- */
-async function probeCheckSheet() {
-  if (checkSheet !== null) {
-    $("#mg-sheet").style.display = "";
-    return true;
-  }
-  try {
-    applyCheckSheet(await api("/api/massage/admin/sheet"));
-    $("#mg-sheet").style.display = "";
-    return true;
-  } catch {
-    $("#mg-sheet").style.display = "none"; // ไม่มีสิทธิ์ หรือระบบจองยังไม่ได้ติดตั้ง
-    return false;
-  }
-}
-
-function applyCheckSheet(r) {
-  checkOptions = r.options || [];
-  checkSheet = r.sheet;
-  checkDownload = r.downloadPath || null;
-}
-
-async function goCheckSheet(day) {
-  try {
-    if (day || checkSheet === null) {
-      applyCheckSheet(await api(`/api/massage/admin/sheet${day ? `?day=${encodeURIComponent(day)}` : ""}`));
-    }
-    renderCheckSheet();
-  } catch (e) {
-    toast(e.message || "เปิดฟอร์มไม่สำเร็จ");
-  }
-}
-
-function renderCheckSheet() {
-  $("#sheet-day").innerHTML = checkOptions
-    .map((o) => `<option value="${esc(o.day)}"${checkSheet && o.day === checkSheet.day ? " selected" : ""}>${esc(o.label)}</option>`)
-    .join("");
-
-  if (!checkSheet) {
-    $("#sheet-tally").innerHTML = "";
-    $("#sheet-rows").innerHTML = `<div class="empty">ยังไม่มีวันให้บริการในช่วงนี้</div>`;
-    $("#sheet-download").style.display = "none";
-    show("s-sheet");
-    return;
-  }
-
-  $("#sheet-download").style.display = checkDownload ? "" : "none";
-  $("#sheet-tally").innerHTML = `
-    <div><b>${checkSheet.booked}</b>จองแล้ว</div>
-    <div><b>${checkSheet.total - checkSheet.booked}</b>ว่าง</div>
-    <div><b>${checkSheet.present}</b>มาแล้ว</div>
-    <div><b>${checkSheet.noShow}</b>ไม่มา</div>`;
-
-  const rows = [];
-  for (const r of checkSheet.rows) {
-    r.cells.forEach((c, i) => {
-      if (!c.bookingId) return;
-      const who = checkSheet.therapists[i];
-      rows.push(`<div class="srow">
-        <div class="head"><span class="t">${esc(r.label)}</span><span class="who">${esc(who ? who.name : "")}</span></div>
-        <div class="nm">${esc(c.name || "")}</div>
-        <div class="who">${esc(c.dept || "")}</div>
-        <div class="acts">
-          <button data-att="${esc(c.bookingId)}" data-v="present" aria-pressed="${c.attended === "present"}">มา</button>
-          <button data-att="${esc(c.bookingId)}" data-v="no_show" aria-pressed="${c.attended === "no_show"}">ไม่มา</button>
-        </div>
-      </div>`);
-    });
-  }
-  $("#sheet-rows").innerHTML = rows.length ? rows.join("") : `<div class="empty">วันนี้ยังไม่มีใครจองคิว</div>`;
-  show("s-sheet");
-}
-
-async function markAttend(id, value) {
-  // กดปุ่มเดิมซ้ำ = ล้างการเช็คกลับไปเป็นยังไม่ได้เช็ค
-  const cell = checkSheet.rows.flatMap((r) => r.cells).find((c) => c.bookingId === id);
-  const next = cell && cell.attended === value ? null : value;
-  try {
-    await api("/api/massage/admin/attend", { method: "POST", body: { id, attended: next } });
-    await goCheckSheet(checkSheet.day);
-  } catch (e) {
-    toast(e.message || "บันทึกไม่สำเร็จ");
-  }
-}
-
-/**
- * เปิดฟอร์มพร้อมพิมพ์ที่เบราว์เซอร์ของเครื่อง
- *
- * ต้องออกไปข้างนอกเพราะเบราว์เซอร์ในแอปไลน์สั่งพิมพ์และบันทึกไฟล์ได้ไม่แน่นอน
- * พอเปิดข้างนอกแล้วหน้าจะเด้งหน้าต่างสั่งพิมพ์ให้เอง เลือก "บันทึกเป็น PDF" ได้เลย
- */
-function downloadCheckSheet() {
-  if (!checkDownload) return;
-  const url = location.origin + checkDownload;
-  if (window.liff && liff.openWindow) liff.openWindow({ url, external: true });
-  else window.open(url, "_blank");
 }
 
 
@@ -1081,15 +975,7 @@ function bind() {
     openEmpForm();
   };
   $("#mg-close").onclick = closeWindow;
-
-  $("#mg-sheet").onclick = () => goCheckSheet();
-  $("#sheet-back").onclick = () => goMe({ sheetOnly: !session.is_admin });
-  $("#sheet-day").onchange = (e) => goCheckSheet(e.target.value);
-  $("#sheet-download").onclick = downloadCheckSheet;
-  $("#sheet-rows").onclick = (e) => {
-    const b = e.target.closest("[data-att]");
-    if (b) markAttend(b.dataset.att, b.dataset.v);
-  };
+  $("#mg-sheet").onclick = openMassageSheet;
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;
   $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));

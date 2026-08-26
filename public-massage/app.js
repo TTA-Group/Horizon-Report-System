@@ -19,8 +19,10 @@ let session = null;
 let state = null; // ผลจาก /api/massage/state
 let currentDay = null;
 let availability = null;
-let openSlot = null; // รอบเวลาที่กางอยู่
 let pick = null; // { slot, slotLabel, therapistId, therapistName }
+let sheet = null; // ฟอร์มเช็คชื่อที่กำลังเปิดอยู่ (ฝั่งผู้ดูแล)
+let sheetOptions = [];
+let downloadPath = null;
 
 /* ---------- helpers ---------- */
 
@@ -192,9 +194,12 @@ async function boot() {
     if (!session.linked) return show("s-register");
     if (session.employee && session.employee.status === "suspended") return show("s-suspended");
 
-    const cancelId = (params().get("cancel") || "").trim();
+    const p = params();
+    const cancelId = (p.get("cancel") || "").trim();
     await loadState();
     if (cancelId) return openCancel(cancelId);
+    // เปิดจากปุ่ม "ฟอร์มเช็คชื่อคิวนวด" ในหน้าจัดการของระบบกลาง
+    if (p.get("admin") === "1" && state.canManage) return goAdmin();
     route();
   } catch (e) {
     if (e && e.handled) return;
@@ -268,55 +273,67 @@ function renderDays() {
   else {
     currentDay = null;
     $("#slots").innerHTML = `<div class="empty">ไม่มีวันที่จองได้เหลืออยู่<br>ลองดูใหม่เดือนหน้าได้เลย</div>`;
+    $("#legend").style.display = "none";
     clearPick();
   }
 }
 
 async function selectDay(day) {
   currentDay = day;
-  openSlot = null;
   clearPick();
   $$("#days .day").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.day === day)));
   $("#slots").innerHTML = `<div class="empty">กำลังตรวจสอบคิวว่าง...</div>`;
+  $("#legend").style.display = "none";
   try {
     availability = await api(`/api/massage/day?day=${encodeURIComponent(day)}`);
-    renderSlots();
+    renderGrid();
   } catch (e) {
     if (e && e.handled) return;
     $("#slots").innerHTML = `<div class="empty">${escapeHtml(e.message || "โหลดคิวไม่สำเร็จ")}</div>`;
+    $("#legend").style.display = "none";
   }
 }
 
-function renderSlots() {
+/**
+ * ชื่อหมอนวดในหัวตารางต้องขึ้นบรรทัดใหม่ตรงที่อ่านแล้วไม่สะดุด
+ *
+ * ช่องกว้างราว 60px พอได้ 6-7 ตัวอักษรไทย ชื่อเกือบทุกชื่อจึงต้องตัดสองบรรทัด
+ * ถ้าปล่อยให้เบราว์เซอร์ตัดเอง จะได้ "หมอนวดผู้ช / าย" ซึ่งอ่านแล้วสะดุด
+ * จึงใส่จุดตัดที่มองไม่เห็นไว้หลังคำว่า "หมอนวด" ให้ก่อน ส่วนชื่อที่มีเว้นวรรคตัดตรงนั้นอยู่แล้ว
+ */
+function headName(name) {
+  return escapeHtml(name).replace(/^หมอนวด(?=\S)/, "หมอนวด\u200B");
+}
+
+function renderGrid() {
   const th = availability.therapists;
 
-  $("#slots").innerHTML = availability.rows
-    .map((r) => {
-      const free = r.bookable ? r.cells.filter((c) => !c.taken).length : 0;
-      const closed = free === 0;
-      const note = !r.bookable ? "เลยเวลาแล้ว" : closed ? "เต็มแล้ว" : `ว่าง ${free} คิว`;
+  const head = `<tr><th class="tcol"></th>${th
+    .map((t) => `<th>${headName(t.name)}</th>`)
+    .join("")}</tr>`;
 
-      const list = r.cells
+  const body = availability.rows
+    .map((r) => {
+      const cells = r.cells
         .map((c) => {
-          const name = th.find((t) => t.id === c.therapistId)?.name ?? "";
-          const cls = c.mine ? "mine" : c.taken ? "taken" : "";
-          const tag = c.mine ? "คิวของคุณ" : c.taken ? "จองแล้ว" : "ว่าง";
+          // รอบที่เลยเวลาแล้วยังโชว์ไว้ให้เห็นภาพทั้งวัน แต่กดไม่ได้
+          const label = c.mine ? "ของคุณ" : c.taken ? "จอง" : r.bookable ? "ว่าง" : "ปิด";
           const dis = c.taken || !r.bookable ? " disabled" : "";
-          return `<button class="tbtn ${cls}" aria-pressed="false"${dis}
-            data-slot="${escapeHtml(r.slot)}" data-th="${escapeHtml(c.therapistId)}">
-            <span>${escapeHtml(name)}</span><span class="tag">${tag}</span></button>`;
+          return `<td><button class="cell${c.mine ? " mine" : ""}" aria-pressed="false"${dis}
+            data-slot="${escapeHtml(r.slot)}" data-th="${escapeHtml(c.therapistId)}" data-label="${label}"
+            aria-label="${escapeHtml(r.label)} ${escapeHtml(
+              th.find((t) => t.id === c.therapistId)?.name ?? "",
+            )} ${label}">${label}</button></td>`;
         })
         .join("");
-
-      return `<div class="slot${closed ? " full" : ""}" data-slot="${escapeHtml(r.slot)}">
-        <button class="slothead" data-head="${escapeHtml(r.slot)}"${closed ? " disabled" : ""}>
-          <span class="t">${escapeHtml(r.label)}</span>
-          <span class="r"><span class="f">${note}</span><span class="caret"></span></span>
-        </button>
-        <div class="tlist">${list}</div>
-      </div>`;
+      const [from, to] = r.label.split("-");
+      return `<tr${r.bookable ? "" : ' class="off"'} data-slot="${escapeHtml(r.slot)}">
+        <td class="time">${escapeHtml(from)}<br>${escapeHtml(to ?? "")}</td>${cells}</tr>`;
     })
     .join("");
+
+  $("#slots").innerHTML = `<table class="grid">${head}${body}</table>`;
+  $("#legend").style.display = "";
 }
 
 function clearPick() {
@@ -450,8 +467,14 @@ function renderClosed() {
     t.textContent = "ปิดปรับปรุงระบบชั่วคราว";
     b.innerHTML = "ขออภัยในความไม่สะดวก<br>ขณะนี้ระบบจองคิวนวดปิดให้บริการชั่วคราว";
   } else {
-    t.textContent = "คิวเต็มทุกช่วงเวลาแล้ว";
-    b.innerHTML = "ขออภัยในความไม่สะดวก<br>คิวนวดของเดือนนี้ถูกจองเต็มทุกรอบแล้ว";
+    // ใช้ถ้อยคำเดิมจากหน้าปิดระบบของระบบเก่า พนักงานคุ้นตาอยู่แล้ว
+    // ต่างกันตรงที่ของเดิมบอกแค่ "เร็ว ๆ นี้" ส่วนของใหม่บอกวันเวลาที่จะเปิดจริงในกล่องด้านล่าง
+    const m = closedMonthName(state.opensAt);
+    t.textContent = "ปิดปรับปรุงระบบชั่วคราว";
+    b.innerHTML =
+      `ขออภัยในความไม่สะดวก<br>ขณะนี้คิวนวด${m ? `เดือน${escapeHtml(m)} ` : ""}เต็มทุกช่วงเวลาแล้ว<br>` +
+      "ระบบจะทำการปิดปรับปรุง<br>เพื่อเพิ่มประสิทธิภาพการใช้งาน<br><br>" +
+      "<b>สำหรับคิวนวดเดือนใหม่จะเปิดให้จองเร็วๆ นี้</b>";
   }
 
   if (state.opensAt) {
@@ -472,6 +495,21 @@ function renderClosed() {
     el.style.display = canCloseWindow() ? "" : "none";
   });
   show("s-closed");
+}
+
+const TH_MONTH_FULL = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+  "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+
+/**
+ * เดือนที่คิวเต็ม = เดือนก่อนหน้าเดือนที่จะเปิดจองรอบใหม่
+ *
+ * คิดจากเวลาที่เซิร์ฟเวอร์ส่งมา ไม่ใช่นาฬิกาของเครื่อง เครื่องที่ตั้งเขตเวลาหรือวันที่ผิด
+ * จะได้ชื่อเดือนถูกอยู่ดี และไม่มีทางขึ้นชื่อเดือนคนละเดือนกับที่เซิร์ฟเวอร์ตัดสิน
+ */
+function closedMonthName(opensAtIso) {
+  if (!opensAtIso) return "";
+  const d = new Date(new Date(opensAtIso).getTime() + 7 * 3600 * 1000);
+  return TH_MONTH_FULL[(d.getUTCMonth() + 11) % 12];
 }
 
 /** "2026-09-01T02:00:00.000Z" -> "1 ก.ย. 2569 เวลา 09.00 น." */
@@ -507,6 +545,98 @@ function openCancel(id) {
   show("s-cancel");
 }
 
+/* ---------- ฟอร์มเช็คชื่อของผู้ดูแล ---------- */
+
+async function goAdmin(day) {
+  show("s-loading");
+  $("#loading-text").textContent = "กำลังโหลดฟอร์มเช็คชื่อ...";
+  try {
+    const r = await api(`/api/massage/admin/sheet${day ? `?day=${encodeURIComponent(day)}` : ""}`);
+    sheetOptions = r.options || [];
+    sheet = r.sheet;
+    downloadPath = r.downloadPath || null;
+    renderSheet();
+  } catch (e) {
+    if (e && e.handled) return;
+    await dialog({ icon: "err", title: "เปิดฟอร์มไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+    route();
+  }
+}
+
+function renderSheet() {
+  const sel = $("#sheet-day");
+  sel.innerHTML = sheetOptions
+    .map((o) => `<option value="${escapeHtml(o.day)}"${sheet && o.day === sheet.day ? " selected" : ""}>${escapeHtml(o.label)}</option>`)
+    .join("");
+
+  if (!sheet) {
+    $("#sheet-tally").innerHTML = "";
+    $("#sheet-rows").innerHTML = `<div class="empty">ยังไม่มีวันให้บริการในช่วงนี้</div>`;
+    $("#btn-download").style.display = "none";
+    show("s-admin");
+    return;
+  }
+
+  $("#btn-download").style.display = downloadPath ? "" : "none";
+  $("#sheet-tally").innerHTML = `
+    <div><b>${sheet.booked}</b>จองแล้ว</div>
+    <div><b>${sheet.total - sheet.booked}</b>ว่าง</div>
+    <div><b>${sheet.present}</b>มาแล้ว</div>
+    <div><b>${sheet.noShow}</b>ไม่มา</div>`;
+
+  const rows = [];
+  for (const r of sheet.rows) {
+    r.cells.forEach((c, i) => {
+      if (!c.bookingId) return;
+      const who = sheet.therapists[i];
+      rows.push(`<div class="srow">
+        <div class="head">
+          <span class="t">${escapeHtml(r.label)}</span>
+          <span class="who">${escapeHtml(who ? who.name : "")}</span>
+        </div>
+        <div class="nm">${escapeHtml(c.name || "")}</div>
+        <div class="who">${escapeHtml(c.dept || "")}</div>
+        <div class="acts">
+          <button data-att="${escapeHtml(c.bookingId)}" data-v="present"
+            aria-pressed="${c.attended === "present"}">มา</button>
+          <button data-att="${escapeHtml(c.bookingId)}" data-v="no_show"
+            aria-pressed="${c.attended === "no_show"}">ไม่มา</button>
+        </div>
+      </div>`);
+    });
+  }
+  $("#sheet-rows").innerHTML = rows.length
+    ? rows.join("")
+    : `<div class="empty">วันนี้ยังไม่มีใครจองคิว</div>`;
+  show("s-admin");
+}
+
+async function markAttend(id, value) {
+  // กดปุ่มเดิมซ้ำ = ล้างการเช็คกลับไปเป็นยังไม่ได้เช็ค
+  const cell = sheet.rows.flatMap((r) => r.cells).find((c) => c.bookingId === id);
+  const next = cell && cell.attended === value ? null : value;
+  try {
+    await api("/api/massage/admin/attend", { method: "POST", body: { id, attended: next } });
+    await goAdmin(sheet.day);
+  } catch (e) {
+    if (e && e.handled) return;
+    toast(e.message || "บันทึกไม่สำเร็จ");
+  }
+}
+
+/**
+ * เปิดฟอร์มพร้อมพิมพ์ที่เบราว์เซอร์ของเครื่อง
+ *
+ * ต้องออกไปข้างนอกเพราะเบราว์เซอร์ในแอปไลน์สั่งพิมพ์และบันทึกไฟล์ได้ไม่แน่นอน
+ * พอเปิดข้างนอกแล้วหน้าจะเด้งหน้าต่างสั่งพิมพ์ให้เอง เลือก "บันทึกเป็น PDF" ได้เลย
+ */
+function downloadSheet() {
+  if (!downloadPath) return;
+  const url = location.origin + downloadPath;
+  if (window.liff && liff.openWindow) liff.openWindow({ url, external: true });
+  else window.open(url, "_blank");
+}
+
 /* ---------- wiring ---------- */
 
 function bind() {
@@ -524,29 +654,21 @@ function bind() {
   };
 
   $("#slots").onclick = (e) => {
-    // กางหรือพับรอบเวลา
-    const head = e.target.closest(".slothead");
-    if (head && !head.disabled) {
-      const slot = head.dataset.head;
-      openSlot = openSlot === slot ? null : slot;
-      $$("#slots .slot").forEach((el) => el.classList.toggle("on", el.dataset.slot === openSlot));
-      if (pick && pick.slot !== openSlot) {
-        $$("#slots .tbtn").forEach((x) => x.setAttribute("aria-pressed", "false"));
-        clearPick();
-      }
-      return;
-    }
-
-    // เลือกหมอนวด
-    const t = e.target.closest(".tbtn");
-    if (!t || t.disabled) return;
-    const already = t.getAttribute("aria-pressed") === "true";
-    $$("#slots .tbtn").forEach((x) => x.setAttribute("aria-pressed", "false"));
+    const c = e.target.closest(".cell");
+    if (!c || c.disabled) return;
+    const already = c.getAttribute("aria-pressed") === "true";
+    // คืนทุกช่องกลับเป็นคำเดิมก่อน แล้วค่อยทำเครื่องหมายช่องที่เลือก
+    // เปลี่ยนแค่สีไม่พอ คนที่แยกสีเขียวไม่ออกจะไม่รู้ว่าตัวเองเลือกช่องไหนอยู่
+    $$("#slots .cell").forEach((x) => {
+      x.setAttribute("aria-pressed", "false");
+      x.textContent = x.dataset.label;
+    });
     if (already) return clearPick();
 
-    t.setAttribute("aria-pressed", "true");
-    const row = availability.rows.find((r) => r.slot === t.dataset.slot);
-    const who = availability.therapists.find((x) => x.id === t.dataset.th);
+    c.setAttribute("aria-pressed", "true");
+    c.textContent = "เลือก";
+    const row = availability.rows.find((r) => r.slot === c.dataset.slot);
+    const who = availability.therapists.find((x) => x.id === c.dataset.th);
     pick = { slot: row.slot, slotLabel: row.label, therapistId: who.id, therapistName: who.name };
     updatePick();
   };
@@ -560,6 +682,8 @@ function bind() {
   document.addEventListener("click", (e) => {
     const c = e.target.closest("[data-cancel]");
     if (c) cancelBooking(c.dataset.cancel);
+    const a = e.target.closest("[data-att]");
+    if (a) markAttend(a.dataset.att, a.dataset.v);
     const x = e.target.closest("[data-close]");
     if (x) closeWindow();
   });
@@ -569,6 +693,10 @@ function bind() {
     if (id) await cancelBooking(id);
   };
   $("#btn-cancel-back").onclick = () => route();
+
+  $("#btn-admin-back").onclick = () => route();
+  $("#sheet-day").onchange = (e) => goAdmin(e.target.value);
+  $("#btn-download").onclick = downloadSheet;
 
   $("#btn-go-core").onclick = () => {
     const url = `https://liff.line.me/${CFG.coreLiffId}?back=${encodeURIComponent(CFG.liffId || "")}`;
