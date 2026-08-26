@@ -374,21 +374,28 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   <!-- ลงทะเบียนแล้ว — ใช้สองกรณี: ปิดหน้าต่างเองไม่ได้ กับเป็นแท็บ "บัญชีของฉัน" ของฝ่ายบุคคล
        คนทั่วไปที่ลงทะเบียนเสร็จจะไม่มาหยุดที่หน้านี้ ระบบพากลับหรือปิดให้เลย -->
   <section class="screen" id="s-done"><div class="center">
-    <h2 id="done-title">ลงทะเบียนไว้แล้ว</h2>
-    <p id="done-name" style="font-weight:600;color:var(--ink)"></p>
-    <p id="done-hint" style="display:none">กำลังปิดหน้านี้…</p>
-    <p>ใช้บริการระบบภายในของบริษัทได้จากเมนูด้านล่างของแชทไลน์<br>
-      ไม่ต้องลงทะเบียนซ้ำอีก แม้จะเป็นระบบใหม่ที่เปิดเพิ่มภายหลัง</p>
+    <h2>ลงทะเบียนสำเร็จ</h2>
     <button class="ghost" id="btn-close" style="margin-top:18px">ปิดหน้านี้</button>
   </div></section>
+
+  <!-- หน้าจัดการของฝ่ายบุคคล — งานที่ทำบ่อยที่สุดคือเพิ่มพนักงานใหม่ จึงเป็นปุ่มใหญ่ปุ่มเดียว
+       ส่วนการค้นหาและแก้ไขรายคนอยู่แท็บ "ทะเบียนพนักงาน" ซึ่งเป็นงานที่ต้องไล่ดูก่อน -->
+  <section class="screen" id="s-manage">
+    <div class="section">บัญชีที่ใช้อยู่</div>
+    <div class="card">
+      <div class="kv2"><b>ชื่อ–สกุล</b><span id="mg-name">—</span></div>
+      <div class="kv2"><b>รหัสพนักงาน</b><span id="mg-code" style="font-family:'IBM Plex Mono',monospace">—</span></div>
+      <div class="kv2"><b>ฝ่าย</b><span id="mg-dept">—</span></div>
+      <div class="kv2"><b>ชั้นที่ปฏิบัติงาน</b><span id="mg-floor">—</span></div>
+    </div>
+    <button class="send" id="mg-add">+ เพิ่มพนักงานใหม่</button>
+    <button class="ghost" id="mg-close">ปิดหน้านี้</button>
+  </section>
 
   <!-- admin (HR) -->
   <section class="screen" id="s-admin">
     <!-- ค้นหากับปุ่มเพิ่มอยู่แถวเดียวกัน เพื่อไม่ให้ปุ่มเต็มความกว้างดันรายชื่อลงไปทั้งหน้าจอ -->
-    <div class="adminbar">
-      <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาชื่อ รหัส หรือชื่อในไลน์" />
-      <button class="addmini" id="admin-add">+ เพิ่ม</button>
-    </div>
+    <input type="text" class="searchbox" id="admin-q" placeholder="ค้นหาชื่อ รหัส หรือชื่อในไลน์" />
     <div id="admin-new" style="display:none">
       <div class="section">เพิ่มพนักงานใหม่</div>
       <div class="block"><label class="q">รหัสพนักงาน <span>*</span></label>
@@ -412,7 +419,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
   <!-- tabbar — ขึ้นเฉพาะผู้ดูแล พนักงานทั่วไปมีหน้าเดียวจบ -->
   <nav class="tabbar" id="tabbar" style="display:none">
-    <button data-tab="me" aria-current="true">บัญชีของฉัน</button>
+    <button data-tab="me" aria-current="true">จัดการ</button>
     <button data-tab="admin" aria-current="false">ทะเบียนพนักงาน</button>
   </nav>
 
