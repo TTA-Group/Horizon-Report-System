@@ -225,11 +225,13 @@ function enterApp() {
 }
 
 /** หน้าสรุปของคนที่ลงทะเบียนแล้ว — ใช้เมื่อปิดหน้าต่างเองไม่ได้ และเป็นแท็บของฝ่ายบุคคล */
-function showDone() {
+function showDone(justRegistered) {
   const emp = session.employee || {};
+  $("#done-title").textContent = justRegistered ? "ลงทะเบียนเรียบร้อยแล้ว" : "ลงทะเบียนไว้แล้ว";
   $("#done-name").textContent = [emp.employee_code, emp.full_name].filter(Boolean).join(" · ");
+  $("#done-hint").style.display = "none";
   // ปุ่มปิดใช้ได้เฉพาะตอนเปิดอยู่ในไลน์ เปิดจากเบราว์เซอร์ปกติกดแล้วไม่เกิดอะไรขึ้น
-  $("#btn-close").style.display = window.liff && liff.closeWindow ? "" : "none";
+  $("#btn-close").style.display = canCloseWindow() ? "" : "none";
   show("s-done");
 }
 
@@ -266,21 +268,37 @@ function readBackTarget() {
  * เปิดตรงมาเอง = ปิดหน้าต่างให้เลย เพราะลงทะเบียนคืองานทั้งหมดที่มาทำ ไม่มีอะไรต่อ
  * ปิดไม่ได้ (เปิดจากเบราว์เซอร์ปกติ) = ค่อยขึ้นหน้าสรุปพร้อมปุ่มปิดไว้ให้
  */
-function leaveAfterRegister() {
+function leaveAfterRegister(justRegistered) {
   const back = readBackTarget();
   if (back) {
     location.href = `https://liff.line.me/${back}`;
     return;
   }
+  // ขึ้นหน้าสรุปก่อนเสมอ แล้วค่อยปิด — สั่งปิดทันทีผู้ใช้จะไม่ทันเห็นว่าลงทะเบียนสำเร็จ
+  // และถ้าปิดไม่ได้ (เปิดจากเบราว์เซอร์ปกติ) ก็ยังมีหน้าค้างไว้พร้อมปุ่ม ไม่ใช่จอเปล่า
+  showDone(justRegistered);
+  if (!canCloseWindow()) return;
+  $("#done-hint").style.display = "";
+  // หน่วงสั้น ๆ ก่อนสั่งปิด — สั่งติดกับการทำงานอื่นของ LIFF ไลน์มักเมินคำสั่งนี้ไปเฉย ๆ
+  setTimeout(closeWindow, 1200);
+}
+
+/** ปิดหน้าต่างได้จริงไหม — ทำได้เฉพาะตอนเปิดอยู่ในไลน์ ไม่ใช่เบราว์เซอร์ปกติ */
+function canCloseWindow() {
   try {
-    if (window.liff && liff.closeWindow) {
-      liff.closeWindow();
-      return;
-    }
+    if (!window.liff || !liff.closeWindow) return false;
+    return typeof liff.isInClient === "function" ? liff.isInClient() : true;
   } catch {
-    /* ปิดไม่ได้ก็ตกไปหน้าสรุปด้านล่าง */
+    return false;
   }
-  showDone();
+}
+
+function closeWindow() {
+  try {
+    liff.closeWindow();
+  } catch {
+    /* ปิดไม่ได้ก็ปล่อยให้ค้างที่หน้าสรุป ผู้ใช้กดปิดเองได้ */
+  }
 }
 
 /* ---------- ลงทะเบียนพนักงาน ---------- */
@@ -369,7 +387,7 @@ async function confirmFound() {
     // ฝ่ายบุคคลมีงานต่อในหน้านี้ คนอื่นจบแค่นี้ — พากลับไประบบที่พามา หรือปิดหน้าต่างให้
     if (session.is_admin) return enterApp();
     $("#appbar").style.display = "none";
-    leaveAfterRegister();
+    leaveAfterRegister(true);
   } catch (e) {
     // มีคนผูกรหัสนี้ตัดหน้าไประหว่างที่ยังค้างหน้ายืนยันอยู่
     if (e.code === "already_linked") {
@@ -897,13 +915,7 @@ function bind() {
   $("#btn-confirm-found").onclick = confirmFound;
   $("#btn-not-me").onclick = () => showRegPart("reg-input");
   $("#btn-notfound-back").onclick = () => showRegPart("reg-input");
-  $("#btn-close").onclick = () => {
-    try {
-      if (window.liff && liff.closeWindow) liff.closeWindow();
-    } catch {
-      /* ปิดไม่ได้ก็ปล่อยไว้ ผู้ใช้กดปิดเองได้อยู่แล้ว */
-    }
-  };
+  $("#btn-close").onclick = closeWindow;
 
   // แถบล่างของฝ่ายบุคคล — พนักงานทั่วไปไม่เห็นแถบนี้
   $$(".tabbar button").forEach((b) =>
