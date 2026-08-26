@@ -239,9 +239,14 @@ function showRegister() {
   $("#core-missing").style.display = ready ? "none" : "";
 }
 
-/** เปิดหน้าลงทะเบียนของระบบกลาง — เป็น LIFF คนละตัว จึงเปิดด้วยลิงก์ liff.line.me */
+/**
+ * เปิดหน้าลงทะเบียนของระบบกลาง — เป็น LIFF คนละตัว จึงเปิดด้วยลิงก์ liff.line.me
+ *
+ * แนบรหัส LIFF ของตัวเองไปกับ back= ด้วย ระบบกลางจะได้พากลับมาที่นี่ให้อัตโนมัติหลังลงทะเบียนเสร็จ
+ * ไม่ใช่ปล่อยให้ผู้ใช้ค้างอยู่ที่นั่นแล้วต้องหาทางกลับเอง
+ */
 function goCoreRegister() {
-  const url = `https://liff.line.me/${CFG.coreLiffId}`;
+  const url = `https://liff.line.me/${CFG.coreLiffId}?back=${encodeURIComponent(CFG.liffId || "")}`;
   if (window.liff && liff.openWindow) liff.openWindow({ url, external: false });
   else window.location.href = url;
 }

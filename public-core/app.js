@@ -203,9 +203,11 @@ function routeBySession() {
 }
 
 /**
- * ลงทะเบียนแล้ว — พนักงานทั่วไปจบที่หน้าเดียว ไม่มีอะไรให้ทำต่อในระบบกลาง
- * งานจริงอยู่ที่ระบบปลายทาง (แจ้งปัญหา จองคิวนวด) ซึ่งเปิดจากเมนูของไลน์
- * ฝ่ายบุคคลเท่านั้นที่ได้แถบล่างเพิ่มมาสำหรับจัดการทะเบียนพนักงาน
+ * ลงทะเบียนไว้อยู่แล้ว — ระบบกลางไม่มีอะไรให้พนักงานทั่วไปทำต่อ
+ *
+ * ถ้ามีระบบที่พามา ก็พากลับไปเลย · ถ้าเปิดตรงมาเองก็ปิดหน้าต่างให้
+ * ไม่ปล่อยให้ค้างอยู่หน้าที่ไม่มีอะไรกด ซึ่งอ่านแล้วเหมือนแอปค้าง
+ * ฝ่ายบุคคลเป็นข้อยกเว้น เพราะมีหน้าทะเบียนพนักงานให้ใช้จริง
  */
 function enterApp() {
   const emp = session.employee || {};
@@ -213,20 +215,72 @@ function enterApp() {
   $("#me-av").textContent = (emp.full_name || "?").trim().charAt(0).toUpperCase();
   $("#me-name").textContent = emp.full_name || "-";
   $("#me-dept").textContent = [emp.department_name, emp.floor].filter(Boolean).join(" · ") || "";
-  $("#done-name").textContent = [emp.employee_code, emp.full_name].filter(Boolean).join(" · ");
 
   if (session.is_admin) {
     $("#tabbar").style.display = "flex";
-    goMe();
-  } else {
-    $("#tabbar").style.display = "none";
-    show("s-done");
+    return goMe();
   }
+  $("#tabbar").style.display = "none";
+  leaveAfterRegister();
+}
+
+/** หน้าสรุปของคนที่ลงทะเบียนแล้ว — ใช้เมื่อปิดหน้าต่างเองไม่ได้ และเป็นแท็บของฝ่ายบุคคล */
+function showDone() {
+  const emp = session.employee || {};
+  $("#done-name").textContent = [emp.employee_code, emp.full_name].filter(Boolean).join(" · ");
+  // ปุ่มปิดใช้ได้เฉพาะตอนเปิดอยู่ในไลน์ เปิดจากเบราว์เซอร์ปกติกดแล้วไม่เกิดอะไรขึ้น
+  $("#btn-close").style.display = window.liff && liff.closeWindow ? "" : "none";
+  show("s-done");
 }
 
 function goMe() {
   setTab("me");
-  show("s-done");
+  showDone();
+}
+
+
+/**
+ * ระบบที่พาเรามาลงทะเบียน — ส่งมาเป็น ?back=<LIFF ID ของระบบนั้น>
+ *
+ * ระบบกลางไม่รู้จักและไม่ควรรู้จักระบบปลายทางไหนเป็นพิเศษ ใครพามาก็ส่งรหัสตัวเองมาด้วย
+ * แล้วเราพากลับไปที่นั่น ระบบใหม่ที่จะมาต่อ (จองคิวนวด ฯลฯ) จึงใช้ได้เลยโดยไม่ต้องแก้ไฟล์นี้
+ *
+ * รับเฉพาะสิ่งที่หน้าตาเป็นรหัส LIFF จริง ๆ ปลายทางจึงเป็นได้แค่แอปในไลน์
+ * ไม่ใช่เว็บอะไรก็ได้ที่ใครแนบมากับลิงก์
+ */
+const LIFF_ID_RE = /^\d{6,12}-[A-Za-z0-9]{4,20}$/;
+
+function readBackTarget() {
+  const direct = new URLSearchParams(location.search);
+  // บางเส้นทางไลน์ห่อพารามิเตอร์ไว้ใน liff.state อีกชั้น ต้องรองรับทั้งสองแบบ
+  const state = direct.get("liff.state");
+  const p = state ? new URLSearchParams(state.startsWith("?") ? state.slice(1) : state) : direct;
+  const back = (p.get("back") || "").trim();
+  return LIFF_ID_RE.test(back) ? back : null;
+}
+
+/**
+ * จบงานของหน้านี้ — ปลายทางขึ้นกับว่าใครพามา
+ *
+ * มาจากระบบอื่น = พากลับไปใช้งานต่อทันที ไม่ต้องให้ผู้ใช้หาทางกลับเอง
+ * เปิดตรงมาเอง = ปิดหน้าต่างให้เลย เพราะลงทะเบียนคืองานทั้งหมดที่มาทำ ไม่มีอะไรต่อ
+ * ปิดไม่ได้ (เปิดจากเบราว์เซอร์ปกติ) = ค่อยขึ้นหน้าสรุปพร้อมปุ่มปิดไว้ให้
+ */
+function leaveAfterRegister() {
+  const back = readBackTarget();
+  if (back) {
+    location.href = `https://liff.line.me/${back}`;
+    return;
+  }
+  try {
+    if (window.liff && liff.closeWindow) {
+      liff.closeWindow();
+      return;
+    }
+  } catch {
+    /* ปิดไม่ได้ก็ตกไปหน้าสรุปด้านล่าง */
+  }
+  showDone();
 }
 
 /* ---------- ลงทะเบียนพนักงาน ---------- */
@@ -312,7 +366,10 @@ async function confirmFound() {
     await api("/api/auth/link", { method: "POST", body: { employee_code: code } });
     session = await api("/api/auth/session", { method: "POST" });
     toast("ยืนยันตัวตนเรียบร้อยแล้ว");
-    enterApp();
+    // ฝ่ายบุคคลมีงานต่อในหน้านี้ คนอื่นจบแค่นี้ — พากลับไประบบที่พามา หรือปิดหน้าต่างให้
+    if (session.is_admin) return enterApp();
+    $("#appbar").style.display = "none";
+    leaveAfterRegister();
   } catch (e) {
     // มีคนผูกรหัสนี้ตัดหน้าไประหว่างที่ยังค้างหน้ายืนยันอยู่
     if (e.code === "already_linked") {
@@ -840,6 +897,13 @@ function bind() {
   $("#btn-confirm-found").onclick = confirmFound;
   $("#btn-not-me").onclick = () => showRegPart("reg-input");
   $("#btn-notfound-back").onclick = () => showRegPart("reg-input");
+  $("#btn-close").onclick = () => {
+    try {
+      if (window.liff && liff.closeWindow) liff.closeWindow();
+    } catch {
+      /* ปิดไม่ได้ก็ปล่อยไว้ ผู้ใช้กดปิดเองได้อยู่แล้ว */
+    }
+  };
 
   // แถบล่างของฝ่ายบุคคล — พนักงานทั่วไปไม่เห็นแถบนี้
   $$(".tabbar button").forEach((b) =>
