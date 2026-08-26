@@ -253,8 +253,10 @@ function goBook() {
   renderDays();
 }
 
+/** วันที่เราจองไว้แล้ว — เปิดดูได้ แต่จองซ้ำไม่ได้เพราะกติกาคือวันละหนึ่งคิว */
+const isMyDay = (day) => activeBookings().some((b) => b.day === day);
+
 function renderDays() {
-  // วันที่จองไปแล้วเลือกซ้ำไม่ได้ เพราะจองได้วันละคิวเดียว
   const booked = new Set(activeBookings().map((b) => b.day));
 
   $("#days").innerHTML = state.days
@@ -262,8 +264,10 @@ function renderDays() {
       const mine = booked.has(d.day);
       const full = d.free === 0;
       const note = mine ? "จองแล้ว" : full ? "เต็มแล้ว" : `ว่าง ${d.free} คิว`;
-      return `<button class="day" data-day="${escapeHtml(d.day)}" aria-pressed="false"${
-        mine || full ? " disabled" : ""
+      // วันที่จองไปแล้วยังกดเข้าไปดูตารางได้ ปิดแค่การจองซ้ำ
+      // เพราะพนักงานเปิดดูแทนเพื่อนกันว่าวันนั้นเหลือรอบไหน ถ้าปิดตายจะดูให้กันไม่ได้เลย
+      return `<button class="day${mine ? " mine" : ""}" data-day="${escapeHtml(d.day)}" aria-pressed="false"${
+        full && !mine ? " disabled" : ""
       }>${escapeHtml(d.chip)}<small>${note}</small></button>`;
     })
     .join("");
@@ -274,6 +278,7 @@ function renderDays() {
     currentDay = null;
     $("#slots").innerHTML = `<div class="empty">ไม่มีวันที่จองได้เหลืออยู่<br>ลองดูใหม่เดือนหน้าได้เลย</div>`;
     $("#legend").style.display = "none";
+    $("#viewnote").style.display = "none";
     clearPick();
   }
 }
@@ -284,6 +289,7 @@ async function selectDay(day) {
   $$("#days .day").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.day === day)));
   $("#slots").innerHTML = `<div class="empty">กำลังตรวจสอบคิวว่าง...</div>`;
   $("#legend").style.display = "none";
+  $("#viewnote").style.display = "none";
   try {
     availability = await api(`/api/massage/day?day=${encodeURIComponent(day)}`);
     renderGrid();
@@ -307,6 +313,9 @@ function headName(name) {
 
 function renderGrid() {
   const th = availability.therapists;
+  const viewOnly = isMyDay(currentDay);
+
+  $("#viewnote").style.display = viewOnly ? "" : "none";
 
   const head = `<tr><th class="tcol"></th>${th
     .map((t) => `<th>${headName(t.name)}</th>`)
@@ -318,7 +327,7 @@ function renderGrid() {
         .map((c) => {
           // รอบที่เลยเวลาแล้วยังโชว์ไว้ให้เห็นภาพทั้งวัน แต่กดไม่ได้
           const label = c.mine ? "ของคุณ" : c.taken ? "จอง" : r.bookable ? "ว่าง" : "ปิด";
-          const dis = c.taken || !r.bookable ? " disabled" : "";
+          const dis = viewOnly || c.taken || !r.bookable ? " disabled" : "";
           return `<td><button class="cell${c.mine ? " mine" : ""}" aria-pressed="false"${dis}
             data-slot="${escapeHtml(r.slot)}" data-th="${escapeHtml(c.therapistId)}" data-label="${label}"
             aria-label="${escapeHtml(r.label)} ${escapeHtml(
@@ -334,6 +343,7 @@ function renderGrid() {
 
   $("#slots").innerHTML = `<table class="grid">${head}${body}</table>`;
   $("#legend").style.display = "";
+  if (viewOnly) clearPick();
 }
 
 function clearPick() {
