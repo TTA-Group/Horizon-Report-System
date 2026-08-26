@@ -1,0 +1,42 @@
+# การตั้งค่า Cloudflare Workers สำหรับ Horizon Wellness — ระบบจองคิวนวด
+#
+# deploy แยกจากอีกสองระบบ:  npx wrangler deploy --config wrangler.massage.toml
+#
+# ใช้ฐานข้อมูลตัวเดียวกับระบบอื่น จึงต้องตั้งค่าเหล่านี้ที่ Worker ตัวนี้ด้วย
+# (Settings → Variables and Secrets ทุกตัวต้องเป็นชนิด Secret):
+#   DATABASE_URL                — สายเชื่อมต่อแบบ Transaction pooler ของ Supabase
+#   LINE_LOGIN_CHANNEL_ID       — ตรวจบัตรประจำตัวจากไลน์
+#   LINE_CHANNEL_ACCESS_TOKEN   — ส่งการ์ดยืนยันและข้อความเตือน
+#   LINE_CHANNEL_SECRET         — ใช้เซ็นลิงก์ฟอร์มเช็คชื่อ
+#   ADMIN_EMPLOYEE_CODES        — ทางสำรองของสิทธิ์ผู้ดูแล (ปกติดูจากฝ่าย HR ในฐานข้อมูล)
+#
+# ค่าลับห้ามใส่ลงไฟล์นี้เพราะไฟล์นี้อยู่ใน repo สาธารณะ
+
+name = "massage"
+main = "src/massage.ts"
+compatibility_date = "2025-01-01"
+
+# postgres ต้องใช้ TCP · node:crypto ใช้ตรวจ ID token ของไลน์และเซ็นลิงก์ฟอร์ม
+compatibility_flags = ["nodejs_compat"]
+
+# หน้าเว็บของระบบจองคิวนวด — คนละชุดกับ public/ และ public-core/
+# ไม่ต้องใช้ run_worker_first เพราะหน้านี้ไม่ได้ถูกแชร์เป็นลิงก์ในแชท จึงไม่ต้องเติมโดเมนใน og:*
+[assets]
+directory = "./public-massage"
+binding = "ASSETS"
+
+# ค่าที่เปิดเผยได้ ไม่ใช่ความลับ
+#
+# LIFF_ID คือรหัสหน้าเว็บของระบบจองใน LINE ฝั่ง Worker ต้องรู้เพราะต้องประกอบลิงก์
+# ปุ่ม "ยกเลิกการจอง" บนการ์ดยืนยัน  ค่าเดียวกันนี้อยู่ใน public-massage/config.js
+# ซึ่งเบราว์เซอร์ของทุกคนโหลดไปอยู่แล้ว
+[vars]
+LIFF_ID = "ยังไม่ได้ตั้งค่า"
+
+# งานตามเวลา (เวลาเป็น UTC) — ต้องตรงกับที่จับคู่ไว้ใน src/massage.ts (CRON_JOBS)
+[triggers]
+crons = [
+  "0 1 * * *",      # open-month  — สร้างวันศุกร์ของเดือนปัจจุบัน (08:00 น. เวลาไทย)
+  "0 10 * * *",     # remind-eve  — เตือนคนที่มีคิวพรุ่งนี้ (17:00 น. เวลาไทย)
+  "*/15 2-9 * * *", # remind-soon — เตือนก่อนถึงคิว (09:00–16:45 น. เวลาไทย)
+]
