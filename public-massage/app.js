@@ -19,7 +19,6 @@ let session = null;
 let state = null; // ผลจาก /api/massage/state
 let currentDay = null;
 let availability = null;
-let openSlot = null; // รอบเวลาที่กางอยู่
 let pick = null; // { slot, slotLabel, therapistId, therapistName }
 let sheet = null; // ฟอร์มเช็คชื่อที่กำลังเปิดอยู่ (ฝั่งผู้ดูแล)
 let sheetOptions = [];
@@ -274,55 +273,67 @@ function renderDays() {
   else {
     currentDay = null;
     $("#slots").innerHTML = `<div class="empty">ไม่มีวันที่จองได้เหลืออยู่<br>ลองดูใหม่เดือนหน้าได้เลย</div>`;
+    $("#legend").style.display = "none";
     clearPick();
   }
 }
 
 async function selectDay(day) {
   currentDay = day;
-  openSlot = null;
   clearPick();
   $$("#days .day").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.day === day)));
   $("#slots").innerHTML = `<div class="empty">กำลังตรวจสอบคิวว่าง...</div>`;
+  $("#legend").style.display = "none";
   try {
     availability = await api(`/api/massage/day?day=${encodeURIComponent(day)}`);
-    renderSlots();
+    renderGrid();
   } catch (e) {
     if (e && e.handled) return;
     $("#slots").innerHTML = `<div class="empty">${escapeHtml(e.message || "โหลดคิวไม่สำเร็จ")}</div>`;
+    $("#legend").style.display = "none";
   }
 }
 
-function renderSlots() {
+/**
+ * ชื่อหมอนวดในหัวตารางต้องขึ้นบรรทัดใหม่ตรงที่อ่านแล้วไม่สะดุด
+ *
+ * ช่องกว้างราว 60px พอได้ 6-7 ตัวอักษรไทย ชื่อเกือบทุกชื่อจึงต้องตัดสองบรรทัด
+ * ถ้าปล่อยให้เบราว์เซอร์ตัดเอง จะได้ "หมอนวดผู้ช / าย" ซึ่งอ่านแล้วสะดุด
+ * จึงใส่จุดตัดที่มองไม่เห็นไว้หลังคำว่า "หมอนวด" ให้ก่อน ส่วนชื่อที่มีเว้นวรรคตัดตรงนั้นอยู่แล้ว
+ */
+function headName(name) {
+  return escapeHtml(name).replace(/^หมอนวด(?=\S)/, "หมอนวด\u200B");
+}
+
+function renderGrid() {
   const th = availability.therapists;
 
-  $("#slots").innerHTML = availability.rows
-    .map((r) => {
-      const free = r.bookable ? r.cells.filter((c) => !c.taken).length : 0;
-      const closed = free === 0;
-      const note = !r.bookable ? "เลยเวลาแล้ว" : closed ? "เต็มแล้ว" : `ว่าง ${free} คิว`;
+  const head = `<tr><th class="tcol"></th>${th
+    .map((t) => `<th>${headName(t.name)}</th>`)
+    .join("")}</tr>`;
 
-      const list = r.cells
+  const body = availability.rows
+    .map((r) => {
+      const cells = r.cells
         .map((c) => {
-          const name = th.find((t) => t.id === c.therapistId)?.name ?? "";
-          const cls = c.mine ? "mine" : c.taken ? "taken" : "";
-          const tag = c.mine ? "คิวของคุณ" : c.taken ? "จองแล้ว" : "ว่าง";
+          // รอบที่เลยเวลาแล้วยังโชว์ไว้ให้เห็นภาพทั้งวัน แต่กดไม่ได้
+          const label = c.mine ? "ของคุณ" : c.taken ? "จอง" : r.bookable ? "ว่าง" : "ปิด";
           const dis = c.taken || !r.bookable ? " disabled" : "";
-          return `<button class="tbtn ${cls}" aria-pressed="false"${dis}
-            data-slot="${escapeHtml(r.slot)}" data-th="${escapeHtml(c.therapistId)}">
-            <span>${escapeHtml(name)}</span><span class="tag">${tag}</span></button>`;
+          return `<td><button class="cell${c.mine ? " mine" : ""}" aria-pressed="false"${dis}
+            data-slot="${escapeHtml(r.slot)}" data-th="${escapeHtml(c.therapistId)}" data-label="${label}"
+            aria-label="${escapeHtml(r.label)} ${escapeHtml(
+              th.find((t) => t.id === c.therapistId)?.name ?? "",
+            )} ${label}">${label}</button></td>`;
         })
         .join("");
-
-      return `<div class="slot${closed ? " full" : ""}" data-slot="${escapeHtml(r.slot)}">
-        <button class="slothead" data-head="${escapeHtml(r.slot)}"${closed ? " disabled" : ""}>
-          <span class="t">${escapeHtml(r.label)}</span>
-          <span class="r"><span class="f">${note}</span><span class="caret"></span></span>
-        </button>
-        <div class="tlist">${list}</div>
-      </div>`;
+      const [from, to] = r.label.split("-");
+      return `<tr${r.bookable ? "" : ' class="off"'} data-slot="${escapeHtml(r.slot)}">
+        <td class="time">${escapeHtml(from)}<br>${escapeHtml(to ?? "")}</td>${cells}</tr>`;
     })
     .join("");
+
+  $("#slots").innerHTML = `<table class="grid">${head}${body}</table>`;
+  $("#legend").style.display = "";
 }
 
 function clearPick() {
@@ -622,29 +633,21 @@ function bind() {
   };
 
   $("#slots").onclick = (e) => {
-    // กางหรือพับรอบเวลา
-    const head = e.target.closest(".slothead");
-    if (head && !head.disabled) {
-      const slot = head.dataset.head;
-      openSlot = openSlot === slot ? null : slot;
-      $$("#slots .slot").forEach((el) => el.classList.toggle("on", el.dataset.slot === openSlot));
-      if (pick && pick.slot !== openSlot) {
-        $$("#slots .tbtn").forEach((x) => x.setAttribute("aria-pressed", "false"));
-        clearPick();
-      }
-      return;
-    }
-
-    // เลือกหมอนวด
-    const t = e.target.closest(".tbtn");
-    if (!t || t.disabled) return;
-    const already = t.getAttribute("aria-pressed") === "true";
-    $$("#slots .tbtn").forEach((x) => x.setAttribute("aria-pressed", "false"));
+    const c = e.target.closest(".cell");
+    if (!c || c.disabled) return;
+    const already = c.getAttribute("aria-pressed") === "true";
+    // คืนทุกช่องกลับเป็นคำเดิมก่อน แล้วค่อยทำเครื่องหมายช่องที่เลือก
+    // เปลี่ยนแค่สีไม่พอ คนที่แยกสีเขียวไม่ออกจะไม่รู้ว่าตัวเองเลือกช่องไหนอยู่
+    $$("#slots .cell").forEach((x) => {
+      x.setAttribute("aria-pressed", "false");
+      x.textContent = x.dataset.label;
+    });
     if (already) return clearPick();
 
-    t.setAttribute("aria-pressed", "true");
-    const row = availability.rows.find((r) => r.slot === t.dataset.slot);
-    const who = availability.therapists.find((x) => x.id === t.dataset.th);
+    c.setAttribute("aria-pressed", "true");
+    c.textContent = "เลือก";
+    const row = availability.rows.find((r) => r.slot === c.dataset.slot);
+    const who = availability.therapists.find((x) => x.id === c.dataset.th);
     pick = { slot: row.slot, slotLabel: row.label, therapistId: who.id, therapistName: who.name };
     updatePick();
   };
