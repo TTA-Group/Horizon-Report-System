@@ -7,7 +7,7 @@
 // ตัวจัดการจะพังตั้งแต่คำสั่งอ่านข้อมูล แล้ว error ไปจบใน log ที่ไม่มีใครเปิดดู
 
 import { db } from "./_lib/db";
-import { envVar } from "./_lib/env";
+import { envBinding, envVar } from "./_lib/env";
 import { json, methodGuard, run, safeErrorText } from "./_lib/http";
 
 const CONFIG_KEYS = [
@@ -162,8 +162,17 @@ export default async (req: Request): Promise<Response> =>
       line = { ok: false, ms: Date.now() - lineStart, error: safeErrorText(e) };
     }
 
+    // รุ่นที่กำลังรันอยู่จริงบนเครื่อง — ตอบคำถาม "ของใหม่ขึ้นไปแล้วหรือยัง" ได้ในที่เดียว
+    //
+    // เคยเสียเวลาไล่หาสาเหตุว่าทำไมแก้แล้วหน้าจอไม่เปลี่ยน โดยเดาว่าเป็นแคชของเบราว์เซอร์
+    // ทั้งที่ของใหม่ยังไม่ได้ deploy ขึ้นไป ต่อไปดู deployed.at ว่าเป็นเวลาหลังแก้หรือเปล่า
+    const version = envBinding<{ id: string; timestamp: string }>("CF_VERSION");
+
     return json({
       ok: database.ok === true && line.ok === true && migrations.ok === true,
+      deployed: version
+        ? { at: version.timestamp, version: version.id.slice(0, 8) }
+        : { at: null, note: "Worker ตัวนี้ยังไม่ได้เปิด version_metadata" },
       config,
       database,
       migrations,
