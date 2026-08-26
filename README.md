@@ -28,9 +28,9 @@ repo นี้ deploy เป็น **Worker สามตัว** ใช้ฐา
 
 | Worker | ทำอะไร | ตั้งค่า | คำสั่ง deploy |
 | --- | --- | --- | --- |
-| `core` | ลงทะเบียนพนักงาน · หน้าจัดการทะเบียนของ HR | `wrangler.core.toml` · `public-core/` | `npm run deploy:core` |
+| `core` | ลงทะเบียนพนักงาน · หน้าจัดการทะเบียนของ HR · ฟอร์มเช็คชื่อคิวนวด | `wrangler.core.toml` · `public-core/` | `npm run deploy:core` |
 | `report` | ระบบแจ้งปัญหา (คิวงาน · รายงาน · webhook · งานตามเวลา) | `wrangler.toml` · `public/` | `npm run deploy` |
-| `massage` | ระบบจองคิวนวด (จอง · ยกเลิก · ฟอร์มเช็คชื่อ · เตือน) | `wrangler.massage.toml` · `public-massage/` | `npm run deploy:massage` |
+| `massage` | ระบบจองคิวนวด (จอง · ยกเลิก · ข้อความเตือน) | `wrangler.massage.toml` · `public-massage/` | `npm run deploy:massage` |
 
 **ทำไมต้องแยก** — พนักงานต้องลงทะเบียนครั้งเดียวแล้วใช้ได้ทุกระบบ ถ้าหน้าลงทะเบียนฝังอยู่ใน
 ระบบแจ้งปัญหา ระบบที่สอง (จองคิวนวด) ก็ต้องมีหน้าลงทะเบียนของตัวเองอีกชุด กลายเป็นสองที่
@@ -58,6 +58,7 @@ db/              schema.sql · seed.sql · enable-rls.sql · cleanup-sample-data
                  import-employees.template.sql (นำเข้าพนักงานเป็นชุด — ห้ามใส่ข้อมูลจริงลงในที่เก็บโค้ด)
                  massage-schema.sql (ตารางของระบบจองคิวนวด + วันหยุด + ค่าตั้งของระบบ)
                  massage-seed.sql (รายชื่อหมอนวด ค่าตั้งเริ่มต้น และวันหยุดที่ตรงวันเดิมทุกปี)
+                 massage-one-per-day.sql (เปลี่ยนเป็นจองได้วันละคิวเดียว + ตั้งเดือนแรกที่เปิดจอง)
 wrangler.toml          การตั้งค่า Worker "report" (assets, nodejs_compat, cron triggers, LIFF_ID)
 wrangler.core.toml     การตั้งค่า Worker "core"
 wrangler.massage.toml  การตั้งค่า Worker "massage"
@@ -82,9 +83,18 @@ wrangler.massage.toml  การตั้งค่า Worker "massage"
 
 **API ของ `massage`** — `/api/massage/state` สถานะระบบ วันที่เปิดจอง สิทธิ์ที่เหลือ และคิวของตัวเอง ·
 `/api/massage/day` ตารางคิวว่างของวันหนึ่ง (บอกแค่ว่างหรือไม่ว่าง ไม่มีชื่อใครในนั้น) ·
-`/api/massage/book` กับ `/api/massage/cancel` · `/api/massage/admin/sheet` กับ `/api/massage/admin/attend`
-ฟอร์มเช็คชื่อและการกด มา/ไม่มา (เฉพาะผู้ดูแล) · `/api/massage/sheet?t=...` หน้าพร้อมพิมพ์
-เปิดได้ด้วยลิงก์ที่เซ็นกำกับอายุ 48 ชั่วโมง
+`/api/massage/book` กับ `/api/massage/cancel`
+
+**ฟอร์มเช็คชื่อคิวนวดอยู่ที่ `core`** — `/api/massage/admin/sheet` กับ `/api/massage/admin/attend`
+(เฉพาะผู้ดูแล) · `/api/massage/sheet?t=...` หน้าพร้อมพิมพ์ A4 แนวนอน เปิดได้ด้วยลิงก์ที่เซ็นกำกับ
+อายุ 48 ชั่วโมง — อยู่ที่ `core` เพราะเป็นงานของผู้ดูแล ไม่ใช่งานของคนจอง ผู้ดูแลจะได้ทำงาน
+ทะเบียนพนักงานกับเช็คชื่อจบในแอปเดียว คนที่อยู่ฝ่ายที่ตั้งไว้ใน `massage.staff_dept`
+เข้าหน้าจัดการของ `core` ได้ด้วย แต่เห็นเฉพาะฟอร์มเช็คชื่อ ไม่เห็นทะเบียนพนักงาน
+
+**กติกาการจอง** — ทุกวันศุกร์ (ข้ามวันหยุดใน `company_holidays`) · 8 รอบ × 4 หมอนวด = 32 คิวต่อวัน ·
+**2 ครั้งต่อเดือน และวันละ 1 คิว** (กันด้วยดัชนี `uq_massage_person_day` — ซึ่งกันการจองรอบติดกัน
+เพื่อนวดยาว 1 ชั่วโมงไปในตัว) · จองและยกเลิกได้จนถึงก่อนรอบเริ่ม 15 นาที ·
+`massage.start_month` กำหนดเดือนแรกที่เปิดให้จอง (ตั้งไว้ที่ 2026-09)
 
 **งานตามเวลา** — ⚠️ Cloudflare แผนฟรีให้ตั้ง cron ได้ **5 ตัวต่อบัญชี** ไม่ใช่ต่อ Worker
 ทั้งสามระบบจึงต้องแบ่งกันใช้ ตอนนี้ใช้รวมกัน **3 ตัว** เหลือที่ว่างอีก 2
