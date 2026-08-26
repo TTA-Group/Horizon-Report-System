@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ทดสอบการปิดหน้าต่าง LIFF</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,sans-serif;background:#F5F7F9;color:#101418;
+    padding:16px;line-height:1.6;font-size:14px}
+  h1{font-size:16px;margin-bottom:4px}
+  .sub{color:#606C7A;font-size:12px;margin-bottom:14px}
+  .box{background:#fff;border:1px solid #DDE3E9;border-radius:12px;padding:13px 15px;margin-bottom:12px}
+  .box h2{font-size:13px;margin-bottom:8px;color:#606C7A;font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  td{padding:4px 0;vertical-align:top}
+  td:first-child{color:#606C7A;width:44%}
+  td:last-child{font-family:ui-monospace,monospace;word-break:break-all}
+  button{width:100%;font-family:inherit;font-size:14px;font-weight:600;padding:13px;
+    border-radius:11px;border:0;background:#06C755;color:#fff;margin-bottom:9px;cursor:pointer}
+  button.alt{background:#fff;color:#101418;border:1.5px solid #DDE3E9}
+  #log{font-family:ui-monospace,monospace;font-size:11.5px;white-space:pre-wrap;
+    background:#101418;color:#8FE3AC;border-radius:10px;padding:11px;min-height:90px}
+  .note{font-size:12px;color:#606C7A;margin-bottom:9px}
+</style>
+</head>
+<body>
+<h1>ทดสอบการปิดหน้าต่าง LIFF</h1>
+<div class="sub">หน้านี้มีไว้ไล่หาสาเหตุอย่างเดียว ไม่ใช่ส่วนหนึ่งของระบบ</div>
+
+<div class="box">
+  <h2>สภาพแวดล้อม</h2>
+  <table id="env"><tr><td>กำลังตรวจ…</td><td></td></tr></table>
+</div>
+
+<div class="box">
+  <h2>กดทีละปุ่ม ปุ่มไหนทำให้หน้าต่างปิดได้ ให้จำไว้</h2>
+  <div class="note">ถ้าปิดได้ หน้าต่างจะหายไปเลย ต้องเปิดลิงก์นี้ใหม่เพื่อทดสอบปุ่มถัดไป</div>
+  <button data-t="1">1 · ปิดทันทีตอนกด</button>
+  <button data-t="2" class="alt">2 · ปิดหลังหน่วง 1.2 วินาที</button>
+  <button data-t="3" class="alt">3 · ปิดหลังยิง API หนึ่งครั้ง</button>
+  <button data-t="4" class="alt">4 · ปิดหลังยิง API แล้วหน่วงอีก 1.2 วินาที</button>
+  <button data-t="5" class="alt">5 · เรียกซ้ำสามครั้งรวด</button>
+</div>
+
+<div class="box">
+  <h2>บันทึก</h2>
+  <div id="log">รอเริ่ม…</div>
+</div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="config.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const logEl = $("#log");
+let lines = [];
+function log(m) {
+  lines.push(new Date().toLocaleTimeString("th-TH") + "  " + m);
+  logEl.textContent = lines.join("\n");
+}
+function row(k, v) {
+  return "<tr><td>" + k + "</td><td>" + String(v) + "</td></tr>";
+}
+function safe(fn, fallback) {
+  try { return fn(); } catch (e) { return fallback + " (" + e.message + ")"; }
+}
+
+async function main() {
+  const cfg = window.APP_CONFIG || {};
+  try {
+    await liff.init({ liffId: cfg.liffId });
+    log("liff.init สำเร็จ");
+  } catch (e) {
+    log("liff.init ล้มเหลว: " + e.message);
+  }
+  $("#env").innerHTML = [
+    row("liff.getVersion()", safe(() => liff.getVersion(), "-")),
+    row("liff.isInClient()", safe(() => liff.isInClient(), "-")),
+    row("liff.isLoggedIn()", safe(() => liff.isLoggedIn(), "-")),
+    row("liff.getOS()", safe(() => liff.getOS(), "-")),
+    row("liff.getLineVersion()", safe(() => liff.getLineVersion(), "-")),
+    row("liff.getAppLanguage()", safe(() => liff.getAppLanguage && liff.getAppLanguage(), "-")),
+    row("มีฟังก์ชัน closeWindow", typeof liff.closeWindow),
+    row("liffId ที่ใช้", cfg.liffId || "(ไม่ได้ตั้ง)"),
+    row("URL ปัจจุบัน", location.href.slice(0, 60)),
+  ].join("");
+  log("อ่านค่าสภาพแวดล้อมเสร็จ กดปุ่มทดสอบได้เลย");
+}
+
+function tryClose(tag) {
+  log(tag + " → เรียก liff.closeWindow()");
+  try {
+    liff.closeWindow();
+    log(tag + " → เรียกผ่าน ไม่มี error (ถ้ายังเห็นข้อความนี้ = หน้าต่างไม่ปิด)");
+  } catch (e) {
+    log(tag + " → error: " + e.message);
+  }
+}
+
+document.querySelectorAll("button[data-t]").forEach((b) => {
+  b.addEventListener("click", async () => {
+    const t = b.dataset.t;
+    log("--- เริ่มทดสอบแบบที่ " + t + " ---");
+    if (t === "1") return tryClose("แบบ 1");
+    if (t === "2") return setTimeout(() => tryClose("แบบ 2"), 1200);
+    if (t === "3") {
+      await fetch("/api/health").catch(() => {});
+      log("แบบ 3 → ยิง API เสร็จ");
+      return tryClose("แบบ 3");
+    }
+    if (t === "4") {
+      await fetch("/api/health").catch(() => {});
+      log("แบบ 4 → ยิง API เสร็จ รออีก 1.2 วิ");
+      return setTimeout(() => tryClose("แบบ 4"), 1200);
+    }
+    if (t === "5") {
+      tryClose("แบบ 5 ครั้งที่ 1");
+      setTimeout(() => tryClose("แบบ 5 ครั้งที่ 2"), 300);
+      setTimeout(() => tryClose("แบบ 5 ครั้งที่ 3"), 900);
+    }
+  });
+});
+
+main();
+</script>
+</body>
+</html>
