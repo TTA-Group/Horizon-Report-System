@@ -13,10 +13,18 @@ import { slotLabel, thaiDayLabel } from "./massage";
 
 const GREEN = "#06C755";
 
-/** ลิงก์เปิดแอปจองคิวนวด · คืน null เมื่อยังไม่ได้ตั้ง LIFF_ID */
+/**
+ * ลิงก์เปิดแอปจองคิวนวด · คืน null เมื่อยังไม่ได้ตั้ง LIFF_ID
+ *
+ * ค่าตั้งต้นใน wrangler.massage.toml เป็นข้อความบอกให้ไปตั้งค่า ไม่ใช่รหัสจริง
+ * ต้องนับว่า "ยังไม่ได้ตั้ง" ด้วย ไม่งั้นการ์ดจะมีปุ่มที่กดแล้วเปิดหน้าที่ไม่มีอยู่จริง
+ * ซึ่งแย่กว่าการ์ดที่ไม่มีปุ่ม — รหัส LIFF จริงมีแต่ตัวเลข ขีด และอักษรอังกฤษเท่านั้น
+ */
+const LIFF_ID_RE = /^\d{6,12}-[A-Za-z0-9]{4,20}$/;
+
 export function massageLiffUri(params?: Record<string, string>): string | null {
-  const liffId = envVar("LIFF_ID");
-  if (!liffId) return null;
+  const liffId = (envVar("LIFF_ID") ?? "").trim();
+  if (!LIFF_ID_RE.test(liffId)) return null;
   const q = params ? `?${new URLSearchParams(params).toString()}` : "";
   return `https://liff.line.me/${liffId}${q}`;
 }
