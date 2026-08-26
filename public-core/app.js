@@ -225,19 +225,25 @@ function enterApp() {
 }
 
 /** หน้าสรุปของคนที่ลงทะเบียนแล้ว — ใช้เมื่อปิดหน้าต่างเองไม่ได้ และเป็นแท็บของฝ่ายบุคคล */
-function showDone(justRegistered) {
-  const emp = session.employee || {};
-  $("#done-title").textContent = justRegistered ? "ลงทะเบียนเรียบร้อยแล้ว" : "ลงทะเบียนไว้แล้ว";
-  $("#done-name").textContent = [emp.employee_code, emp.full_name].filter(Boolean).join(" · ");
-  $("#done-hint").style.display = "none";
-  // ปุ่มปิดใช้ได้เฉพาะตอนเปิดอยู่ในไลน์ เปิดจากเบราว์เซอร์ปกติกดแล้วไม่เกิดอะไรขึ้น
+/**
+ * หน้าก่อนปิด — ขึ้นแวบเดียวให้รู้ว่าสำเร็จ ไม่ต้องมีอะไรให้อ่าน
+ * ปุ่มปิดมีไว้เผื่อกรณีที่สั่งปิดเองไม่ได้ (เปิดจากเบราว์เซอร์ปกติ) ไม่งั้นจะค้างโดยไม่มีทางออก
+ */
+function showDone() {
   $("#btn-close").style.display = canCloseWindow() ? "" : "none";
   show("s-done");
 }
 
+/** หน้าจัดการของฝ่ายบุคคล — งานที่ทำบ่อยที่สุดอยู่เป็นปุ่มใหญ่ปุ่มเดียว ไม่ต้องไปหาในแท็บอื่น */
 function goMe() {
+  const emp = session.employee || {};
+  $("#mg-name").textContent = emp.full_name || "—";
+  $("#mg-code").textContent = emp.employee_code || "—";
+  $("#mg-dept").textContent = emp.department_name || "—";
+  $("#mg-floor").textContent = emp.floor || "—";
+  $("#mg-close").style.display = canCloseWindow() ? "" : "none";
   setTab("me");
-  showDone();
+  show("s-manage");
 }
 
 
@@ -268,7 +274,7 @@ function readBackTarget() {
  * เปิดตรงมาเอง = ปิดหน้าต่างให้เลย เพราะลงทะเบียนคืองานทั้งหมดที่มาทำ ไม่มีอะไรต่อ
  * ปิดไม่ได้ (เปิดจากเบราว์เซอร์ปกติ) = ค่อยขึ้นหน้าสรุปพร้อมปุ่มปิดไว้ให้
  */
-function leaveAfterRegister(justRegistered) {
+function leaveAfterRegister() {
   const back = readBackTarget();
   if (back) {
     location.href = `https://liff.line.me/${back}`;
@@ -276,9 +282,8 @@ function leaveAfterRegister(justRegistered) {
   }
   // ขึ้นหน้าสรุปก่อนเสมอ แล้วค่อยปิด — สั่งปิดทันทีผู้ใช้จะไม่ทันเห็นว่าลงทะเบียนสำเร็จ
   // และถ้าปิดไม่ได้ (เปิดจากเบราว์เซอร์ปกติ) ก็ยังมีหน้าค้างไว้พร้อมปุ่ม ไม่ใช่จอเปล่า
-  showDone(justRegistered);
+  showDone();
   if (!canCloseWindow()) return;
-  $("#done-hint").style.display = "";
   // หน่วงสั้น ๆ ก่อนสั่งปิด — สั่งติดกับการทำงานอื่นของ LIFF ไลน์มักเมินคำสั่งนี้ไปเฉย ๆ
   setTimeout(closeWindow, 1200);
 }
@@ -391,7 +396,7 @@ async function confirmFound() {
     // ค่อยเปิดแอปเข้ามาใหม่เมื่อจะใช้ ข้อยกเว้นเรื่องฝ่ายบุคคลอยู่ที่ enterApp()
     // ซึ่งเป็นเส้นทางของคนที่ลงทะเบียนไว้อยู่แล้ว ไม่ใช่คนที่เพิ่งลงทะเบียนเสร็จ
     $("#appbar").style.display = "none";
-    leaveAfterRegister(true);
+    leaveAfterRegister();
   } catch (e) {
     // มีคนผูกรหัสนี้ตัดหน้าไประหว่างที่ยังค้างหน้ายืนยันอยู่
     if (e.code === "already_linked") {
@@ -421,8 +426,6 @@ async function goAdmin() {
   show("s-admin");
   // ฟอร์มเพิ่มพนักงานเกี่ยวกับรายชื่อพนักงานปัจจุบันเท่านั้น หน้าผู้ถูกระงับสิทธิ์ไม่ต้องมี
   if (adminView !== "active") closeEmpForm();
-  $("#admin-add").style.display =
-    adminView === "active" && $("#admin-new").style.display === "none" ? "" : "none";
   const list = $("#adminList");
   list.innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   const params = new URLSearchParams();
@@ -754,7 +757,6 @@ function pickedValue(sel, input) {
 function openEmpForm() {
   fillSelect($("#n-dept"), "เลือกฝ่าย/แผนก", ORG_DEPTS, "อื่น ๆ (ระบุเอง)");
   fillSelect($("#n-floor"), "เลือกชั้น", (masters && masters.floors) || [], "ชั้นอื่น");
-  $("#admin-add").style.display = "none";
   $("#admin-new").style.display = "block";
   $("#n-code").focus();
 }
@@ -764,7 +766,6 @@ function closeEmpForm() {
   $("#n-deptOther").style.display = "none";
   $("#n-floorOther").style.display = "none";
   $("#admin-new").style.display = "none";
-  $("#admin-add").style.display = "";
 }
 
 async function saveEmployee() {
@@ -955,7 +956,11 @@ function bind() {
   );
 
   // ผู้ดูแล: ฟอร์มเพิ่มพนักงานเข้าระบบ
-  $("#admin-add").onclick = openEmpForm;
+  $("#mg-add").onclick = async () => {
+    await goAdmin();
+    openEmpForm();
+  };
+  $("#mg-close").onclick = closeWindow;
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;
   $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));
