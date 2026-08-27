@@ -28,9 +28,7 @@ import { massageAdminCancel, massageAdminMove } from "./api/massage-admin-manage
 
 import massageCron from "./api/massage-cron";
 import massageOpenMonth from "./api/massage-open-month";
-import massageRemindEve from "./api/massage-remind-eve";
-import massageRemindSoon from "./api/massage-remind-soon";
-import massageRemindFinal from "./api/massage-remind-final";
+import massageRemind from "./api/massage-remind";
 
 interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
@@ -74,9 +72,7 @@ function route(pathname: string, method: string): Handler | null {
   // ตัวรวม (massage-cron) ที่ cron เรียกจริงไม่เปิดเป็น URL — เรียกผ่าน scheduled() เท่านั้น
   if (seg[1] === "cron" && seg.length === 3) {
     if (seg[2] === "open-month") return massageOpenMonth;
-    if (seg[2] === "remind-eve") return massageRemindEve;
-    if (seg[2] === "remind-soon") return massageRemindSoon;
-    if (seg[2] === "remind-final") return massageRemindFinal;
+    if (seg[2] === "remind") return massageRemind;
     return null;
   }
 

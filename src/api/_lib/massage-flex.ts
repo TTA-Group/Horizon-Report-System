@@ -141,7 +141,3 @@ export function cancelledText(day: string, slot: string, therapistName: string):
   return `ยกเลิกคิวนวดเรียบร้อยแล้ว\n${thaiDayLabel(day)} · ${slotLabel(slot)} · ${therapistName}\n\nสิทธิ์ของเดือนนี้ถูกคืนให้แล้ว จองรอบใหม่ได้เลย`;
 }
 
-/** ข้อความเตือนเย็นวันก่อนถึงคิว — แทนที่นัดใน Outlook ของระบบเดิม */
-export function reminderText(day: string, slot: string, therapistName: string): string {
-  return `พรุ่งนี้คุณมีคิวนวด\n${thaiDayLabel(day)}\nเวลา ${slotLabel(slot)} · ${therapistName}\n\nกรุณามาก่อนเวลาอย่างน้อย 5 นาที\nหากมาไม่ได้ กรุณากดยกเลิกก่อนถึงคิว 15 นาที เพื่อให้เพื่อนได้ใช้คิวแทน`;
-}
