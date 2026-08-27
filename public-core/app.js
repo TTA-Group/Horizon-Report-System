@@ -940,6 +940,15 @@ function debounce(fn, ms) {
 let rolesData = null;
 let rolesFindTimer = null;
 
+/**
+ * รหัสฝ่ายที่ให้สิทธิ์ผู้ดูแลระบบ — ถามจาก /api/masters ไม่เขียน "HR" ทับไว้ตรงนี้
+ * แหล่งความจริงอยู่ที่ ADMIN_DEPARTMENT_CODE ฝั่งเซิร์ฟเวอร์ ที่นี่แค่รับค่ามาใช้
+ */
+function adminDeptCode() {
+  const d = (masters.departments || []).find((x) => x.grants_admin);
+  return d ? d.code : "HR";
+}
+
 async function goRoles() {
   setTab("roles");
   show("s-roles");
@@ -953,42 +962,26 @@ async function goRoles() {
   }
 }
 
+/** ป้ายขวาสุด — บอกเฉพาะเรื่องที่ทำให้สิทธิ์ใช้ไม่ได้จริง ตำแหน่งในฝ่ายไม่เกี่ยวกับหน้านี้ */
 function roleTag(m) {
   if (m.status === "suspended") return '<span class="rtag susp">ระงับสิทธิ์</span>';
-  if (m.role === "head") return '<span class="rtag head">หัวหน้าฝ่าย</span>';
-  return '<span class="rtag staff">ผู้รับผิดชอบ</span>';
+  if (!m.linked) return '<span class="rtag nolink">ยังไม่ผูก LINE</span>';
+  return "";
 }
 
 function renderRoles() {
-  const groups = rolesData.groups || [];
-  if (!groups.length) {
-    $("#rolesList").innerHTML = '<div class="empty">ยังไม่มีใครถือสิทธิ์ในระบบ</div>';
-    return;
-  }
-  const html = groups
-    .map((g) => {
-      const rows = g.members
-        .map(
-          (m) => `<div class="prow" data-role-emp="${esc(m.id)}" data-code="${esc(g.code)}">
-            <div class="pw">
-              <div class="pnm">${esc(m.full_name)}${m.id === rolesData.me ? " (คุณ)" : ""}</div>
-              <div class="psub"><b>${esc(m.employee_code)}</b>${
-                m.linked ? "" : " · ยังไม่ผูก LINE"
-              }</div>
-            </div>${roleTag(m)}
-          </div>`,
-        )
-        .join("");
-      return `<div class="rgrp${g.system ? " sys" : ""}">
-        <div class="rhd">
-          <span class="rnm">${esc(g.name)}</span>
-          <span class="rcd">${esc(g.code)}</span>
-          <span class="rct">${g.members.length} คน</span>
-        </div>
-        <div class="rgr">${esc(g.grants)}</div>
-        <div class="plist">${rows}</div>
-      </div>`;
-    })
+  const admins = rolesData.admins || [];
+  const rows = admins
+    .map(
+      (m) => `<div class="prow" data-role-emp="${esc(m.id)}">
+        <div class="pw">
+          <div class="pnm">${esc(m.full_name)}${m.id === rolesData.me ? " (คุณ)" : ""}</div>
+          <div class="psub"><b>${esc(m.employee_code)}</b>${
+            m.department_name ? " · " + esc(m.department_name) : ""
+          }</div>
+        </div>${roleTag(m)}
+      </div>`,
+    )
     .join("");
 
   // ทางสำรองที่ตั้งไว้ในค่า env — ถอดในหน้านี้ไม่ได้ ต้องไปแก้ที่ Cloudflare
@@ -998,7 +991,11 @@ function renderRoles() {
         <b>${rolesData.fallbackCodes.map(esc).join(", ")}</b><br>
         รหัสเหล่านี้เป็นผู้ดูแลเสมอ ถอดในหน้านี้ไม่ได้ ต้องแก้ค่า ADMIN_EMPLOYEE_CODES ที่ Cloudflare</div>`
     : "";
-  $("#rolesList").innerHTML = html + fall;
+
+  $("#rolesList").innerHTML = admins.length
+    ? `<div class="rhead"><span class="rnm">ผู้ดูแลระบบ</span><span class="rct">${admins.length} คน</span></div>
+       <div class="plist">${rows}</div>${fall}`
+    : `<div class="empty">ยังไม่มีผู้ดูแลระบบในรายชื่อ</div>${fall}`;
 }
 
 /* ---------- เพิ่มผู้ดูแล ---------- */
@@ -1022,7 +1019,8 @@ async function searchRolesEmployee(q) {
   }
   try {
     const r = await api("/api/admin/employees?status=active&q=" + encodeURIComponent(q.trim()));
-    const list = (r.employees || []).slice(0, 12);
+    const already = new Set((rolesData.admins || []).map((a) => a.id));
+    const list = (r.employees || []).filter((e) => !already.has(e.id)).slice(0, 12);
     $("#roles-hits").innerHTML = list.length
       ? `<div class="plist">${list
           .map(
@@ -1032,11 +1030,7 @@ async function searchRolesEmployee(q) {
                 <div class="psub"><b>${esc(e.employee_code)}</b>${
                   e.department_name ? " · " + esc(e.department_name) : ""
                 }</div>
-              </div>${
-                (e.depts || []).length
-                  ? `<span class="rtag staff">${esc((e.depts || []).map((d) => d.code).join(" "))}</span>`
-                  : ""
-              }
+              </div>
             </div>`,
           )
           .join("")}</div>`
@@ -1046,31 +1040,29 @@ async function searchRolesEmployee(q) {
   }
 }
 
-/** เลือกฝ่ายแล้วเลือกตำแหน่ง — แยกสองจังหวะเหมือนหน้าทะเบียน เพราะบนมือถืออ่านง่ายกว่า */
+/**
+ * เพิ่มผู้ดูแลระบบ — ไม่ต้องถามว่าฝ่ายไหนหรือตำแหน่งอะไร เพราะหน้านี้มีสิทธิ์แบบเดียว
+ *
+ * เบื้องหลังคือการใส่คนเข้าฝ่ายบุคคล ซึ่งเป็นสิ่งที่ auth.ts แปลเป็น "เข้าถึงได้ทุกอย่าง"
+ * แต่คนที่กดไม่ต้องรู้เรื่องนั้น เขาแค่ต้องการให้คนนี้เป็นผู้ดูแล
+ */
 async function addRole(employeeId, name) {
-  const m = await getMasters();
-  const depts = (m.departments || []).slice().sort((a, b) => {
-    const rank = (d) => (d.grants_admin ? 0 : 1);
-    return rank(a) - rank(b) || a.code.localeCompare(b.code);
+  await getMasters();
+  const ok = await confirmDialog({
+    title: `ตั้ง ${name} เป็นผู้ดูแลระบบ?`,
+    message:
+      "หลังจากนี้จะเข้าถึงได้ทุกอย่าง — ทะเบียนพนักงานทั้งองค์กร หน้าผู้ดูแลระบบ " +
+      "คิวงานทุกฝ่าย และหน้าผู้ดูแลคิวนวด",
+    confirmLabel: "ตั้งเป็นผู้ดูแล",
+    cancelLabel: "ไม่ใช่",
   });
-  const code = await openSheet(`ให้สิทธิ์ ${name} ในฝ่ายไหน`, depts.map((d) => ({
-    label: `${d.name} (${d.code})${d.grants_admin ? " — ผู้ดูแลระบบเต็มสิทธิ์" : ""}`,
-    value: d.code,
-  })));
-  if (!code) return;
-
-  const role = await openSheet(`ตำแหน่งใน ${deptName(code)}`, [
-    { label: "ผู้รับผิดชอบฝ่าย — รับเรื่องของฝ่าย", value: "staff" },
-    { label: "หัวหน้าฝ่าย — รับเรื่อง และรับการเตือนเมื่อเรื่องค้าง", value: "head" },
-  ]);
-  if (!role) return;
-
+  if (!ok) return;
   try {
     await api(`/api/admin/employees/${employeeId}/departments`, {
       method: "PATCH",
-      body: { department_code: code, role },
+      body: { department_code: adminDeptCode(), role: "staff" },
     });
-    toast(`เพิ่ม ${name} เป็น${ROLE_LABEL[role]}ของ ${deptName(code)} แล้ว`);
+    toast(`ตั้ง ${name} เป็นผู้ดูแลระบบแล้ว`);
     goRoles();
   } catch (e) {
     toast(e.message || "บันทึกไม่สำเร็จ");
@@ -1079,49 +1071,37 @@ async function addRole(employeeId, name) {
 
 /* ---------- แก้ไข / ถอดสิทธิ์ ---------- */
 
-async function editRole(employeeId, code) {
-  const group = (rolesData.groups || []).find((g) => g.code === code);
-  const m = group && group.members.find((x) => x.id === employeeId);
+async function editRole(employeeId) {
+  const m = (rolesData.admins || []).find((x) => x.id === employeeId);
   if (!m) return;
   const self = employeeId === rolesData.me;
 
-  const meta = `<div class="sub">${esc(m.employee_code)} · ${esc(group.name)} (${esc(code)})</div>
-    <div class="kv"><i>ตำแหน่งตอนนี้</i><b>${esc(ROLE_LABEL[m.role] || m.role)}</b></div>
-    <div class="kv"><i>สิทธิ์ที่ได้</i><b>${esc(group.grants)}</b></div>
+  const meta = `<div class="sub">${esc(m.employee_code)}${
+    m.department_name ? " · " + esc(m.department_name) : ""
+  }</div>
+    <div class="kv"><i>สิทธิ์</i><b>ผู้ดูแลระบบ — เข้าถึงได้ทุกอย่าง</b></div>
     ${self ? '<div class="kv"><i>หมายเหตุ</i><b>นี่คือสิทธิ์ของคุณเอง</b></div>' : ""}`;
 
-  const other = m.role === "head" ? "staff" : "head";
   const act = await openSheet(m.full_name, [
-    { label: `เปลี่ยนเป็น${ROLE_LABEL[other]}`, value: "swap" },
-    { label: `ถอดออกจาก ${deptName(code)}`, value: "drop", danger: true },
+    { label: "ถอดสิทธิ์ผู้ดูแลระบบ", value: "drop", danger: true },
   ], { meta });
-  if (!act) return;
+  if (act !== "drop") return;
 
+  const ok = await confirmDialog({
+    title: `ถอด ${m.full_name} ออกจากผู้ดูแลระบบ?`,
+    message: self
+      ? "คุณกำลังถอดสิทธิ์ของตัวเอง หลังจากนี้จะเข้าหน้าผู้ดูแลไม่ได้อีก " +
+        "และต้องให้ผู้ดูแลคนอื่นใส่สิทธิ์คืนให้"
+      : "คนนี้จะเข้าหน้าผู้ดูแลไม่ได้อีก ทั้งทะเบียนพนักงาน หน้านี้ และหน้าผู้ดูแลคิวนวด " +
+        "ถ้ายังต้องให้รับเรื่องของฝ่ายอยู่ ให้ไปกำหนดที่แท็บทะเบียนพนักงาน",
+    confirmLabel: "ถอดสิทธิ์",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
   try {
-    if (act === "swap") {
-      await api(`/api/admin/employees/${employeeId}/departments`, {
-        method: "PATCH",
-        body: { department_code: code, role: other },
-      });
-      toast(`เปลี่ยนเป็น${ROLE_LABEL[other]}แล้ว`);
-      return goRoles();
-    }
-
-    const ok = await confirmDialog({
-      title: `ถอด ${m.full_name} ออกจาก ${deptName(code)}?`,
-      message: group.system
-        ? (self
-            ? "คุณกำลังถอดสิทธิ์ผู้ดูแลระบบของตัวเอง หลังจากนี้จะเข้าหน้าผู้ดูแลไม่ได้อีก " +
-              "และต้องให้ผู้ดูแลคนอื่นใส่สิทธิ์คืนให้"
-            : "คนนี้จะเข้าหน้าผู้ดูแลไม่ได้อีก ทั้งทะเบียนพนักงาน หน้านี้ และหน้าผู้ดูแลคิวนวด")
-        : "คนนี้จะไม่เห็นคิวงานของฝ่ายนี้อีก เรื่องที่เคยรับผิดชอบไว้ยังอยู่ครบ",
-      confirmLabel: "ถอดสิทธิ์",
-      cancelLabel: "ไม่ใช่",
-    });
-    if (!ok) return;
     await api(`/api/admin/employees/${employeeId}/departments`, {
       method: "PATCH",
-      body: { department_code: code, role: "" },
+      body: { department_code: adminDeptCode(), role: "" },
     });
     toast("ถอดสิทธิ์เรียบร้อยแล้ว");
     goRoles();
@@ -1166,7 +1146,7 @@ function bind() {
   });
   $("#rolesList").addEventListener("click", (e) => {
     const row = e.target.closest("[data-role-emp]");
-    if (row) editRole(row.dataset.roleEmp, row.dataset.code);
+    if (row) editRole(row.dataset.roleEmp);
   });
 
 

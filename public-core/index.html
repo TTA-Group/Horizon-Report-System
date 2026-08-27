@@ -312,15 +312,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 #roles-add{margin-bottom:22px}
 #s-manage .send+.send{margin-top:10px}
 .rolenote b{color:var(--ink);font-weight:600}
-.rgrp{margin-bottom:18px}
-.rgrp .rhd{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
-.rgrp .rnm{font-size:14px;font-weight:600;letter-spacing:-.01em}
-.rgrp .rcd{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--slate);
-  background:var(--canvas);border-radius:6px;padding:2px 6px}
-.rgrp .rct{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate)}
-.rgrp .rgr{font-size:11.5px;color:var(--slate);line-height:1.6;margin-bottom:9px}
-.rgrp.sys .rnm{color:var(--green-deep)}
-.rgrp.sys .rgr{color:#0B7A3E}
+.rhead{display:flex;align-items:baseline;gap:8px;margin-bottom:9px}
+.rhead .rnm{font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--green-deep)}
+.rhead .rct{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate)}
 .rfall{font-size:11.5px;color:var(--slate);line-height:1.65;background:var(--canvas);
   border-radius:11px;padding:12px 14px;margin-top:6px}
 .rfall b{font-family:'IBM Plex Mono',monospace;color:var(--ink)}
@@ -443,13 +437,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <div id="adminList"></div>
   </section>
 
-  <!-- ผู้ดูแลระบบ — เริ่มจาก "สิทธิ์" แล้วดูว่าใครถืออยู่ ตรงข้ามกับทะเบียนพนักงานที่เริ่มจากคน -->
+  <!-- ผู้ดูแลระบบ — เฉพาะคนที่เข้าถึงได้ทุกอย่างเท่านั้น
+       หัวหน้าฝ่ายและผู้รับผิดชอบของฝ่ายอื่นเป็นคนละเรื่อง อยู่ที่แท็บทะเบียนพนักงาน -->
   <section class="screen" id="s-roles">
     <p class="rolenote">
-      สิทธิ์ในระบบผูกกับ<b>การเป็นสมาชิกฝ่าย</b> ใส่ใครเข้าฝ่ายไหน คนนั้นได้สิทธิ์ของฝ่ายนั้นทันที
-      ทั้งระบบแจ้งปัญหาและระบบจองคิวนวด
+      ผู้ดูแลระบบ<b>เข้าถึงได้ทุกอย่าง</b> — ทะเบียนพนักงาน · หน้านี้ · คิวงานทุกฝ่าย ·
+      หน้าผู้ดูแลคิวนวด<br>
+      ส่วนหัวหน้าฝ่ายและผู้รับผิดชอบของฝ่ายอื่น <b>ไม่ใช่</b>ผู้ดูแลระบบ
+      กำหนดได้ที่แท็บทะเบียนพนักงาน
     </p>
-    <button class="send" id="roles-add">+ เพิ่มผู้ดูแล</button>
+    <button class="send" id="roles-add">+ เพิ่มผู้ดูแลระบบ</button>
     <div id="roles-find" style="display:none">
       <input type="text" class="searchbox" id="roles-q" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
       <div id="roles-hits"></div>
