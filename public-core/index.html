@@ -306,23 +306,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
-/* ปุ่มทางลัดไปหน้าผู้ดูแลของแอปจองคิวนวด — เป็นปุ่มโครงเขียว ไม่ใช่ปุ่มทึบ
-   เพราะไม่ใช่งานหลักของหน้านี้ แต่ก็ต้องหาเจอโดยไม่ต้องเลื่อนหา */
-.massage-link{margin-top:10px;background:#fff;color:#0B7A3E;box-shadow:none;border:1.5px solid var(--green)}
 
 /* ── หน้าผู้ดูแลระบบ ── */
 .rolenote{font-size:12.5px;color:var(--slate);line-height:1.65;margin-bottom:14px}
 #roles-add{margin-bottom:22px}
+#s-manage .send+.send{margin-top:10px}
 .rolenote b{color:var(--ink);font-weight:600}
-.rgrp{margin-bottom:18px}
-.rgrp .rhd{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
-.rgrp .rnm{font-size:14px;font-weight:600;letter-spacing:-.01em}
-.rgrp .rcd{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--slate);
-  background:var(--canvas);border-radius:6px;padding:2px 6px}
-.rgrp .rct{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate)}
-.rgrp .rgr{font-size:11.5px;color:var(--slate);line-height:1.6;margin-bottom:9px}
-.rgrp.sys .rnm{color:var(--green-deep)}
-.rgrp.sys .rgr{color:#0B7A3E}
+.rhead{display:flex;align-items:baseline;gap:8px;margin-bottom:9px}
+.rhead .rnm{font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--green-deep)}
+.rhead .rct{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate)}
 .rfall{font-size:11.5px;color:var(--slate);line-height:1.65;background:var(--canvas);
   border-radius:11px;padding:12px 14px;margin-top:6px}
 .rfall b{font-family:'IBM Plex Mono',monospace;color:var(--ink)}
@@ -410,21 +402,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <button class="ghost" id="btn-close" style="margin-top:18px">ปิดหน้านี้</button>
   </div></section>
 
-  <!-- หน้าจัดการของฝ่ายบุคคล — งานที่ทำบ่อยที่สุดคือเพิ่มพนักงานใหม่ จึงเป็นปุ่มใหญ่ปุ่มเดียว
+  <!-- หน้าจัดการของฝ่ายบุคคล — เหลือเฉพาะปุ่มของงานที่ทำจริง
+       ชื่อและฝ่ายของคนที่ล็อกอินอยู่มีที่แถบบนสุดแล้ว ไม่ต้องเขียนซ้ำอีกรอบตรงนี้
        ส่วนการค้นหาและแก้ไขรายคนอยู่แท็บ "ทะเบียนพนักงาน" ซึ่งเป็นงานที่ต้องไล่ดูก่อน -->
   <section class="screen" id="s-manage">
-    <div class="section">บัญชีที่ใช้อยู่</div>
-    <div class="card">
-      <div class="kv2"><b>ชื่อ–สกุล</b><span id="mg-name">—</span></div>
-      <div class="kv2"><b>รหัสพนักงาน</b><span id="mg-code" style="font-family:'IBM Plex Mono',monospace">—</span></div>
-      <div class="kv2"><b>ฝ่าย</b><span id="mg-dept">—</span></div>
-      <div class="kv2"><b>ชั้นที่ปฏิบัติงาน</b><span id="mg-floor">—</span></div>
-    </div>
     <button class="send" id="mg-add">+ เพิ่มพนักงานใหม่</button>
-    <!-- ทางลัดไปหน้าผู้ดูแลของแอปจองคิว — ตัวหน้าอยู่ที่แอปจองคิว ที่นี่เป็นแค่ปุ่มเปิด -->
-    <button class="send massage-link" id="mg-sheet">ฟอร์มเช็คชื่อคิวนวด</button>
-    <button class="send massage-link" id="mg-book">จองคิวนวดแทนพนักงาน</button>
-    <button class="send massage-link" id="mg-days">จัดการวันให้บริการคิวนวด</button>
+    <!-- ทางลัดไปหน้าผู้ดูแลของแอปจองคิว ปุ่มเดียวพอ เพราะสามหน้านั้นสลับกันได้ในตัวอยู่แล้ว -->
+    <button class="send" id="mg-massage">ผู้ดูแลคิวนวด</button>
     <button class="ghost" id="mg-close">ปิดหน้านี้</button>
   </section>
 
@@ -453,13 +437,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <div id="adminList"></div>
   </section>
 
-  <!-- ผู้ดูแลระบบ — เริ่มจาก "สิทธิ์" แล้วดูว่าใครถืออยู่ ตรงข้ามกับทะเบียนพนักงานที่เริ่มจากคน -->
+  <!-- ผู้ดูแลระบบ — เฉพาะคนที่เข้าถึงได้ทุกอย่างเท่านั้น
+       หัวหน้าฝ่ายและผู้รับผิดชอบของฝ่ายอื่นเป็นคนละเรื่อง อยู่ที่แท็บทะเบียนพนักงาน -->
   <section class="screen" id="s-roles">
     <p class="rolenote">
-      สิทธิ์ในระบบผูกกับ<b>การเป็นสมาชิกฝ่าย</b> ใส่ใครเข้าฝ่ายไหน คนนั้นได้สิทธิ์ของฝ่ายนั้นทันที
-      ทั้งระบบแจ้งปัญหาและระบบจองคิวนวด
+      ผู้ดูแลระบบ<b>เข้าถึงได้ทุกอย่าง</b> — ทะเบียนพนักงาน · หน้านี้ · คิวงานทุกฝ่าย ·
+      หน้าผู้ดูแลคิวนวด<br>
+      ส่วนหัวหน้าฝ่ายและผู้รับผิดชอบของฝ่ายอื่น <b>ไม่ใช่</b>ผู้ดูแลระบบ
+      กำหนดได้ที่แท็บทะเบียนพนักงาน
     </p>
-    <button class="send" id="roles-add">+ เพิ่มผู้ดูแล</button>
+    <button class="send" id="roles-add">+ เพิ่มผู้ดูแลระบบ</button>
     <div id="roles-find" style="display:none">
       <input type="text" class="searchbox" id="roles-q" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
       <div id="roles-hits"></div>
