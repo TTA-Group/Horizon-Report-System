@@ -107,9 +107,11 @@ function esc(v: unknown): string {
   );
 }
 
+// ช่องบนกระดาษ: ชื่อไว้ข้างบน เว้นที่ข้างล่างให้เซ็นชื่อ พร้อมเส้นประเป็นแนวให้เซ็น
+// ไม่มีช่องติ๊กแล้ว เพราะลายเซ็นคือหลักฐานว่ามาใช้บริการอยู่ในตัว
 function cell(c: SheetCell): string {
   if (!c.name) return `<td class="free"></td>`;
-  return `<td><span class="box"></span><span class="nm">${esc(printName(c.name))}</span></td>`;
+  return `<td><div class="nm">${esc(printName(c.name))}</div><div class="sg"></div></td>`;
 }
 
 /**
@@ -150,21 +152,20 @@ body{font-family:'Noto Sans Thai',system-ui,sans-serif;color:var(--ink);backgrou
 h1{font-size:18px;font-weight:600;line-height:1.3}
 .sub{font-size:13px;color:var(--slate);font-weight:500}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
-th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
 th{background:var(--soft);font-size:12px;font-weight:600;text-align:center;
   -webkit-print-color-adjust:exact;print-color-adjust:exact}
 th:first-child,td.tm{width:14%}
 th:not(:first-child),td:not(.tm){width:${w}%}
 td.tm{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate);
-  white-space:nowrap;text-align:center;background:var(--soft);
+  white-space:nowrap;text-align:center;background:var(--soft);vertical-align:middle;
   -webkit-print-color-adjust:exact;print-color-adjust:exact}
-td{height:40px}
-.box{display:inline-block;width:14px;height:14px;border:1.4px solid #8C959E;border-radius:3px;
-  margin-right:8px;vertical-align:-2px}
+td{height:56px}
 .nm{font-size:13px;font-weight:500}
+.sg{border-bottom:1px dotted #B7BEC5;margin-top:20px}
 tr.brk td{background:var(--soft);text-align:center;font-size:11.5px;color:var(--slate);
   letter-spacing:.06em;height:auto;padding:4px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.sign{display:flex;justify-content:flex-end;margin-top:20px}
+.sign{display:flex;justify-content:flex-end;margin-top:14px}
 .sign div{border-top:1px solid var(--line);padding-top:6px;min-width:220px;text-align:center;
   font-size:11.5px;color:var(--slate)}
 .bar{max-width:1040px;margin:0 auto 14px;display:flex;justify-content:flex-end}
@@ -175,14 +176,14 @@ button{font-family:inherit;font-size:13px;font-weight:600;color:#fff;background:
    การย่อหน้าต่างเบราว์เซอร์ดูจึงไม่ได้บอกอะไร ต้องวัดจากไฟล์ที่พิมพ์ออกมาจริง
    table-layout:fixed + ความกว้างเป็นเปอร์เซ็นต์ คือสิ่งที่ทำให้ตารางพอดีหน้ากระดาษ */
 @media print{
-  @page{size:A4 landscape;margin:12mm}
+  @page{size:A4 landscape;margin:10mm}
   body{background:#fff;padding:0}
   .sheet{max-width:none;border-radius:0;padding:0}
   .bar{display:none}
   .top{margin-bottom:14px}
-  td{height:60px}
+  td{height:66px}
   .nm{font-size:13.5px}
-  .box{width:16px;height:16px}
+  .sg{margin-top:30px}
   table{page-break-inside:avoid}
 }
 </style></head><body>
