@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS massage_bookings (
   -- ส่งข้อความเตือนไปแล้วหรือยัง กันส่งซ้ำเมื่องานตามเวลาทำงานทับรอบกัน
   remind_eve_at   TIMESTAMPTZ,   -- เตือนเย็นวันก่อนถึงคิว
   remind_soon_at  TIMESTAMPTZ,   -- เตือนก่อนถึงคิวประมาณครึ่งชั่วโมง
+  remind_15_at    TIMESTAMPTZ,   -- เตือนซ้ำอีกครั้งก่อนถึงคิว 15 นาที
   -- การยกเลิก เก็บไว้ดูย้อนหลังว่าใครยกเลิกและเมื่อไหร่
   cancelled_at  TIMESTAMPTZ,
   cancelled_by  UUID REFERENCES employees(id),        -- ต่างจาก employee_id เมื่อผู้ดูแลปิดทั้งวัน

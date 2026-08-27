@@ -30,6 +30,7 @@ import massageCron from "./api/massage-cron";
 import massageOpenMonth from "./api/massage-open-month";
 import massageRemindEve from "./api/massage-remind-eve";
 import massageRemindSoon from "./api/massage-remind-soon";
+import massageRemindFinal from "./api/massage-remind-final";
 
 interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
@@ -68,13 +69,14 @@ function route(pathname: string, method: string): Handler | null {
     return null;
   }
 
-  // สามเส้นทางนี้ไว้สั่งทีละงานด้วยมือตอนไล่ปัญหา ต้องมี header x-cron-secret เสมอ
+  // เส้นทางเหล่านี้ไว้สั่งทีละงานด้วยมือตอนไล่ปัญหา ต้องมี header x-cron-secret เสมอ
   //
   // ตัวรวม (massage-cron) ที่ cron เรียกจริงไม่เปิดเป็น URL — เรียกผ่าน scheduled() เท่านั้น
   if (seg[1] === "cron" && seg.length === 3) {
     if (seg[2] === "open-month") return massageOpenMonth;
     if (seg[2] === "remind-eve") return massageRemindEve;
     if (seg[2] === "remind-soon") return massageRemindSoon;
+    if (seg[2] === "remind-final") return massageRemindFinal;
     return null;
   }
 

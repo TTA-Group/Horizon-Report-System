@@ -88,13 +88,22 @@ function toast(msg) {
  * กล่องข้อความกลางจอ — เขียนเองแทน SweetAlert2 ที่ระบบเดิมดึงมาจาก CDN
  * คืน true เมื่อกดปุ่มยืนยัน · false เมื่อยกเลิกหรือแตะพื้นหลัง
  */
-function dialog({ icon = "warn", title, body = "", confirm = "ตกลง", cancel = null, danger = false }) {
+/** เงื่อนไขการใช้บริการ — ขึ้นในกล่องยืนยันตอนกดจอง เพราะเป็นวินาทีที่ต้องอ่านจริง ๆ */
+const BOOKING_TERMS = [
+  "จำกัดสิทธิ์ 2 ครั้ง / ท่าน / เดือน",
+  "หากไม่สามารถมาใช้บริการได้ กรุณายกเลิกคิวล่วงหน้าอย่างน้อย 15 นาที",
+  "กรณีไม่แสดงตนใช้บริการเกิน 10 นาที เจ้าหน้าที่จะทำการปล่อยคิวให้ท่านอื่นโดยที่ไม่ต้องแจ้งให้ทราบ",
+];
+
+function dialog({ icon = "warn", title, body = "", confirm = "ตกลง", cancel = null, danger = false, terms = false }) {
   return new Promise((resolve) => {
     $("#m-ic").className = `ic ${icon}`;
     $("#m-ic").textContent = icon === "ok" ? "✓" : icon === "err" ? "✕" : "!";
     $("#m-title").textContent = title;
-    $("#m-body").textContent = body;
-    $("#m-body").style.display = body ? "" : "none";
+    $("#m-body").innerHTML =
+      escapeHtml(body) +
+      (terms ? `<ul class="terms">${BOOKING_TERMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>` : "");
+    $("#m-body").style.display = body || terms ? "" : "none";
 
     const btns = $("#m-btns");
     btns.innerHTML = "";
@@ -398,6 +407,7 @@ async function doBook() {
     body: `${day ? day.label : currentDay}\nเวลา ${pick.slotLabel}\n${pick.therapistName}`,
     confirm: "ยืนยัน",
     cancel: "แก้ไข",
+    terms: true,
   });
   if (!okGo) return;
 

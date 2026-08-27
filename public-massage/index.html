@@ -102,11 +102,11 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .legend{display:flex;gap:16px;justify-content:center;margin-top:14px;font-size:11.5px;color:var(--slate)}
 .legend em{font-style:normal;color:var(--green-deep);font-weight:600}
 
-/* เงื่อนไขการจอง — อยู่เหนือปุ่มยืนยันในลำดับการอ่าน คืออ่านก่อนกด
-   ไม่เอาไปไว้ในแถบที่ติดขอบล่าง เพราะจะกินพื้นที่จอค้างไว้ตลอดทั้งที่อ่านครั้งเดียวก็พอ */
-.terms{list-style:none;margin:18px 0 0;background:#FFF6E7;border:1px solid #F2DCB4;border-radius:14px;
-  padding:13px 15px}
-.terms li{position:relative;padding-left:15px;font-size:12.5px;color:#7A5B14;line-height:1.65}
+/* เงื่อนไขการจอง — ขึ้นในกล่องยืนยันตอนกดจอง ไม่ใช่ค้างอยู่บนหน้า
+   เพราะจุดที่ต้องอ่านจริง ๆ คือวินาทีก่อนกดยืนยัน ไม่ใช่ตอนกำลังไล่หาช่องว่าง */
+.terms{list-style:none;margin:16px 0 0;background:#FFF6E7;border:1px solid #F2DCB4;border-radius:12px;
+  padding:12px 14px;text-align:left}
+.terms li{position:relative;padding-left:15px;font-size:12px;color:#7A5B14;line-height:1.6}
 .terms li+li{margin-top:7px}
 .terms li::before{content:"•";position:absolute;left:2px;color:#C79A2E}
 
@@ -204,7 +204,7 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .modal .ic.warn{background:#FFF6E2;color:#C08800}
 .modal .ic.err{background:#FDECEA;color:var(--red-deep)}
 .modal h3{font-size:17.5px;font-weight:600;margin-bottom:8px;letter-spacing:-.02em}
-.modal p{font-size:13.5px;color:var(--slate);line-height:1.7}
+.modal p{font-size:13.5px;color:var(--slate);line-height:1.7;white-space:pre-line}
 .modal .btns{display:grid;gap:8px;margin-top:20px}
 .modal .btns button{width:100%;border:0;border-radius:12px;padding:13px;font-family:inherit;font-size:14.5px;
   font-weight:600;cursor:pointer}
@@ -298,12 +298,6 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
       <div class="legend" id="legend" style="display:none">
         <span><em>ว่าง</em> = กดจองได้</span><span>จอง = มีคนจองแล้ว</span>
       </div>
-
-      <ul class="terms">
-        <li>จำกัดสิทธิ์ 2 ครั้ง / ท่าน / เดือน</li>
-        <li>หากไม่สามารถมาใช้บริการได้ กรุณายกเลิกคิวล่วงหน้าอย่างน้อย 15 นาที</li>
-        <li>กรณีไม่แสดงตนใช้บริการเกิน 10 นาที เจ้าหน้าที่จะทำการปล่อยคิวให้ท่านอื่นโดยที่ไม่ต้องแจ้งให้ทราบ</li>
-      </ul>
 
       <div class="bar">
         <div class="sum">

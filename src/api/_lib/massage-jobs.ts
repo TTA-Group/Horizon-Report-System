@@ -67,8 +67,10 @@ export async function runMassageEveReminders(now = new Date()): Promise<{ sent: 
   return { sent: sent.length };
 }
 
-/** เตือนก่อนถึงคิวประมาณเท่าไหร่ */
+/** เตือนก่อนถึงคิวสองรอบ — รอบแรกครึ่งชั่วโมง รอบสองอีกทีตอนใกล้ถึงจริง ๆ */
 const SOON_MINUTES = 30;
+/** เส้นแบ่งของสองรอบ ใกล้กว่านี้เป็นหน้าที่ของรอบเตือนสุดท้าย */
+const FINAL_WINDOW = 20;
 
 /**
  * งานที่ 3 — เตือนคนที่คิวกำลังจะถึง
@@ -98,6 +100,8 @@ export async function runMassageSoonReminders(now = new Date()): Promise<{ sent:
   for (const b of due) {
     const at = slotStartAt(b.day, b.slot).getTime();
     if (at < from || at > until) continue;
+    // ใกล้กว่านี้ปล่อยให้รอบ 15 นาทีจัดการ ไม่งั้นคนที่จองกระชั้นจะได้สองข้อความพร้อมกัน
+    if (at - from <= FINAL_WINDOW * 60_000) continue;
     const mins = Math.max(1, Math.round((at - from) / 60_000));
     await pushTo(b.line_user_id, [
       textMessage(`อีกประมาณ ${mins} นาทีถึงคิวนวดของคุณ\nเวลา ${b.slot} · ${b.therapist}`),
@@ -106,6 +110,52 @@ export async function runMassageSoonReminders(now = new Date()): Promise<{ sent:
   }
   if (sent.length > 0) {
     await sql`UPDATE massage_bookings SET remind_soon_at = now() WHERE id = ANY(${sent}::uuid[])`;
+  }
+  return { sent: sent.length };
+}
+
+/**
+ * งานที่ 4 — เตือนซ้ำอีกครั้งก่อนถึงคิวประมาณ 15 นาที
+ *
+ * รอบครึ่งชั่วโมงเตือนไว้ให้เตรียมตัว รอบนี้คือ "ถึงเวลาเดินไปได้แล้ว"
+ * แยกคอลัมน์กันคนละตัวกับรอบแรก ไม่งั้นพอเตือนรอบแรกไปแล้วรอบนี้จะไม่มีทางได้ส่ง
+ *
+ * ช่วงที่ยอมส่งคือ 0 ถึง 20 นาทีก่อนรอบเริ่ม กว้างกว่า 15 นาทีอยู่หน่อย
+ * เพราะงานตามเวลาทำงานทุก 15 นาที ถ้าจับเป๊ะ ๆ ที่ 15 จะมีคิวที่หลุดไปเงียบ ๆ
+ */
+export async function runMassageFinalReminders(now = new Date()): Promise<{ sent: number }> {
+  const today = bangkokDate(now);
+  const sql = db();
+
+  const due = await sql<DueRow[]>`
+    SELECT b.id, to_char(b.day, 'YYYY-MM-DD') AS day, to_char(b.slot_start, 'HH24:MI') AS slot,
+           t.name AS therapist, la.line_user_id
+    FROM massage_bookings b
+    JOIN massage_therapists t ON t.id = b.therapist_id
+    JOIN line_accounts la ON la.employee_id = b.employee_id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
+    WHERE b.status = 'booked' AND b.remind_15_at IS NULL AND b.day = ${today}::date
+    ORDER BY b.slot_start
+    LIMIT 200
+  `;
+
+  const from = now.getTime();
+  const sent: string[] = [];
+  for (const b of due) {
+    const at = slotStartAt(b.day, b.slot).getTime();
+    const left = at - from;
+    if (left < 0 || left > FINAL_WINDOW * 60_000) continue;
+    const mins = Math.max(1, Math.round(left / 60_000));
+    await pushTo(b.line_user_id, [
+      textMessage(
+        `ใกล้ถึงคิวนวดของคุณแล้ว อีกประมาณ ${mins} นาที\n` +
+          `เวลา ${b.slot} · ${b.therapist}\n\n` +
+          `กรุณาไปแสดงตนที่ห้องนวด — หากไม่แสดงตนเกิน 10 นาที เจ้าหน้าที่จะปล่อยคิวให้ท่านอื่น`,
+      ),
+    ]);
+    sent.push(b.id);
+  }
+  if (sent.length > 0) {
+    await sql`UPDATE massage_bookings SET remind_15_at = now() WHERE id = ANY(${sent}::uuid[])`;
   }
   return { sent: sent.length };
 }
