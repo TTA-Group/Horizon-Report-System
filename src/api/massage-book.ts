@@ -38,6 +38,7 @@ export default async (req: Request): Promise<Response> =>
           day: booked.day,
           slot: booked.slot,
           therapistName: booked.therapistName,
+          employeeName: s.employee.full_name,
         }),
       ]);
     } catch (e) {

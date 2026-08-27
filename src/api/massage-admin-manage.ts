@@ -8,7 +8,8 @@
 
 import { getSession } from "./_lib/auth";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { adminCancel, adminMove, assertMassageStaff, slotLabel, thaiDayLabel } from "./_lib/massage";
+import { adminCancel, adminMove, assertMassageStaff } from "./_lib/massage";
+import { massageNotice } from "./_lib/massage-flex";
 import { pushTo, textMessage } from "./_lib/line";
 import { db } from "./_lib/db";
 
@@ -36,8 +37,13 @@ export const massageAdminCancel = async (req: Request): Promise<Response> =>
     const b = await adminCancel(id, s.employee!.id, reason || "ผู้ดูแลยกเลิกให้");
     await notify(
       b.employeeId,
-      `แจ้งยกเลิกคิวนวด\n${thaiDayLabel(b.day)}\nเวลา ${slotLabel(b.slot)}\n\n` +
-        `เจ้าหน้าที่ยกเลิกคิวนี้ให้แล้ว หากต้องการจองใหม่ เข้าไปจองในแอปได้เลย`,
+      massageNotice(
+        "เจ้าหน้าที่ยกเลิกคิวนวดของคุณ",
+        b.day,
+        b.slot,
+        b.therapistName,
+        "หากต้องการจองใหม่ เข้าไปจองในแอปได้เลย",
+      ),
     );
     return json({ ok: true, id, day: b.day, slot: b.slot });
   });
@@ -57,8 +63,13 @@ export const massageAdminMove = async (req: Request): Promise<Response> =>
     console.log("[massage] ย้ายคิว", id, "->", b.day, b.slot, "โดย", s.employee!.employee_code);
     await notify(
       b.employeeId,
-      `แจ้งเปลี่ยนรอบคิวนวด\n${thaiDayLabel(b.day)}\nเวลาใหม่ ${slotLabel(b.slot)}\n\n` +
-        `เจ้าหน้าที่ย้ายคิวของคุณไปรอบนี้แล้ว`,
+      massageNotice(
+        "เจ้าหน้าที่ย้ายคิวนวดของคุณ",
+        b.day,
+        b.slot,
+        b.therapistName,
+        "นี่คือรอบใหม่ของคุณ หากไม่สะดวก กรุณาแจ้งเจ้าหน้าที่",
+      ),
     );
     return json({ ok: true, id, day: b.day, slot: b.slot, therapistId: b.therapistId });
   });

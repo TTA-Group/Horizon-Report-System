@@ -13,6 +13,7 @@
 import { CHANNEL_KEYS_READ } from "./constants";
 import { db } from "./db";
 import { pushTo, textMessage } from "./line";
+import { massageNotice } from "./massage-flex";
 import { bangkokDate, ensureMonthDays, slotStartAt } from "./massage";
 
 /** งานที่ 1 — ทำให้เดือนปัจจุบันมีวันให้จองเสมอ */
@@ -65,9 +66,13 @@ export async function runMassageReminders(now = new Date()): Promise<{ sent: num
     const mins = Math.max(1, Math.round(left / 60_000));
     await pushTo(b.line_user_id, [
       textMessage(
-        `ใกล้ถึงคิวนวดของคุณแล้ว อีกประมาณ ${mins} นาที\n` +
-          `เวลา ${b.slot} · ${b.therapist}\n\n` +
-          `กรุณาไปแสดงตนที่ห้องนวด — หากไม่แสดงตนเกิน 10 นาที เจ้าหน้าที่จะปล่อยคิวให้ท่านอื่น`,
+        massageNotice(
+          `ใกล้ถึงคิวนวดของคุณแล้ว อีกประมาณ ${mins} นาที`,
+          b.day,
+          b.slot,
+          b.therapist,
+          "กรุณาไปแสดงตนที่ห้องนวด\nหากไม่แสดงตนเกิน 10 นาที เจ้าหน้าที่จะปล่อยคิวให้ท่านอื่น",
+        ),
       ),
     ]);
     sent.push(b.id);

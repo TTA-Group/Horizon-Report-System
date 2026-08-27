@@ -46,6 +46,8 @@ export interface ConfirmInput {
   day: string;
   slot: string;
   therapistName: string;
+  /** ชื่อผู้จองตามทะเบียนพนักงาน — ไม่ใช่ชื่อในไลน์ซึ่งเป็นชื่อเล่นหรืออีโมจิได้ */
+  employeeName: string;
 }
 
 /** การ์ดยืนยันการจอง พร้อมปุ่มยกเลิก */
@@ -64,7 +66,12 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
       wrap: true,
     },
     { type: "separator", margin: "lg" },
-    { type: "box", layout: "vertical", margin: "lg", contents: [kv("วันที่", thaiDayLabel(b.day)), kv("หมอนวด", b.therapistName)] },
+    {
+      type: "box",
+      layout: "vertical",
+      margin: "lg",
+      contents: [kv("ผู้จอง", b.employeeName), kv("วันที่", thaiDayLabel(b.day))],
+    },
     { type: "separator", margin: "lg" },
     {
       type: "box",
@@ -72,7 +79,17 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
       margin: "lg",
       contents: [
         { type: "text", text: "เวลานัดหมาย", size: "xs", color: "#AAAAAA", align: "center" },
-        { type: "text", text: slotLabel(b.slot), size: "xl", weight: "bold", color: GREEN, align: "center", margin: "md" },
+        // เวลากับหมอนวดอยู่บรรทัดเดียวกัน — เป็นข้อมูลคู่กันที่ต้องอ่านพร้อมกันตอนไปถึงหน้างาน
+        {
+          type: "text",
+          text: `${slotLabel(b.slot)} (${b.therapistName})`,
+          size: "lg",
+          weight: "bold",
+          color: GREEN,
+          align: "center",
+          margin: "md",
+          wrap: true,
+        },
       ],
     },
     {
@@ -136,8 +153,39 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
   };
 }
 
+/**
+ * ข้อความแจ้งเรื่องคิว — หัวเรื่อง · รายละเอียดคิว · สิ่งที่ต้องทำต่อ
+ *
+ * แยกบรรทัดตามหัวข้อ ไม่เอาทุกอย่างมาต่อกันด้วยจุดคั่นในบรรทัดเดียว
+ * เพราะกล่องแชทของไลน์แคบ บรรทัดยาวจะถูกตัดขึ้นบรรทัดใหม่ตรงไหนก็ได้ อ่านแล้วสะดุด
+ *
+ * ทุกข้อความของระบบนี้ใช้รูปแบบเดียวกันหมด คนอ่านจะได้กวาดตาหาบรรทัด "เวลา" ได้ทันที
+ */
+export function massageNotice(
+  title: string,
+  day: string,
+  slot: string,
+  therapistName: string,
+  footer: string,
+): string {
+  return [
+    title,
+    "",
+    `วันที่  ${thaiDayLabel(day)}`,
+    `เวลา   ${slotLabel(slot)} (${therapistName})`,
+    "",
+    footer,
+  ].join("\n");
+}
+
 /** ข้อความยืนยันการยกเลิก — สั้น ไม่ต้องเป็นการ์ด */
 export function cancelledText(day: string, slot: string, therapistName: string): string {
-  return `ยกเลิกคิวนวดเรียบร้อยแล้ว\n${thaiDayLabel(day)} · ${slotLabel(slot)} · ${therapistName}\n\nสิทธิ์ของเดือนนี้ถูกคืนให้แล้ว จองรอบใหม่ได้เลย`;
+  return massageNotice(
+    "ยกเลิกคิวนวดเรียบร้อยแล้ว",
+    day,
+    slot,
+    therapistName,
+    "สิทธิ์ของเดือนนี้ถูกคืนให้แล้ว จองรอบใหม่ได้เลย",
+  );
 }
 

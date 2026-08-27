@@ -585,19 +585,21 @@ export interface AdminBookingRow {
   day: string;
   slot: string;
   therapistId: string;
+  therapistName: string;
   employeeId: string;
   name: string;
 }
 
 async function loadBooking(bookingId: string): Promise<AdminBookingRow> {
   const rows = await db()<
-    { id: string; day: string; slot: string; therapist_id: string; employee_id: string;
-      status: string; full_name: string }[]
+    { id: string; day: string; slot: string; therapist_id: string; therapist_name: string;
+      employee_id: string; status: string; full_name: string }[]
   >`
     SELECT b.id, to_char(b.day, 'YYYY-MM-DD') AS day, to_char(b.slot_start, 'HH24:MI') AS slot,
-           b.therapist_id, b.employee_id, b.status, e.full_name
+           b.therapist_id, t.name AS therapist_name, b.employee_id, b.status, e.full_name
     FROM massage_bookings b
     JOIN employees e ON e.id = b.employee_id
+    JOIN massage_therapists t ON t.id = b.therapist_id
     WHERE b.id = ${bookingId}
   `;
   if (rows.length === 0) throw new HttpError(404, "ไม่พบคิวนี้ในระบบ");
@@ -605,7 +607,8 @@ async function loadBooking(bookingId: string): Promise<AdminBookingRow> {
   if (b.status !== "booked") throw new HttpError(409, "คิวนี้ถูกยกเลิกไปแล้ว", "already_cancelled");
   return {
     id: b.id, day: b.day, slot: b.slot,
-    therapistId: b.therapist_id, employeeId: b.employee_id, name: b.full_name,
+    therapistId: b.therapist_id, therapistName: b.therapist_name,
+    employeeId: b.employee_id, name: b.full_name,
   };
 }
 
@@ -660,7 +663,8 @@ export async function adminMove(
     if (isUniqueViolation(e)) throw new HttpError(409, "ช่องนี้มีคนจองแล้ว", "slot_taken");
     throw e;
   }
-  return { ...b, slot, therapistId };
+  const moved = therapists.find((t) => t.id === therapistId);
+  return { ...b, slot, therapistId, therapistName: moved ? moved.name : b.therapistName };
 }
 
 // ───────────────────────── คิวของฉัน ─────────────────────────
