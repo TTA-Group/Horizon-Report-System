@@ -53,6 +53,16 @@ export interface ConfirmInput {
   flash: boolean;
 }
 
+/**
+ * ชื่อที่ขึ้นบนการ์ด — เอาเฉพาะชื่อจริงคำแรก
+ *
+ * ช่องขวาของแถวข้อมูลบนการ์ดแคบ ชื่อเต็มแบบไทยจึงตัดบรรทัดหรือโดนตัดท้ายทิ้ง
+ * และเจ้าตัวอ่านการ์ดของตัวเองอยู่แล้ว ไม่ต้องมีนามสกุลมายืนยันว่าเป็นใคร
+ */
+function firstName(fullName: string): string {
+  return String(fullName ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
 /** การ์ดยืนยันการจอง พร้อมปุ่มยกเลิก */
 export function bookingConfirmCard(b: ConfirmInput): LineMessage {
   const cancelUri = massageLiffUri({ cancel: b.bookingId });
@@ -75,7 +85,7 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
       type: "box",
       layout: "vertical",
       margin: "lg",
-      contents: [kv("ผู้จอง", b.employeeName), kv("วันที่", thaiDayLabel(b.day))],
+      contents: [kv("ผู้จอง", firstName(b.employeeName)), kv("วันที่", thaiDayLabel(b.day))],
     },
     { type: "separator", margin: "lg" },
     {
