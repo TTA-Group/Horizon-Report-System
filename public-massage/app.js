@@ -228,15 +228,19 @@ async function loadState() {
  */
 function renderHeader() {
   const emp = (session && session.employee) || {};
-  const dept = emp.department_name ? ` · ${emp.department_name}` : "";
-  if (emp.full_name) $("#welcome").textContent = `${emp.full_name}${dept}`;
+  if (emp.full_name) {
+    $("#welcome").innerHTML =
+      `${escapeHtml(emp.full_name)}<span>${escapeHtml(emp.department_name || "")}</span>`;
+  }
 
   // สิทธิ์คงเหลือเป็นชิปเล็กข้างหัวเรื่อง ไม่ใช่แถบเต็มความกว้าง
   // ของที่ต้องรู้แค่ "เหลือกี่ครั้ง" ไม่ควรกินพื้นที่เท่ากับตารางที่ต้องอ่านทั้งวัน
   const left = Math.max(0, state.quota - state.used);
   const q = $("#quota");
   q.className = left === 0 ? "pill out" : "pill";
-  q.innerHTML = left === 0 ? "ใช้สิทธิ์ครบแล้ว" : `เหลือ <b>${left}</b>/${state.quota}`;
+  q.innerHTML = left === 0
+    ? `<span>สิทธิ์เดือนนี้</span><b>ใช้ครบแล้ว</b>`
+    : `<span>สิทธิ์คงเหลือเดือนนี้</span><b>${left} / ${state.quota}</b>`;
 }
 
 const activeBookings = () => (state.mine || []).filter((b) => b.status === "booked");
@@ -609,50 +613,129 @@ function renderSheet() {
   }
 
   $("#btn-download").style.display = downloadPath ? "" : "none";
+  // เหลือแค่สองตัวเลขที่ยังมีความหมาย — การเช็คว่ามา/ไม่มา ทำบนกระดาษ ไม่ได้ทำในแอป
   $("#sheet-tally").innerHTML = `
     <div><b>${sheet.booked}</b>จองแล้ว</div>
-    <div><b>${sheet.total - sheet.booked}</b>ว่าง</div>
-    <div><b>${sheet.present}</b>มาแล้ว</div>
-    <div><b>${sheet.noShow}</b>ไม่มา</div>`;
+    <div><b>${sheet.total - sheet.booked}</b>ว่าง</div>`;
 
-  const rows = [];
-  for (const r of sheet.rows) {
+  // เรียงตามเวลาของรอบก่อน แล้วค่อยเรียงตามลำดับหมอนวด เพื่อให้อ่านไล่ลงมาได้ตรงกับหน้างาน
+  const list = [];
+  sheet.rows.forEach((r, ri) => {
     r.cells.forEach((c, i) => {
-      if (!c.bookingId) return;
-      const who = sheet.therapists[i];
-      rows.push(`<div class="srow">
+      if (c.bookingId) list.push({ ...c, slot: r.slot, label: r.label, ri, ti: i, who: sheet.therapists[i] });
+    });
+  });
+  list.sort((a, b) => a.ri - b.ri || a.ti - b.ti);
+
+  $("#sheet-rows").innerHTML = list.length
+    ? list
+        .map(
+          (c) => `<div class="srow" data-id="${escapeHtml(c.bookingId)}">
         <div class="head">
-          <span class="t">${escapeHtml(r.label)}</span>
-          <span class="who">${escapeHtml(who ? who.name : "")}</span>
+          <span class="t">${escapeHtml(c.label)}</span>
+          <span class="who">${escapeHtml(c.who ? c.who.name : "")}</span>
         </div>
         <div class="nm">${escapeHtml(c.name || "")}</div>
         <div class="who">${escapeHtml(c.dept || "")}</div>
         <div class="acts">
-          <button data-att="${escapeHtml(c.bookingId)}" data-v="present"
-            aria-pressed="${c.attended === "present"}">มา</button>
-          <button data-att="${escapeHtml(c.bookingId)}" data-v="no_show"
-            aria-pressed="${c.attended === "no_show"}">ไม่มา</button>
+          <button data-edit="${escapeHtml(c.bookingId)}">แก้ไขคิว</button>
+          <button class="danger" data-drop="${escapeHtml(c.bookingId)}">ยกเลิกคิว</button>
         </div>
-      </div>`);
-    });
-  }
-  $("#sheet-rows").innerHTML = rows.length
-    ? rows.join("")
+      </div>`,
+        )
+        .join("")
     : `<div class="empty">วันนี้ยังไม่มีใครจองคิว</div>`;
   show("s-admin");
 }
 
-async function markAttend(id, value) {
-  // กดปุ่มเดิมซ้ำ = ล้างการเช็คกลับไปเป็นยังไม่ได้เช็ค
-  const cell = sheet.rows.flatMap((r) => r.cells).find((c) => c.bookingId === id);
-  const next = cell && cell.attended === value ? null : value;
+/** ช่องที่ยังว่างของวันที่กำลังเปิดอยู่ ใช้เป็นตัวเลือกตอนย้ายคิว */
+function freeSlots(exceptId) {
+  const out = [];
+  for (const r of sheet.rows) {
+    r.cells.forEach((c, i) => {
+      if (!c.bookingId || c.bookingId === exceptId) {
+        out.push({ slot: r.slot, label: r.label, therapistId: sheet.therapists[i].id, therapistName: sheet.therapists[i].name });
+      }
+    });
+  }
+  return out;
+}
+
+async function editBooking(id) {
+  const cur = sheet.rows.flatMap((r) => r.cells).find((c) => c.bookingId === id);
+  const options = freeSlots(id);
+  if (options.length === 0) return toast("วันนี้ไม่มีช่องว่างให้ย้าย");
+
+  const value = await chooseSlot(cur, options);
+  if (!value) return;
+  const [slot, therapistId] = value.split("|");
   try {
-    await api("/api/massage/admin/attend", { method: "POST", body: { id, attended: next } });
+    await api("/api/massage/admin/move", { method: "POST", body: { id, slot, therapistId } });
+    toast("ย้ายคิวเรียบร้อย ระบบแจ้งเจ้าตัวทางไลน์แล้ว");
     await goAdmin(sheet.day);
   } catch (e) {
     if (e && e.handled) return;
-    toast(e.message || "บันทึกไม่สำเร็จ");
+    toast(e.message || "ย้ายคิวไม่สำเร็จ");
   }
+}
+
+async function dropBooking(id) {
+  const cur = sheet.rows.flatMap((r) => r.cells).find((c) => c.bookingId === id);
+  const yes = await dialog({
+    icon: "warn",
+    title: "ยกเลิกคิวนี้",
+    body: `${cur && cur.name ? cur.name + "\n" : ""}ช่องนี้จะกลับมาว่างให้คนอื่นจองได้ทันที และระบบจะแจ้งเจ้าตัวทางไลน์`,
+    confirm: "ยกเลิกคิว",
+    cancel: "ไม่ใช่ตอนนี้",
+    danger: true,
+  });
+  if (!yes) return;
+  try {
+    await api("/api/massage/admin/cancel", { method: "POST", body: { id } });
+    toast("ยกเลิกคิวเรียบร้อย");
+    await goAdmin(sheet.day);
+  } catch (e) {
+    if (e && e.handled) return;
+    toast(e.message || "ยกเลิกไม่สำเร็จ");
+  }
+}
+
+/** กล่องเลือกช่องใหม่ — ใช้ select ธรรมดาเพราะตัวเลือกมีได้ถึง 32 ช่อง ปุ่มเรียงจะยาวเกินจอ */
+function chooseSlot(cur, options) {
+  return new Promise((resolve) => {
+    $("#m-ic").className = "ic warn";
+    $("#m-ic").textContent = "!";
+    $("#m-title").textContent = "ย้ายคิวไปช่องอื่น";
+    $("#m-body").style.display = "";
+    $("#m-body").innerHTML = `${escapeHtml(cur && cur.name ? cur.name : "")}
+      <select class="form-select" id="m-slot" style="margin-top:12px">${options
+        .map((o) => `<option value="${escapeHtml(o.slot)}|${escapeHtml(o.therapistId)}">${escapeHtml(o.label)} · ${escapeHtml(o.therapistName)}</option>`)
+        .join("")}</select>`;
+
+    const btns = $("#m-btns");
+    btns.innerHTML = "";
+    const done = (v) => {
+      $("#backdrop").classList.remove("on");
+      $("#backdrop").onclick = null;
+      $("#m-body").innerHTML = "";
+      resolve(v);
+    };
+    const no = document.createElement("button");
+    no.className = "no";
+    no.textContent = "ไม่ใช่ตอนนี้";
+    no.onclick = () => done(null);
+    btns.appendChild(no);
+    const go = document.createElement("button");
+    go.className = "go";
+    go.textContent = "ย้ายคิว";
+    go.onclick = () => done($("#m-slot").value);
+    btns.appendChild(go);
+
+    $("#backdrop").classList.add("on");
+    $("#backdrop").onclick = (e) => {
+      if (e.target === $("#backdrop")) done(null);
+    };
+  });
 }
 
 /**
@@ -706,8 +789,10 @@ function bind() {
   document.addEventListener("click", (e) => {
     const c = e.target.closest("[data-cancel]");
     if (c) cancelBooking(c.dataset.cancel);
-    const a = e.target.closest("[data-att]");
-    if (a) markAttend(a.dataset.att, a.dataset.v);
+    const ed = e.target.closest("[data-edit]");
+    if (ed) editBooking(ed.dataset.edit);
+    const dp = e.target.closest("[data-drop]");
+    if (dp) dropBooking(dp.dataset.drop);
     const x = e.target.closest("[data-close]");
     if (x) closeWindow();
   });
