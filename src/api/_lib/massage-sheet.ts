@@ -11,6 +11,17 @@
 import { db } from "./db";
 import { MASSAGE_SLOTS, activeTherapists, slotLabel, thaiDayLabel, type Therapist } from "./massage";
 
+/**
+ * ชื่อที่พิมพ์ลงกระดาษ — เอาเฉพาะชื่อจริงคำแรก แล้วเติม "K." ข้างหน้า เช่น K. Somchai
+ *
+ * นามสกุลคนไทยยาวจนดันตารางเสียรูป และหน้างานเรียกกันด้วยชื่อจริงอยู่แล้ว
+ * ตัดที่ช่องว่างแรก ชื่อที่ไม่มีช่องว่างก็ใช้ทั้งคำ
+ */
+export function printName(fullName: string | null): string {
+  const first = String(fullName ?? "").trim().split(/\s+/)[0];
+  return first ? `K. ${first}` : "";
+}
+
 export interface SheetCell {
   bookingId: string | null;
   name: string | null;
@@ -97,18 +108,8 @@ function esc(v: unknown): string {
 }
 
 function cell(c: SheetCell): string {
-  if (!c.name) return `<td class="free">ว่าง</td>`;
-  const mark =
-    c.attended === "present"
-      ? `<span class="chk on">มาแล้ว</span>`
-      : c.attended === "no_show"
-        ? `<span class="chk no">ไม่มา</span>`
-        : `<span class="box"></span>`;
-  return `<td>
-    <div class="nm">${esc(c.name)}</div>
-    ${c.dept ? `<div class="dp">${esc(c.dept)}</div>` : ""}
-    ${mark}
-  </td>`;
+  if (!c.name) return `<td class="free"></td>`;
+  return `<td><span class="box"></span><span class="nm">${esc(printName(c.name))}</span></td>`;
 }
 
 /**
@@ -126,86 +127,73 @@ export function renderSheetHtml(s: CheckSheet, autoPrint = true): string {
   const body = s.rows
     .map(
       (r, i) =>
-        `${i === 4 ? `<tr class="brk"><td colspan="${s.therapists.length + 1}">พักกลางวัน 12:00 – 13:00</td></tr>` : ""}
+        `${i === 4 ? `<tr class="brk"><td colspan="${s.therapists.length + 1}">พักกลางวัน 12.00 – 13.00 น.</td></tr>` : ""}
       <tr><td class="tm">${esc(r.label)}</td>${r.cells.map(cell).join("")}</tr>`,
     )
     .join("");
 
-  const w = Math.floor(88 / Math.max(1, s.therapists.length));
+  const w = Math.floor(86 / Math.max(1, s.therapists.length));
 
   return `<!DOCTYPE html><html lang="th"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ฟอร์มเช็คชื่อคิวนวด · ${esc(s.label)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#101418;--slate:#5B6672;--line:#D8DAD8;--green:#0B7A3E;--alert:#B0331B;--soft:#F4F6F5}
+:root{--ink:#101418;--slate:#5B6672;--line:#C9CDD1;--soft:#F2F4F6}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Anuphan',system-ui,sans-serif;color:var(--ink);background:#EDF0F3;padding:20px}
-.sheet{max-width:1040px;margin:0 auto;background:#fff;border-radius:12px;padding:22px 24px 26px}
-.top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;
-  padding-bottom:14px;border-bottom:2px solid var(--ink);margin-bottom:16px}
-h1{font-size:19px;font-weight:600;line-height:1.35}
-.sub{font-size:13px;color:var(--slate);margin-top:3px}
-.tally{display:flex;gap:18px;text-align:right}
-.tally div{font-size:11.5px;color:var(--slate);line-height:1.5}
-.tally b{display:block;font-size:20px;color:var(--ink);font-weight:600;
-  font-family:'IBM Plex Mono',monospace}
+body{font-family:'Noto Sans Thai',system-ui,sans-serif;color:var(--ink);background:#EDF0F3;padding:20px}
+.sheet{max-width:1040px;margin:0 auto;background:#fff;border-radius:12px;padding:22px 24px 24px}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:16px;
+  padding-bottom:10px;border-bottom:2px solid var(--ink);margin-bottom:14px}
+h1{font-size:18px;font-weight:600;line-height:1.3}
+.sub{font-size:13px;color:var(--slate);font-weight:500}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
-th,td{border:1px solid var(--line);padding:7px 8px;vertical-align:top;text-align:left}
-th{background:var(--soft);font-size:11.5px;font-weight:600;text-align:center;
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+th{background:var(--soft);font-size:12px;font-weight:600;text-align:center;
   -webkit-print-color-adjust:exact;print-color-adjust:exact}
-th:first-child,td.tm{width:12%}
+th:first-child,td.tm{width:14%}
 th:not(:first-child),td:not(.tm){width:${w}%}
-td.tm{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);
-  white-space:nowrap;vertical-align:middle}
-td{height:46px}
-.nm{font-size:12.5px;font-weight:600;line-height:1.35}
-.dp{font-size:10.5px;color:var(--slate);line-height:1.4;margin-top:1px}
-.free{color:#AAB3BB;font-size:11px;text-align:center;vertical-align:middle}
-.box{display:inline-block;width:15px;height:15px;border:1.5px solid #9AA4AE;border-radius:3px;margin-top:5px}
-.chk{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:20px;margin-top:4px;
+td.tm{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate);
+  white-space:nowrap;text-align:center;background:var(--soft);
   -webkit-print-color-adjust:exact;print-color-adjust:exact}
-.chk.on{background:#E6F8ED;color:var(--green)}
-.chk.no{background:#FBE6E1;color:var(--alert)}
-tr.brk td{background:var(--soft);text-align:center;font-size:11px;color:var(--slate);
-  letter-spacing:.08em;height:auto;padding:5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.foot{display:flex;justify-content:space-between;gap:20px;margin-top:16px;
-  font-size:11px;color:var(--slate);line-height:1.6}
-.sign{border-top:1px solid var(--line);padding-top:5px;min-width:190px;text-align:center}
+td{height:40px}
+.box{display:inline-block;width:14px;height:14px;border:1.4px solid #8C959E;border-radius:3px;
+  margin-right:8px;vertical-align:-2px}
+.nm{font-size:13px;font-weight:500}
+tr.brk td{background:var(--soft);text-align:center;font-size:11.5px;color:var(--slate);
+  letter-spacing:.06em;height:auto;padding:4px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sign{display:flex;justify-content:flex-end;margin-top:20px}
+.sign div{border-top:1px solid var(--line);padding-top:6px;min-width:220px;text-align:center;
+  font-size:11.5px;color:var(--slate)}
 .bar{max-width:1040px;margin:0 auto 14px;display:flex;justify-content:flex-end}
 button{font-family:inherit;font-size:13px;font-weight:600;color:#fff;background:#06C755;
   border:0;border-radius:10px;padding:10px 20px;cursor:pointer}
+
+/* ตอนพิมพ์ Chromium จัดหน้าที่ความกว้างราว 816px เสมอ ไม่ใช่ความกว้างกระดาษ
+   การย่อหน้าต่างเบราว์เซอร์ดูจึงไม่ได้บอกอะไร ต้องวัดจากไฟล์ที่พิมพ์ออกมาจริง
+   table-layout:fixed + ความกว้างเป็นเปอร์เซ็นต์ คือสิ่งที่ทำให้ตารางพอดีหน้ากระดาษ */
 @media print{
-  @page{size:A4 landscape;margin:10mm}
+  @page{size:A4 landscape;margin:12mm}
   body{background:#fff;padding:0}
   .sheet{max-width:none;border-radius:0;padding:0}
   .bar{display:none}
-  table{font-size:11px}
-  td{height:44px}
+  .top{margin-bottom:14px}
+  td{height:60px}
+  .nm{font-size:13.5px}
+  .box{width:16px;height:16px}
+  table{page-break-inside:avoid}
 }
 </style></head><body>
 <div class="bar"><button onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button></div>
 <div class="sheet">
   <div class="top">
-    <div>
-      <h1>ฟอร์มเช็คชื่อคิวนวด</h1>
-      <div class="sub">${esc(s.label)}</div>
-    </div>
-    <div class="tally">
-      <div><b>${s.booked}</b>จองแล้ว</div>
-      <div><b>${s.total - s.booked}</b>ว่าง</div>
-      <div><b>${s.present}</b>มาแล้ว</div>
-      <div><b>${s.noShow}</b>ไม่มา</div>
-    </div>
+    <h1>ฟอร์มเช็คชื่อคิวนวด</h1>
+    <div class="sub">${esc(s.label)}</div>
   </div>
   <table><thead><tr><th>รอบเวลา</th>${head}</tr></thead><tbody>${body}</tbody></table>
-  <div class="foot">
-    <div>ช่องสี่เหลี่ยมคือคิวที่ยังไม่ได้เช็ค · ติ๊กเมื่อผู้จองมาถึง<br>
-      กด มา / ไม่มา ในแอปได้เช่นกัน ตัวเลขด้านบนจะอัปเดตทันที</div>
-    <div class="sign">ผู้ตรวจสอบ</div>
-  </div>
+  <div class="sign"><div>ผู้ตรวจสอบ</div></div>
 </div>
 ${autoPrint ? `<script>addEventListener("load",function(){(document.fonts?document.fonts.ready:Promise.resolve()).then(function(){setTimeout(function(){window.print()},250)})})</script>` : ""}
 </body></html>`;

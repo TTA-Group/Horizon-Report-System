@@ -34,12 +34,21 @@ body{font-family:'Noto Sans Thai',system-ui,sans-serif;background:var(--canvas);
 .body{flex:1;padding:22px 16px 18px;display:flex;flex-direction:column}
 
 /* ── หัวเรื่อง ── */
-.top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:22px 16px 0}
-h1{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
-.who{font-size:12.5px;color:var(--slate);margin-top:5px;line-height:1.5}
-.pill{flex:0 0 auto;background:var(--green-soft);color:var(--green-deep);border-radius:999px;
-  padding:7px 13px;font-size:12.5px;font-weight:600;white-space:nowrap;margin-top:3px}
-.pill b{font-family:'IBM Plex Mono',monospace;font-size:14px;font-variant-numeric:tabular-nums}
+.top{padding:20px 16px 0}
+.brand{display:flex;align-items:center;gap:12px}
+.brand img{width:52px;height:52px;object-fit:contain;flex:0 0 auto}
+h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+.who{font-size:13px;color:var(--slate);margin-top:3px;line-height:1.45}
+.who span{display:block;font-size:12px;color:var(--dim)}
+
+/* ชิปสิทธิ์เป็นแถวของตัวเอง เพราะเป็นตัวเลขที่ต้องเห็นชัดก่อนตัดสินใจจอง
+   ตอนอยู่มุมขวาบนติดกับชื่อ มันเล็กจนต้องเพ่ง */
+.pill{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px;
+  background:var(--green-soft);color:var(--green-deep);border-radius:14px;padding:13px 16px;
+  font-size:14px;font-weight:600}
+.pill b{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em;white-space:nowrap}
+.pill.out b{font-family:inherit;font-size:15px}
 .pill.out{background:var(--red-soft);color:var(--red-deep)}
 
 /* ── หัวข้อย่อย — มีเส้นบางลากต่อไปทางขวาเพื่อแบ่งส่วนโดยไม่ต้องใช้กล่อง ── */
@@ -92,6 +101,14 @@ h1{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
   box-shadow:0 4px 14px -4px rgba(6,199,85,.55)}
 .legend{display:flex;gap:16px;justify-content:center;margin-top:14px;font-size:11.5px;color:var(--slate)}
 .legend em{font-style:normal;color:var(--green-deep);font-weight:600}
+
+/* เงื่อนไขการจอง — อยู่เหนือปุ่มยืนยันในลำดับการอ่าน คืออ่านก่อนกด
+   ไม่เอาไปไว้ในแถบที่ติดขอบล่าง เพราะจะกินพื้นที่จอค้างไว้ตลอดทั้งที่อ่านครั้งเดียวก็พอ */
+.terms{list-style:none;margin:18px 0 0;background:#FFF6E7;border:1px solid #F2DCB4;border-radius:14px;
+  padding:13px 15px}
+.terms li{position:relative;padding-left:15px;font-size:12.5px;color:#7A5B14;line-height:1.65}
+.terms li+li{margin-top:7px}
+.terms li::before{content:"•";position:absolute;left:2px;color:#C79A2E}
 
 /* ── แถบยืนยันติดขอบล่าง ──
    เลือกช่องเสร็จแล้วกดยืนยันได้ทันที ไม่ต้องเลื่อนผ่านตารางแปดแถวลงไปหาปุ่มที่ท้ายหน้า */
@@ -159,8 +176,9 @@ h1{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 .srow .acts{display:flex;gap:8px;margin-top:12px}
 .srow .acts button{flex:1;font-family:inherit;font-size:13px;font-weight:600;padding:10px;border-radius:11px;
   border:1px solid var(--hair);background:var(--surface);color:var(--slate);cursor:pointer}
-.srow .acts button[aria-pressed="true"][data-v="present"]{background:var(--green-soft);border-color:var(--green-line);color:var(--green-deep)}
-.srow .acts button[aria-pressed="true"][data-v="no_show"]{background:var(--red-soft);border-color:#F2C9C0;color:var(--red-deep)}
+.srow .acts button.danger{background:var(--red-soft);border-color:#F2C9C0;color:var(--red-deep)}
+/* กล่องเลือกช่องใหม่ตอนย้ายคิว — select อยู่ในกล่องยืนยัน จึงต้องชิดซ้ายไม่ใช่กลางเหมือนข้อความ */
+.modal .form-select{text-align:left}
 
 /* ── หน้าบอกสถานะ (ยังไม่ลงทะเบียน · ปิดระบบ · ยกเลิกคิว) ── */
 .center{text-align:center;padding:26px 4px 6px}
@@ -180,7 +198,11 @@ h1{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 .backdrop{position:fixed;inset:0;background:rgba(15,21,24,.42);display:none;place-items:center;padding:24px;z-index:40}
 .backdrop.on{display:grid}
 .modal{background:var(--surface);border-radius:20px;padding:26px 22px 20px;max-width:340px;width:100%;text-align:center}
-.modal .ic{font-size:34px;margin-bottom:10px}
+.modal .ic{width:58px;height:58px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;
+  font-size:29px;line-height:1}
+.modal .ic.ok{background:#EAFAF0;color:var(--green-deep)}
+.modal .ic.warn{background:#FFF6E2;color:#C08800}
+.modal .ic.err{background:#FDECEA;color:var(--red-deep)}
 .modal h3{font-size:17.5px;font-weight:600;margin-bottom:8px;letter-spacing:-.02em}
 .modal p{font-size:13.5px;color:var(--slate);line-height:1.7}
 .modal .btns{display:grid;gap:8px;margin-top:20px}
@@ -203,9 +225,13 @@ h1{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 
 <div class="app">
   <header class="top">
-    <div>
-      <h1>จองคิวนวด</h1>
-      <div class="who" id="welcome">TTA Wellness · นวดผ่อนคลายสำหรับพนักงาน</div>
+    <div class="brand">
+      <!-- ไม่มีไฟล์โลโก้ก็ถอดตัวเองออก หน้าไม่พังและไม่เหลือช่องว่าง -->
+      <img src="/logo.png" alt="TTA Horizon" id="logo" onerror="this.remove()" />
+      <div>
+        <h1>จองคิวนวด</h1>
+        <div class="who" id="welcome">TTA Horizon<span>นวดผ่อนคลายสำหรับพนักงาน</span></div>
+      </div>
     </div>
     <div class="pill" id="quota" style="display:none"></div>
   </header>
@@ -266,12 +292,18 @@ h1{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 
       <div class="lab">เลือกเวลาและหมอนวด</div>
       <p class="viewnote" id="viewnote" style="display:none">
-        วันนี้คุณจองไว้แล้ว เปิดดูตารางได้อย่างเดียว — จองได้วันละ 1 คิว
+        โปรดเลือกวันอื่น คุณสามารถจองคิวนวดผ่อนคลายได้เพียง 1 คิว/วัน
       </p>
       <div class="panel" id="slots"></div>
       <div class="legend" id="legend" style="display:none">
         <span><em>ว่าง</em> = กดจองได้</span><span>จอง = มีคนจองแล้ว</span>
       </div>
+
+      <ul class="terms">
+        <li>จำกัดสิทธิ์ 2 ครั้ง / ท่าน / เดือน</li>
+        <li>หากไม่สามารถมาใช้บริการได้ กรุณายกเลิกคิวล่วงหน้าอย่างน้อย 15 นาที</li>
+        <li>กรณีไม่แสดงตนใช้บริการเกิน 10 นาที เจ้าหน้าที่จะทำการปล่อยคิวให้ท่านอื่นโดยที่ไม่ต้องแจ้งให้ทราบ</li>
+      </ul>
 
       <div class="bar">
         <div class="sum">
@@ -279,7 +311,6 @@ h1{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
           <button class="x" id="btn-clear">ล้าง</button>
         </div>
         <button class="btn-submit" id="btn-book" disabled>ยืนยันการจอง</button>
-        <p class="tip">จองได้ 2 ครั้งต่อเดือน วันละ 1 คิว · ยกเลิกได้ถึงก่อนรอบเริ่ม 15 นาที</p>
       </div>
     </section>
 

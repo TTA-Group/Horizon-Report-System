@@ -572,6 +572,97 @@ export async function cancel(
   return { day: b.day, slot: b.slot, therapistName: b.name };
 }
 
+// ───────────────────────── ผู้ดูแลจัดการคิวแทนพนักงาน ─────────────────────────
+//
+// ผู้ดูแลหน้างานต้องแก้คิวแทนได้จริง เช่น พนักงานโทรมาบอกว่ามาไม่ได้ หรือขอย้ายรอบ
+// ถ้าไม่มีทางแก้ ช่องนั้นจะค้างเป็น "จองแล้ว" ทั้งที่ไม่มีใครมา และไม่มีใครจองแทนได้
+//
+// ต่างจากการยกเลิกของเจ้าตัวสองข้อ: ไม่ดูเส้นตัด 15 นาที (ผู้ดูแลยืนอยู่หน้างานจริง
+// ย่อมรู้สถานการณ์ดีกว่ากติกา) และจดไว้ว่าใครเป็นคนสั่ง จะได้ตามย้อนหลังได้ว่าใครแก้
+
+export interface AdminBookingRow {
+  id: string;
+  day: string;
+  slot: string;
+  therapistId: string;
+  employeeId: string;
+  name: string;
+}
+
+async function loadBooking(bookingId: string): Promise<AdminBookingRow> {
+  const rows = await db()<
+    { id: string; day: string; slot: string; therapist_id: string; employee_id: string;
+      status: string; full_name: string }[]
+  >`
+    SELECT b.id, to_char(b.day, 'YYYY-MM-DD') AS day, to_char(b.slot_start, 'HH24:MI') AS slot,
+           b.therapist_id, b.employee_id, b.status, e.full_name
+    FROM massage_bookings b
+    JOIN employees e ON e.id = b.employee_id
+    WHERE b.id = ${bookingId}
+  `;
+  if (rows.length === 0) throw new HttpError(404, "ไม่พบคิวนี้ในระบบ");
+  const b = rows[0];
+  if (b.status !== "booked") throw new HttpError(409, "คิวนี้ถูกยกเลิกไปแล้ว", "already_cancelled");
+  return {
+    id: b.id, day: b.day, slot: b.slot,
+    therapistId: b.therapist_id, employeeId: b.employee_id, name: b.full_name,
+  };
+}
+
+/** ผู้ดูแลยกเลิกคิวของพนักงาน — ช่องนั้นกลับมาว่างให้คนอื่นจองได้ทันที */
+export async function adminCancel(
+  bookingId: string,
+  byEmployeeId: string,
+  reason = "ผู้ดูแลยกเลิกให้",
+): Promise<AdminBookingRow> {
+  const b = await loadBooking(bookingId);
+  await db()`
+    UPDATE massage_bookings
+    SET status = 'cancelled', cancelled_at = now(), cancelled_by = ${byEmployeeId},
+        cancel_reason = ${reason.slice(0, 120)}, updated_at = now()
+    WHERE id = ${bookingId} AND status = 'booked'
+  `;
+  return b;
+}
+
+/**
+ * ผู้ดูแลย้ายคิวไปรอบอื่นหรือหมอนวดคนอื่น "ภายในวันเดิม"
+ *
+ * ไม่ให้ย้ายข้ามวัน เพราะกติกาสิทธิ์ต่อเดือนกับวันละหนึ่งคิวผูกกับวัน ถ้าย้ายข้ามวันได้
+ * จะต้องไปนับสิทธิ์ใหม่ทั้งชุด และมีโอกาสทำให้คนนั้นมีสองคิวในวันเดียวโดยไม่ตั้งใจ
+ * ผู้ดูแลที่อยากย้ายข้ามวันให้ยกเลิกแล้วให้เจ้าตัวจองใหม่ ซึ่งตรงไปตรงมากว่า
+ */
+export async function adminMove(
+  bookingId: string,
+  slot: string,
+  therapistId: string,
+): Promise<AdminBookingRow> {
+  if (!MASSAGE_SLOTS.includes(slot as (typeof MASSAGE_SLOTS)[number])) {
+    throw new HttpError(400, "รอบเวลาไม่ถูกต้อง", "bad_slot");
+  }
+  const b = await loadBooking(bookingId);
+  const therapists = await activeTherapists();
+  if (!therapists.some((t) => t.id === therapistId)) {
+    throw new HttpError(400, "ไม่พบหมอนวดคนนี้", "bad_therapist");
+  }
+  if (b.slot === slot && b.therapistId === therapistId) return b;
+
+  try {
+    await db()`
+      UPDATE massage_bookings
+      SET slot_start = ${slot}::time, therapist_id = ${therapistId}, updated_at = now(),
+          remind_eve_at = NULL, remind_soon_at = NULL
+      WHERE id = ${bookingId} AND status = 'booked'
+    `;
+  } catch (e) {
+    // ดัชนีของฐานข้อมูลเป็นตัวกันช่องซ้ำ ไม่ใช่การเช็คก่อนเขียน เพราะสองคำขอที่มาพร้อมกัน
+    // จะผ่านการเช็คทั้งคู่แล้วเขียนทับกัน
+    if (isUniqueViolation(e)) throw new HttpError(409, "ช่องนี้มีคนจองแล้ว", "slot_taken");
+    throw e;
+  }
+  return { ...b, slot, therapistId };
+}
+
 // ───────────────────────── คิวของฉัน ─────────────────────────
 
 export interface MyBooking {
