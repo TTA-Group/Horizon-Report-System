@@ -309,7 +309,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
 /* ── หน้าผู้ดูแลระบบ ── */
 .rolenote{font-size:12.5px;color:var(--slate);line-height:1.65;margin-bottom:14px}
-#roles-add{margin-bottom:22px}
 #s-manage .send+.send{margin-top:10px}
 .rolenote b{color:var(--ink);font-weight:600}
 .rhead{display:flex;align-items:baseline;gap:8px;margin-bottom:9px}
@@ -407,6 +406,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
        ส่วนการค้นหาและแก้ไขรายคนอยู่แท็บ "ทะเบียนพนักงาน" ซึ่งเป็นงานที่ต้องไล่ดูก่อน -->
   <section class="screen" id="s-manage">
     <button class="send" id="mg-add">+ เพิ่มพนักงานใหม่</button>
+    <!-- ปุ่ม "เพิ่ม" ทั้งสองอยู่ด้วยกันที่นี่ ส่วนแท็บผู้ดูแลระบบเหลือไว้ดูรายชื่ออย่างเดียว -->
+    <button class="send" id="mg-role">+ เพิ่มผู้ดูแลระบบ</button>
     <!-- ทางลัดไปหน้าผู้ดูแลของแอปจองคิว ปุ่มเดียวพอ เพราะสามหน้านั้นสลับกันได้ในตัวอยู่แล้ว -->
     <button class="send" id="mg-massage">ผู้ดูแลคิวนวด</button>
     <button class="ghost" id="mg-close">ปิดหน้านี้</button>
@@ -446,7 +447,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       ส่วนหัวหน้าฝ่ายและผู้รับผิดชอบของฝ่ายอื่น <b>ไม่ใช่</b>ผู้ดูแลระบบ
       กำหนดได้ที่แท็บทะเบียนพนักงาน
     </p>
-    <button class="send" id="roles-add">+ เพิ่มผู้ดูแลระบบ</button>
     <div id="roles-find" style="display:none">
       <input type="text" class="searchbox" id="roles-q" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
       <div id="roles-hits"></div>
