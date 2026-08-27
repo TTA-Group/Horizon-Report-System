@@ -232,6 +232,9 @@ function enterApp() {
  * ใครเปิดได้ให้แอปจองคิวตัดสินเอง — ที่นี่เปิดลิงก์ให้เฉย ๆ
  *
  * which: "1" = ฟอร์มเช็คชื่อ (ค่าเดิม ห้ามเปลี่ยน มีคนบุ๊กมาร์กไว้) · "book" = จองแทน · "days" = วันให้บริการ
+ *
+ * ปุ่มที่หน้าจัดการเปิดหน้าฟอร์มเช็คชื่อ แล้วให้สลับไปอีกสองหน้าด้วยแท็บในแอปจองคิวเอง
+ * อีกสองค่ายังรับอยู่เพราะเป็นลิงก์ตรงที่บันทึกไว้ใช้ซ้ำได้
  */
 function openMassageAdmin(which) {
   const id = CFG.massageLiffId;
@@ -253,11 +256,8 @@ function showDone() {
 
 /** หน้าจัดการของฝ่ายบุคคล — งานที่ทำบ่อยที่สุดอยู่เป็นปุ่มใหญ่ปุ่มเดียว ไม่ต้องไปหาในแท็บอื่น */
 function goMe() {
-  const emp = session.employee || {};
-  $("#mg-name").textContent = emp.full_name || "—";
-  $("#mg-code").textContent = emp.employee_code || "—";
-  $("#mg-dept").textContent = emp.department_name || "—";
-  $("#mg-floor").textContent = emp.floor || "—";
+  // ชื่อ รหัส ฝ่าย ของคนที่ล็อกอินอยู่ ขึ้นที่แถบบนสุดตลอดเวลาอยู่แล้ว (enterApp)
+  // เขียนซ้ำในหน้านี้อีกชุดมีแต่ดันปุ่มที่ต้องกดจริงให้ลงไปอยู่ครึ่งล่างของจอ
   $("#mg-close").style.display = canCloseWindow() ? "" : "none";
   setTab("me");
   show("s-manage");
@@ -1203,9 +1203,7 @@ function bind() {
     openEmpForm();
   };
   $("#mg-close").onclick = closeWindow;
-  $("#mg-sheet").onclick = () => openMassageAdmin("1");
-  $("#mg-book").onclick = () => openMassageAdmin("book");
-  $("#mg-days").onclick = () => openMassageAdmin("days");
+  $("#mg-massage").onclick = () => openMassageAdmin("1");
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;
   $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));
