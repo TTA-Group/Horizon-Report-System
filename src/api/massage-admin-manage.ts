@@ -33,7 +33,7 @@ export const massageAdminCancel = async (req: Request): Promise<Response> =>
         b.day,
         b.slot,
         b.therapistName,
-        "หากต้องการจองใหม่ เข้าไปจองในแอปได้เลย",
+        "หากมีข้อสงสัยโปรดติดต่อฝ่ายบุคคล",
       ),
     );
     return json({ ok: true, id, day: b.day, slot: b.slot });
