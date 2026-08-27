@@ -24,7 +24,12 @@ import massageCancel from "./api/massage-cancel";
 import massageSheet from "./api/massage-sheet";
 import massageAdminSheet from "./api/massage-admin-sheet";
 import massageAttend from "./api/massage-attend";
-import { massageAdminCancel, massageAdminMove } from "./api/massage-admin-manage";
+import {
+  massageAdminCancel,
+  massageAdminEmployees,
+  massageAdminMove,
+  massageAdminReassign,
+} from "./api/massage-admin-manage";
 
 import massageCron from "./api/massage-cron";
 import massageOpenMonth from "./api/massage-open-month";
@@ -62,6 +67,8 @@ function route(pathname: string, method: string): Handler | null {
       // ผู้ดูแลแก้คิวแทนพนักงานได้ — ยกเลิกให้ หรือย้ายรอบภายในวันเดิม
       if (seg[3] === "cancel") return method === "POST" ? massageAdminCancel : null;
       if (seg[3] === "move") return method === "POST" ? massageAdminMove : null;
+      if (seg[3] === "reassign") return method === "POST" ? massageAdminReassign : null;
+      if (seg[3] === "employees") return method === "GET" ? massageAdminEmployees : null;
       return null;
     }
     return null;

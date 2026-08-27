@@ -12,6 +12,7 @@ import type { LineMessage } from "./line";
 import { slotLabel, thaiDayLabel } from "./massage";
 
 const GREEN = "#06C755";
+const FLASH = "#F26A1B";
 
 /**
  * ลิงก์เปิดแอปจองคิวนวด · คืน null เมื่อยังไม่ได้ตั้ง LIFF_ID
@@ -48,17 +49,21 @@ export interface ConfirmInput {
   therapistName: string;
   /** ชื่อผู้จองตามทะเบียนพนักงาน — ไม่ใช่ชื่อในไลน์ซึ่งเป็นชื่อเล่นหรืออีโมจิได้ */
   employeeName: string;
+  /** true = คิวด่วน ไม่นับสิทธิ์ และยกเลิกเองไม่ได้ */
+  flash: boolean;
 }
 
 /** การ์ดยืนยันการจอง พร้อมปุ่มยกเลิก */
 export function bookingConfirmCard(b: ConfirmInput): LineMessage {
   const cancelUri = massageLiffUri({ cancel: b.bookingId });
 
+  const accent = b.flash ? FLASH : GREEN;
+
   const body: object[] = [
     { type: "text", text: "จองคิวสำเร็จ", weight: "bold", size: "xl", color: "#333333", align: "center" },
     {
       type: "text",
-      text: "บันทึกการนัดหมายของคุณเรียบร้อยแล้ว",
+      text: b.flash ? "คิวด่วน — ไม่นับสิทธิ์ของเดือนนี้" : "บันทึกการนัดหมายของคุณเรียบร้อยแล้ว",
       size: "sm",
       color: "#AAAAAA",
       align: "center",
@@ -85,7 +90,7 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
           text: `${slotLabel(b.slot)} (${b.therapistName})`,
           size: "lg",
           weight: "bold",
-          color: GREEN,
+          color: accent,
           align: "center",
           margin: "md",
           wrap: true,
@@ -111,7 +116,9 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
         },
         {
           type: "text",
-          text: "หากมาไม่ได้ กรุณากดยกเลิกก่อนถึงคิว 15 นาที",
+          text: b.flash
+            ? "คิวด่วนยกเลิกในระบบไม่ได้ หากมาไม่ได้ ต้องหาคนมาแทนแล้วแจ้งฝ่ายบุคคล"
+            : "หากมาไม่ได้ กรุณากดยกเลิกก่อนถึงคิว 15 นาที",
           size: "xxs",
           color: "#B0331B",
           align: "center",
@@ -122,7 +129,8 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
   ];
 
   // ไม่มี LIFF_ID ก็ยังส่งการ์ดได้ แค่ไม่มีปุ่ม — ดีกว่าส่งปุ่มที่กดแล้วไม่เกิดอะไรขึ้น
-  if (cancelUri) {
+  // คิวด่วนไม่มีปุ่มยกเลิกเลย ด้วยเหตุผลเดียวกัน กดไปก็ถูกปฏิเสธอยู่ดี
+  if (cancelUri && !b.flash) {
     body.push({
       type: "button",
       style: "link",
@@ -142,10 +150,14 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: GREEN,
+        backgroundColor: accent,
         paddingAll: "15px",
         contents: [
-          { type: "text", text: "BOOKING CONFIRMED", color: "#FFFFFF", size: "md", weight: "bold", gravity: "center" },
+          {
+            type: "text",
+            text: b.flash ? "FLASH QUEUE BOOKED" : "BOOKING CONFIRMED",
+            color: "#FFFFFF", size: "md", weight: "bold", gravity: "center",
+          },
         ],
       },
       body: { type: "box", layout: "vertical", contents: body },
