@@ -132,6 +132,56 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .terms.flash li{color:#8A5A2B}
 .terms.flash li::before{color:var(--flash)}
 
+/* ── แถบสลับสามหน้าของผู้ดูแล ──
+   ผู้ดูแลคนเดียวกันต้องใช้ทั้งสามหน้าในงานเดียว (ดูใครจอง · เติมคนที่โทรมา · ปิดวันหยุด)
+   ถ้าต้องออกไปเริ่มจากหน้าจัดการของระบบกลางใหม่ทุกครั้ง จะกดกันหลายรอบโดยไม่จำเป็น */
+.atabs{display:flex;gap:5px;background:var(--sunk);border-radius:13px;padding:4px;margin-bottom:20px}
+.atabs button{flex:1;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--slate);
+  border:0;background:transparent;border-radius:10px;padding:10px 3px;cursor:pointer;transition:.14s}
+.atabs button[aria-pressed="true"]{background:var(--surface);color:var(--ink);
+  box-shadow:0 1px 3px rgba(15,21,24,.1)}
+
+/* ช่องในตารางจองแทนมีชื่อคนอยู่ข้างใน — โชว์เฉพาะชื่อจริงและปล่อยให้ขึ้นบรรทัดใหม่ได้
+   ถ้าตัดท้ายด้วยจุดไข่ปลา ทุกช่องจะอ่านได้เหมือนกันหมดว่า "พนักงาน …" ซึ่งไม่บอกอะไรเลย */
+.cell.who{font-size:10px;font-weight:500;color:var(--slate);line-height:1.25;padding:11px 3px;
+  white-space:normal;overflow-wrap:anywhere}
+
+/* คนที่เลือกไว้ว่าจะจองให้ — ต้องเห็นค้างอยู่ระหว่างไล่หาช่องว่างในตาราง */
+.picked{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--green-soft);border:1px solid var(--green-line);border-radius:13px;
+  padding:12px 14px;margin-bottom:16px}
+.picked b{font-size:14.5px;font-weight:600;color:var(--green-deep);letter-spacing:-.01em}
+.picked span{display:block;font-size:11.5px;font-weight:400;color:var(--green-deep);opacity:.8;margin-top:2px}
+.picked button{border:0;background:transparent;font-family:inherit;font-size:12.5px;
+  color:var(--green-deep);cursor:pointer;padding:6px 2px;text-decoration:underline}
+
+/* ── รายการวันให้บริการ ── */
+.mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px}
+.mrow button{border:1px solid var(--hair);background:var(--surface);border-radius:11px;
+  width:40px;height:40px;font-size:15px;color:var(--ink);cursor:pointer;font-family:inherit}
+.mrow button:disabled{color:var(--dim);cursor:not-allowed}
+.mrow b{font-size:16.5px;font-weight:600;letter-spacing:-.01em}
+.drow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--hair);
+  border-radius:14px;padding:13px 14px;margin-bottom:9px}
+.drow .info{flex:1;min-width:0}
+.drow .d{font-size:14.5px;font-weight:600;letter-spacing:-.01em;line-height:1.3}
+.drow .s{font-size:11.5px;color:var(--slate);margin-top:4px;line-height:1.5}
+.drow .go{flex:0 0 auto;font-family:inherit;font-size:12.5px;font-weight:600;padding:10px 14px;
+  border-radius:11px;border:1px solid var(--hair);background:var(--surface);color:var(--ink);cursor:pointer}
+.drow .go.shut{background:var(--red-soft);border-color:#F2C9C0;color:var(--red-deep)}
+.drow .go.open{background:var(--green-soft);border-color:var(--green-line);color:var(--green-deep)}
+.drow .go:disabled{background:var(--sunk);border-color:var(--sunk);color:var(--dim);cursor:not-allowed}
+.drow.shut{background:var(--sunk);border-color:var(--sunk)}
+.drow.shut .d{color:var(--slate)}
+.drow.gone{opacity:.5}
+.addday{display:flex;gap:8px;margin-top:6px}
+.addday input{flex:1;font-family:inherit;font-size:14px;color:var(--ink);border-radius:12px;
+  padding:12px 13px;border:1px solid var(--hair);background:var(--surface);outline:none}
+.addday input:focus{border-color:var(--green)}
+.addday button{flex:0 0 auto;font-family:inherit;font-size:13px;font-weight:600;padding:12px 16px;
+  border-radius:12px;border:1px solid var(--green-line);background:var(--green-soft);
+  color:var(--green-deep);cursor:pointer}
+
 /* ค้นชื่อพนักงานตอนเปลี่ยนคนจอง */
 .finder{margin-top:12px;text-align:left}
 .finder input{width:100%;font-family:inherit;font-size:15px;color:var(--ink);border-radius:12px;
@@ -358,7 +408,7 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
         <span><em>ว่าง</em> = กดจองได้</span><span>จอง = มีคนจองแล้ว</span>
       </div>
 
-      <div class="bar">
+      <div class="bar" id="book-bar">
         <div class="sum">
           <div id="pickinfo"><span class="none">ยังไม่ได้เลือกรอบ</span></div>
           <button class="x" id="btn-clear">ล้าง</button>
@@ -384,6 +434,11 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 
     <!-- ฟอร์มเช็คชื่อของผู้ดูแล — เข้ามาจากปุ่มในหน้าจัดการของระบบกลาง (?admin=1) -->
     <section class="screen" id="s-admin">
+      <div class="atabs" data-tabs>
+        <button data-atab="sheet" aria-pressed="true">เช็คชื่อ</button>
+        <button data-atab="book" aria-pressed="false">จองแทน</button>
+        <button data-atab="days" aria-pressed="false">วันให้บริการ</button>
+      </div>
       <div class="lab">ฟอร์มเช็คชื่อคิวนวด</div>
       <select class="form-select" id="sheet-day"></select>
 
@@ -394,6 +449,63 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
       <div class="lab" style="margin-top:24px">รายชื่อผู้จอง</div>
       <div id="sheet-rows"></div>
       <button class="btn-ghost" id="btn-admin-back">กลับไปหน้าจอง</button>
+    </section>
+
+    <!-- ผู้ดูแลจองคิวแทนพนักงาน -->
+    <section class="screen" id="s-abook">
+      <div class="atabs" data-tabs>
+        <button data-atab="sheet" aria-pressed="false">เช็คชื่อ</button>
+        <button data-atab="book" aria-pressed="true">จองแทน</button>
+        <button data-atab="days" aria-pressed="false">วันให้บริการ</button>
+      </div>
+
+      <div class="lab">จองคิวแทนพนักงาน</div>
+      <select class="form-select" id="abook-day"></select>
+
+      <div class="lab" style="margin-top:22px">พนักงานที่จะจองให้</div>
+      <div id="abook-picked"></div>
+      <div class="finder" id="abook-finder" style="margin-top:0">
+        <input id="abook-find" type="text" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
+        <div class="hits" id="abook-hits"><div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div></div>
+      </div>
+
+      <div class="lab" style="margin-top:22px">เลือกช่องที่ว่าง</div>
+      <div class="panel" id="abook-grid"></div>
+
+      <div class="bar" id="abook-bar">
+        <div class="sum">
+          <div id="abook-info"><span class="none">ยังไม่ได้เลือกช่อง</span></div>
+          <button class="x" id="abook-clear">ล้าง</button>
+        </div>
+        <button class="btn-submit" id="abook-go" disabled>จองให้พนักงาน</button>
+      </div>
+      <button class="btn-ghost" id="abook-back">กลับไปหน้าจอง</button>
+    </section>
+
+    <!-- ผู้ดูแลเปิดปิดวันให้บริการ -->
+    <section class="screen" id="s-adays">
+      <div class="atabs" data-tabs>
+        <button data-atab="sheet" aria-pressed="false">เช็คชื่อ</button>
+        <button data-atab="book" aria-pressed="false">จองแทน</button>
+        <button data-atab="days" aria-pressed="true">วันให้บริการ</button>
+      </div>
+
+      <div class="lab">วันให้บริการ</div>
+      <div class="mrow">
+        <button id="adays-prev" aria-label="เดือนก่อนหน้า">‹</button>
+        <b id="adays-month">—</b>
+        <button id="adays-next" aria-label="เดือนถัดไป">›</button>
+      </div>
+      <div id="adays-list"></div>
+
+      <div class="lab" style="margin-top:24px">เพิ่มวันให้บริการนอกตาราง</div>
+      <div class="addday">
+        <input id="adays-new" type="date" />
+        <button id="adays-add">เพิ่มวัน</button>
+      </div>
+      <p class="tip">ใช้เมื่อต้องย้ายวันให้บริการ เช่น ศุกร์นั้นตรงวันหยุด แล้วเลื่อนมาให้บริการวันพฤหัสแทน</p>
+
+      <button class="btn-ghost" id="adays-back">กลับไปหน้าจอง</button>
     </section>
 
     <!-- ยกเลิกคิว (เข้ามาจากปุ่มบนการ์ดในไลน์) -->

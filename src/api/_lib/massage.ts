@@ -203,9 +203,10 @@ export async function assertMassageStaff(s: Session): Promise<void> {
  *
  * วันที่ถูกปิดด้วยมือไปแล้วจะไม่ถูกเปิดกลับ (ON CONFLICT DO NOTHING)
  */
-export async function ensureMonthDays(day: string): Promise<string[]> {
+export async function ensureMonthDays(day: string, force = false): Promise<string[]> {
   // เดือนที่ยังไม่ถึงกำหนดเปิด ไม่ต้องสร้างวันไว้ให้รก
-  if (beforeStartMonth(day, startMonthOf(await settings()))) return [];
+  // ยกเว้นผู้ดูแลเปิดหน้าจัดการวันของเดือนนั้นเอง = ตั้งใจมาดูอยู่แล้ว ต้องเห็นวันครบ
+  if (!force && beforeStartMonth(day, startMonthOf(await settings()))) return [];
 
   const candidates = serviceDaysOfMonth(day);
   if (candidates.length === 0) return [];
@@ -820,4 +821,276 @@ export async function myBookings(
       past: startsIn <= 0,
     };
   });
+}
+
+// ───────────────────────── ผู้ดูแลจองแทนพนักงาน ─────────────────────────
+
+/**
+ * ผู้ดูแลจองคิวให้พนักงานคนอื่น
+ *
+ * กติกาที่ข้ามได้ เพราะมีไว้กำกับ "การกดเองของพนักงาน" ไม่ใช่กำกับความถูกต้องของข้อมูล:
+ *   เส้นตัด 15 นาที · สิทธิ์ 2 ครั้งต่อเดือน · เวลาเปิดจองของเดือน · ปิดปรับปรุงระบบ
+ * ผู้ดูแลยืนอยู่หน้างานและรับสายจริง ย่อมรู้สถานการณ์ดีกว่ากติกาที่เขียนไว้ล่วงหน้า
+ *
+ * กติกาที่ข้ามไม่ได้ เพราะข้ามแล้วข้อมูลจะผิด ไม่ใช่แค่ยืดหยุ่น:
+ *   วันต้องเปิดให้บริการ · หมอนวดต้องยังรับคิว · หนึ่งคนหนึ่งคิวต่อวัน · หนึ่งช่องหนึ่งคน
+ * สองข้อหลังมีดัชนีในฐานข้อมูลกันไว้อยู่แล้ว ที่นี่แค่แปลงข้อผิดพลาดให้อ่านรู้เรื่อง
+ *
+ * คิวที่จองแทนถูกจัดประเภทด้วยเกณฑ์เดียวกับที่พนักงานกดเอง — สิทธิ์ยังเหลือก็หักสิทธิ์
+ * เกินสิทธิ์แล้วก็เป็นคิวด่วน ไม่ให้ผู้ดูแลเลือกเอง เพราะถ้าเลือกได้ ตัวเลขสิทธิ์รายเดือน
+ * จะขึ้นกับว่าใครเป็นคนกดปุ่ม ไม่ใช่ขึ้นกับว่าพนักงานใช้บริการไปกี่ครั้งจริง ๆ
+ */
+export async function adminBook(
+  input: BookInput,
+): Promise<AdminBookingRow & { flash: boolean; used: number }> {
+  const { employeeId, day, slot, therapistId } = input;
+
+  if (!MASSAGE_SLOTS.includes(slot as (typeof MASSAGE_SLOTS)[number])) {
+    throw new HttpError(400, "รอบเวลาไม่ถูกต้อง", "bad_slot");
+  }
+
+  try {
+    return await db().begin(async (sql) => {
+      // ล็อกแถวพนักงานด้วยเหตุผลเดียวกับ book() — การนับสิทธิ์เป็นการอ่านที่ไม่ล็อกอะไรเลย
+      const emp = await sql<{ id: string; full_name: string; status: string }[]>`
+        SELECT id, full_name, status FROM employees WHERE id = ${employeeId} FOR UPDATE
+      `;
+      if (emp.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้");
+      if (emp[0].status === "suspended") throw new HttpError(409, "พนักงานคนนี้ถูกระงับสิทธิ์อยู่");
+
+      const dayRow = await sql<{ day: string }[]>`
+        SELECT day FROM massage_days WHERE day = ${day}::date AND status = 'open'
+      `;
+      if (dayRow.length === 0) throw new HttpError(409, "วันนี้ไม่ได้เปิดให้บริการ", "day_closed");
+
+      const th = await sql<{ name: string }[]>`
+        SELECT name FROM massage_therapists WHERE id = ${therapistId} AND is_active = true
+      `;
+      if (th.length === 0) throw new HttpError(409, "หมอนวดท่านนี้ไม่ได้เปิดรับคิว", "bad_therapist");
+
+      const usedRows = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM massage_bookings
+        WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
+          AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
+      `;
+      const used = usedRows[0]?.n ?? 0;
+      const flash = used >= MONTHLY_QUOTA;
+
+      const ins = await sql<{ id: string }[]>`
+        INSERT INTO massage_bookings (day, slot_start, therapist_id, employee_id, kind)
+        VALUES (${day}::date, ${slot}::time, ${therapistId}, ${employeeId},
+                ${flash ? "flash" : "quota"})
+        RETURNING id
+      `;
+      return {
+        id: ins[0].id, day, slot,
+        therapistId, therapistName: th[0].name,
+        employeeId, name: emp[0].full_name,
+        flash, used: flash ? used : used + 1,
+      };
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      if (violatedConstraint(e) === "uq_massage_person_day") {
+        throw new HttpError(409, "พนักงานคนนี้มีคิวของวันนี้อยู่แล้ว จองได้วันละคิวเดียว", "same_day");
+      }
+      throw new HttpError(409, "ช่องนี้เพิ่งถูกจองไปเมื่อสักครู่ กรุณาเลือกรอบอื่น", "slot_taken");
+    }
+    throw e;
+  }
+}
+
+// ───────────────────────── ผู้ดูแลจัดการวันให้บริการ ─────────────────────────
+
+export interface AdminDayRow {
+  day: string;
+  label: string;
+  status: "open" | "closed";
+  closedReason: string | null;
+  /** คิวที่ยังไม่ถูกยกเลิกของวันนั้น — ใช้เตือนก่อนปิดวัน */
+  booked: number;
+  /** ช่องทั้งหมดของวัน = จำนวนรอบ × จำนวนหมอนวดที่เปิดรับ */
+  total: number;
+  /** true = วันนี้ผ่านไปแล้ว เปลี่ยนอะไรก็ไม่มีผลกับใคร */
+  past: boolean;
+}
+
+/**
+ * รายการวันของเดือนหนึ่งสำหรับหน้าจัดการวัน
+ *
+ * สร้างวันศุกร์ของเดือนนั้นให้ก่อนเสมอ ไม่งั้นเดือนหน้าจะยังไม่มีแถวให้กดปิดล่วงหน้า
+ * — ซึ่งเป็นสิ่งที่คนเปิดหน้านี้ต้องการทำมากที่สุด (รู้ล่วงหน้าว่าเดือนหน้าติดวันหยุด)
+ */
+export async function adminDays(month: string, now = new Date()): Promise<AdminDayRow[]> {
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "รูปแบบเดือนไม่ถูกต้อง");
+  await ensureMonthDays(`${month}-01`, true);
+
+  const today = bangkokDate(now);
+  const therapists = await activeTherapists();
+  const rows = await db()<
+    { day: string; status: string; closed_reason: string | null; booked: number }[]
+  >`
+    SELECT to_char(d.day, 'YYYY-MM-DD') AS day, d.status, d.closed_reason,
+           count(b.id) FILTER (WHERE b.status = 'booked')::int AS booked
+    FROM massage_days d
+    LEFT JOIN massage_bookings b ON b.day = d.day
+    WHERE d.day >= ${`${month}-01`}::date AND d.day < ${nextMonthStart(`${month}-01`)}::date
+    GROUP BY d.day, d.status, d.closed_reason
+    ORDER BY d.day
+  `;
+
+  return rows.map((r) => ({
+    day: r.day,
+    label: thaiDayLabel(r.day),
+    status: r.status === "closed" ? "closed" : "open",
+    closedReason: r.closed_reason,
+    booked: r.booked,
+    total: MASSAGE_SLOTS.length * therapists.length,
+    past: r.day < today,
+  }));
+}
+
+export interface AdminDayChange {
+  day: string;
+  status: "open" | "closed";
+  /** คิวที่ถูกยกเลิกไปพร้อมกับการปิดวัน — ปลายทางเอาไปแจ้งเจ้าตัวทีละคน */
+  cancelled: AdminBookingRow[];
+}
+
+/**
+ * เปิดหรือปิดวันให้บริการหนึ่งวัน
+ *
+ * มีไว้แทนการเข้าไปรัน SQL เอง ซึ่งเป็นทางเดียวที่เคยทำได้ และเป็นงานที่ต้องทำทุกครั้ง
+ * ที่บริษัทประกาศวันหยุดหรือหมอนวดลาทั้งวัน — บ่อยพอจะไม่ควรต้องพึ่งคนเขียนโปรแกรม
+ *
+ * ปิดวันที่มีคนจองอยู่ = ยกเลิกคิวทั้งหมดของวันนั้นให้ด้วย ไม่ปล่อยให้ค้างเป็นคิวของวันที่
+ * ไม่มีบริการ แต่ต้องส่ง force มาด้วย เพราะเป็นการยกเลิกของคนอื่นหลายคนพร้อมกัน
+ * ไม่ใช่สิ่งที่ควรเกิดจากการกดพลาดครั้งเดียว
+ *
+ * เปิดวันคืน ไม่คืนคิวที่ถูกยกเลิกไปแล้ว — คนที่ถูกยกเลิกได้รับข้อความไปแล้วว่าคิวหาย
+ * ถ้าคืนให้เงียบ ๆ จะกลายเป็นว่าเขามีคิวอยู่โดยไม่รู้ตัว
+ */
+export async function adminSetDay(
+  day: string,
+  status: "open" | "closed",
+  opts: { reason?: string; force?: boolean; byEmployeeId: string },
+): Promise<AdminDayChange> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new HttpError(400, "รูปแบบวันที่ไม่ถูกต้อง");
+  const sql = db();
+
+  if (status === "open") {
+    await sql`
+      INSERT INTO massage_days (day, status) VALUES (${day}::date, 'open')
+      ON CONFLICT (day) DO UPDATE SET status = 'open', closed_reason = NULL
+    `;
+    return { day, status, cancelled: [] };
+  }
+
+  const reason = (opts.reason ?? "").trim().slice(0, 120) || "ปิดให้บริการ";
+  const active = await sql<
+    { id: string; slot: string; therapist_id: string; therapist_name: string;
+      employee_id: string; full_name: string }[]
+  >`
+    SELECT b.id, to_char(b.slot_start, 'HH24:MI') AS slot,
+           b.therapist_id, t.name AS therapist_name, b.employee_id, e.full_name
+    FROM massage_bookings b
+    JOIN employees e ON e.id = b.employee_id
+    JOIN massage_therapists t ON t.id = b.therapist_id
+    WHERE b.day = ${day}::date AND b.status = 'booked'
+    ORDER BY b.slot_start
+  `;
+  if (active.length > 0 && !opts.force) {
+    throw new HttpError(409, `วันนี้มีคนจองอยู่ ${active.length} คิว`, "has_bookings");
+  }
+
+  await sql.begin(async (tx) => {
+    await tx`
+      INSERT INTO massage_days (day, status, closed_reason) VALUES (${day}::date, 'closed', ${reason})
+      ON CONFLICT (day) DO UPDATE SET status = 'closed', closed_reason = ${reason}
+    `;
+    if (active.length > 0) {
+      await tx`
+        UPDATE massage_bookings
+        SET status = 'cancelled', cancelled_at = now(), cancelled_by = ${opts.byEmployeeId},
+            cancel_reason = ${reason}, updated_at = now()
+        WHERE day = ${day}::date AND status = 'booked'
+      `;
+    }
+  });
+
+  return {
+    day,
+    status,
+    cancelled: active.map((b) => ({
+      id: b.id, day, slot: b.slot,
+      therapistId: b.therapist_id, therapistName: b.therapist_name,
+      employeeId: b.employee_id, name: b.full_name,
+    })),
+  };
+}
+
+export interface AdminGridCell {
+  therapistId: string;
+  bookingId: string | null;
+  /** ชื่อคนที่จองช่องนี้ — ว่างเมื่อยังไม่มีใครจอง */
+  name: string | null;
+}
+
+export interface AdminGridRow {
+  slot: string;
+  label: string;
+  /** true = รอบนี้เริ่มไปแล้ว จองย้อนหลังไม่มีประโยชน์ */
+  past: boolean;
+  cells: AdminGridCell[];
+}
+
+export interface AdminDayGrid {
+  day: string;
+  label: string;
+  status: "open" | "closed";
+  therapists: Therapist[];
+  rows: AdminGridRow[];
+}
+
+/**
+ * ตารางทั้งวันพร้อมชื่อผู้จอง สำหรับหน้าจองแทนของผู้ดูแล
+ *
+ * ต่างจาก dayAvailability สองข้อ: มีชื่อคนอื่นอยู่ในผลลัพธ์ (จึงเรียกได้เฉพาะผู้ดูแล)
+ * และไม่ตัดรอบที่เหลือเวลาน้อยกว่า 15 นาทีทิ้ง เพราะการเติมคนเข้ารอบที่กำลังจะถึง
+ * คือเหตุผลหลักที่หน้านี้มีอยู่ ตัดเฉพาะรอบที่ "เริ่มไปแล้ว" ซึ่งเติมย้อนหลังไม่ได้จริง ๆ
+ */
+export async function adminDayGrid(day: string, now = new Date()): Promise<AdminDayGrid> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new HttpError(400, "รูปแบบวันที่ไม่ถูกต้อง");
+
+  const rows = await db()<{ status: string }[]>`
+    SELECT status FROM massage_days WHERE day = ${day}::date
+  `;
+  if (rows.length === 0) throw new HttpError(404, "ไม่มีวันนี้ในระบบ");
+
+  const therapists = await activeTherapists();
+  const booked = await db()<
+    { id: string; slot: string; therapist_id: string; full_name: string }[]
+  >`
+    SELECT b.id, to_char(b.slot_start, 'HH24:MI') AS slot, b.therapist_id, e.full_name
+    FROM massage_bookings b
+    JOIN employees e ON e.id = b.employee_id
+    WHERE b.day = ${day}::date AND b.status = 'booked'
+  `;
+  const at = new Map(booked.map((b) => [`${b.slot}|${b.therapist_id}`, b]));
+
+  return {
+    day,
+    label: thaiDayLabel(day),
+    status: rows[0].status === "closed" ? "closed" : "open",
+    therapists,
+    rows: MASSAGE_SLOTS.map((slot) => ({
+      slot,
+      label: slotLabel(slot),
+      past: slotStartAt(day, slot).getTime() <= now.getTime(),
+      cells: therapists.map((t) => {
+        const b = at.get(`${slot}|${t.id}`);
+        return { therapistId: t.id, bookingId: b?.id ?? null, name: b?.full_name ?? null };
+      }),
+    })),
+  };
 }
