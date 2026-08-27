@@ -49,7 +49,7 @@ export interface ConfirmInput {
   therapistName: string;
   /** ชื่อผู้จองตามทะเบียนพนักงาน — ไม่ใช่ชื่อในไลน์ซึ่งเป็นชื่อเล่นหรืออีโมจิได้ */
   employeeName: string;
-  /** true = คิวด่วน ไม่นับสิทธิ์ และยกเลิกเองไม่ได้ */
+  /** true = คิวด่วน ยกเลิกเองไม่ได้ (เกิดเฉพาะกับคนที่ใช้สิทธิ์ครบแล้ว) */
   flash: boolean;
 }
 
@@ -63,7 +63,7 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
     { type: "text", text: "จองคิวสำเร็จ", weight: "bold", size: "xl", color: "#333333", align: "center" },
     {
       type: "text",
-      text: b.flash ? "คิวด่วน — ไม่นับสิทธิ์ของเดือนนี้" : "บันทึกการนัดหมายของคุณเรียบร้อยแล้ว",
+      text: b.flash ? "คิวด่วน — ยกเลิกในระบบไม่ได้" : "บันทึกการนัดหมายของคุณเรียบร้อยแล้ว",
       size: "sm",
       color: "#AAAAAA",
       align: "center",

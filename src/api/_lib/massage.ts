@@ -37,11 +37,11 @@ export const CUTOFF_MINUTES = 15;
 /**
  * Flash Queue — คิวด่วน
  *
- * ก่อน 15:00 ของวันก่อนหน้าวันให้บริการ = ช่วงสิทธิ์ ใครมีสิทธิ์เหลือจองได้ นับสิทธิ์ ยกเลิกได้
- * ตั้งแต่ 15:00 เป็นต้นไป = ช่วงคิวด่วน ใครก็จองได้ ไม่นับสิทธิ์ ไม่จำกัดจำนวน แต่ยกเลิกเองไม่ได้
+ * ตั้งแต่ 15:00 ของวันก่อนหน้าวันให้บริการ วันนั้นจะเข้า "โหมดคิวด่วน" ยาวไปจนหมดวัน
+ * ช่องที่มีคนยกเลิกระหว่างวันจึงกลับเข้าคิวด่วนได้เองโดยไม่ต้องมีกลไกแยก
+ * — เป็นเหตุผลที่เลือกวิธีนี้แทนการเปิดเป็นช่วงสั้น ๆ
  *
- * เปิดแล้วเปิดยาวจนหมดวัน ไม่ปิดอีก ช่องที่มีคนยกเลิกระหว่างวันจึงกลับเข้าคิวด่วนได้เอง
- * โดยไม่ต้องมีกลไกแยก — เป็นเหตุผลที่เลือกวิธีนี้แทนการเปิดเป็นช่วงสั้น ๆ
+ * แต่โหมดคิวด่วน *ไม่ได้* ใช้กับทุกคน ดูที่ isFlashFor
  *
  * โหมดตัดสินตอน "กดจอง" ไม่ใช่ย้อนหลัง คิวที่จองด้วยสิทธิ์ไว้ก่อนหน้าจึงยังยกเลิกได้ตามปกติ
  */
@@ -234,7 +234,7 @@ export interface DaySummary {
   chip: string;
   free: number;
   total: number;
-  /** true = วันนี้เข้าโหมดคิวด่วนแล้ว จองได้โดยไม่นับสิทธิ์ */
+  /** true = คนที่ถามมาจะได้คิวด่วนถ้าจองวันนี้ (สิทธิ์หมดแล้ว + วันนี้เข้าโหมดคิวด่วนแล้ว) */
   flash: boolean;
 }
 
@@ -302,7 +302,7 @@ export async function massageState(employeeId: string, now = new Date()): Promis
       chip: thaiDayChip(r.day),
       free: Math.max(0, total - r.taken),
       total,
-      flash: isFlashDay(r.day, now),
+      flash: isFlashFor(r.day, quota.used, now),
     };
   });
 
@@ -324,6 +324,20 @@ export function flashOpensAt(day: string): Date {
 /** วันนี้อยู่ในช่วงคิวด่วนแล้วหรือยัง */
 export function isFlashDay(day: string, now = new Date()): boolean {
   return now.getTime() >= flashOpensAt(day).getTime();
+}
+
+/**
+ * คิวที่กดในวันนี้จะกลายเป็น "คิวด่วน" สำหรับคนคนนี้หรือไม่
+ *
+ * คิวด่วนมีไว้เก็บของเหลือ ไม่ใช่ทางลัด คนที่สิทธิ์ยังไม่หมดจึงไม่เข้าโหมดนี้ —
+ * ถ้าให้เข้าได้ทุกคน จะไม่มีใครจองตามสิทธิ์ตั้งแต่ต้นสัปดาห์ ทุกคนจะรอมากดวันสุดท้ายพร้อมกัน
+ * คิวช่วงต้นก็ว่างยกแผงและเสียเปล่าเหมือนเดิม ซึ่งตรงข้ามกับสิ่งที่ฟีเจอร์นี้ตั้งใจแก้
+ *
+ * คนที่สิทธิ์ยังเหลือกดจองในวันที่เข้าโหมดคิวด่วนได้ตามปกติ แต่นับเป็นคิวสิทธิ์
+ * และยกเลิกได้ตามเดิม เท่ากับวันนั้นเป็นวันธรรมดาวันหนึ่งสำหรับเขา
+ */
+export function isFlashFor(day: string, used: number, now = new Date()): boolean {
+  return used >= MONTHLY_QUOTA && isFlashDay(day, now);
 }
 
 /** รอบนี้ยังจองได้ไหมเมื่อเทียบกับเวลาปัจจุบัน (ต้องเหลือมากกว่า 15 นาที) */
@@ -370,7 +384,7 @@ export interface DayAvailability {
   label: string;
   therapists: Therapist[];
   rows: SlotRow[];
-  /** true = วันนี้เข้าโหมดคิวด่วนแล้ว */
+  /** true = คนที่ถามมาจะได้คิวด่วนถ้าจองวันนี้ — ดู isFlashFor */
   flash: boolean;
 }
 
@@ -409,7 +423,7 @@ export async function dayAvailability(
   return {
     day,
     label: thaiDayLabel(day),
-    flash: isFlashDay(day, now),
+    flash: isFlashFor(day, await monthlyUsage(employeeId, day), now),
     therapists,
     rows: MASSAGE_SLOTS.map((slot) => ({
       slot,
@@ -477,7 +491,6 @@ function violatedConstraint(e: unknown): string {
  */
 export async function book(input: BookInput, now = new Date()): Promise<BookedRow> {
   const { employeeId, day, slot, therapistId } = input;
-  const flash = isFlashDay(day, now);
 
   if (!MASSAGE_SLOTS.includes(slot as (typeof MASSAGE_SLOTS)[number])) {
     throw new HttpError(400, "รอบเวลาไม่ถูกต้อง");
@@ -512,16 +525,17 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
       `;
       if (th.length === 0) throw new HttpError(409, "หมอนวดท่านนี้ไม่ได้เปิดรับคิว");
 
-      // วันที่เข้าโหมดคิวด่วนแล้วไม่ต้องเช็คสิทธิ์ — เป็นของเหลือที่ถ้าไม่มีใครจองก็เสียเปล่า
-      if (!flash) {
-        const used = await sql<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM massage_bookings
-          WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
-            AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
-        `;
-        if ((used[0]?.n ?? 0) >= MONTHLY_QUOTA) {
-          throw new HttpError(409, `เดือนนี้ใช้สิทธิ์ครบ ${MONTHLY_QUOTA} ครั้งแล้ว`, "quota_used");
-        }
+      // ต้องอ่านสิทธิ์ที่ใช้ไปเสมอ ไม่ใช่เฉพาะตอนจะห้าม เพราะเลขนี้เป็นตัวตัดสินด้วยว่า
+      // คิวที่กำลังจะเขียนเป็นคิวสิทธิ์หรือคิวด่วน — สิทธิ์ยังไม่หมดก็นับสิทธิ์ตามปกติ
+      // ต่อให้วันนั้นเข้าโหมดคิวด่วนไปแล้ว
+      const used = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM massage_bookings
+        WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
+          AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
+      `;
+      const flash = isFlashFor(day, used[0]?.n ?? 0, now);
+      if (!flash && (used[0]?.n ?? 0) >= MONTHLY_QUOTA) {
+        throw new HttpError(409, `เดือนนี้ใช้สิทธิ์ครบ ${MONTHLY_QUOTA} ครั้งแล้ว`, "quota_used");
       }
 
       // วันละคิวเดียว — เช็คตรงนี้เพื่อให้ได้ข้อความที่บอกสาเหตุชัด ๆ ส่วนการกันจริง
