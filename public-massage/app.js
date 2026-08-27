@@ -445,18 +445,29 @@ function goMine({ justBooked }) {
   $("#mine-list").innerHTML = list.length
     ? list
         .map(
-          (b) => `<div class="mycard${b.past ? " off" : ""}">
-            <div class="myday">${escapeHtml(b.dayLabel)}</div>
+          (b) => {
+            // สามสถานะ: ใช้บริการไปแล้ว · ใกล้ถึงคิวจนยกเลิกไม่ทัน · ยังยกเลิกได้
+            const tag = b.past
+              ? { cls: "done", text: "ใช้บริการแล้ว" }
+              : b.cancellable
+                ? { cls: "", text: "จองไว้แล้ว" }
+                : { cls: "soon", text: "ใกล้ถึงคิว" };
+            return `<div class="mycard${b.past ? " off" : ""}">
+            <div class="mytop">
+              <div class="myday">${escapeHtml(b.dayLabel)}</div>
+              <span class="mytag ${tag.cls}">${tag.text}</span>
+            </div>
             <div class="mytime">${escapeHtml(b.slotLabel)}</div>
             <div class="mywho">${escapeHtml(b.therapistName)}</div>
             ${
               b.cancellable
                 ? `<button class="btn-cancel" data-cancel="${escapeHtml(b.id)}">ยกเลิกคิวนี้</button>`
-                : `<div class="mynote">${
-                    b.past ? "ผ่านไปแล้ว" : "เลยเวลายกเลิกแล้ว — ยกเลิกได้ถึงก่อนรอบเริ่ม 15 นาที"
-                  }</div>`
+                : b.past
+                  ? ""
+                  : `<div class="mynote">ยกเลิกได้ถึงก่อนรอบเริ่ม 15 นาที — ตอนนี้เลยเวลานั้นแล้ว</div>`
             }
-          </div>`,
+          </div>`;
+          },
         )
         .join("")
     : `<div class="empty">ยังไม่ได้จองคิวไหนไว้</div>`;
