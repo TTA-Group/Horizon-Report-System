@@ -1,6 +1,7 @@
 // PATCH /api/admin/employees/:id/suspend — ระงับหรือคืนสิทธิ์ (spec หัวข้อ 5.5 / 6)
 // body: { action: "suspend" | "restore", reason?: string }
 
+import { assertKeepsOneAdmin } from "./_lib/admins";
 import { getSession, invalidateSessionByEmployeeId, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -34,6 +35,9 @@ export default async (req: Request): Promise<Response> =>
 
     const sql = db();
     if (action === "suspend") {
+      // ระงับสิทธิ์ผู้ดูแลคนสุดท้ายทำให้ไม่มีใครเข้าหน้าผู้ดูแลได้อีกเลย ผลเหมือนถอดสิทธิ์ทิ้ง
+      // (requireActive ปฏิเสธคนที่ถูกระงับก่อนถึงขั้นตรวจว่าเป็นผู้ดูแลหรือไม่) จึงกันด่านเดียวกัน
+      await assertKeepsOneAdmin(id, "ระงับสิทธิ์");
       const reason = (body.reason ?? "").trim() || null;
       const upd = await sql`
         UPDATE employees

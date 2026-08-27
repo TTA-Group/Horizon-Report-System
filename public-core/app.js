@@ -928,6 +928,208 @@ function debounce(fn, ms) {
 }
 
 /* ---------- wire up ---------- */
+/* ---------- หน้าผู้ดูแลระบบ ----------
+ *
+ * ทะเบียนพนักงานเริ่มจาก "คน" แล้วดูว่าคนนั้นมีสิทธิ์อะไร หน้านี้กลับด้าน — เริ่มจาก "สิทธิ์"
+ * แล้วดูว่าใครถืออยู่ ซึ่งเป็นคำถามที่ตอบไม่ได้เลยเมื่อมีพนักงานหลายร้อยคน
+ *
+ * ไม่มีตารางสิทธิ์แยกอีกชุด การเพิ่ม/แก้/ถอด ยิงเข้าเส้นทางเดียวกับที่ทะเบียนพนักงานใช้
+ * (employees/:id/departments) เพื่อให้กติกาอย่าง "ต้องเหลือผู้ดูแลหนึ่งคน" อยู่ที่เดียว
+ */
+
+let rolesData = null;
+let rolesFindTimer = null;
+
+async function goRoles() {
+  setTab("roles");
+  show("s-roles");
+  closeRolesFinder();
+  $("#rolesList").innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
+  try {
+    rolesData = await api("/api/admin/admins");
+    renderRoles();
+  } catch (e) {
+    $("#rolesList").innerHTML = `<div class="empty">${esc(e.message || "โหลดข้อมูลไม่สำเร็จ")}</div>`;
+  }
+}
+
+function roleTag(m) {
+  if (m.status === "suspended") return '<span class="rtag susp">ระงับสิทธิ์</span>';
+  if (m.role === "head") return '<span class="rtag head">หัวหน้าฝ่าย</span>';
+  return '<span class="rtag staff">ผู้รับผิดชอบ</span>';
+}
+
+function renderRoles() {
+  const groups = rolesData.groups || [];
+  if (!groups.length) {
+    $("#rolesList").innerHTML = '<div class="empty">ยังไม่มีใครถือสิทธิ์ในระบบ</div>';
+    return;
+  }
+  const html = groups
+    .map((g) => {
+      const rows = g.members
+        .map(
+          (m) => `<div class="prow" data-role-emp="${esc(m.id)}" data-code="${esc(g.code)}">
+            <div class="pw">
+              <div class="pnm">${esc(m.full_name)}${m.id === rolesData.me ? " (คุณ)" : ""}</div>
+              <div class="psub"><b>${esc(m.employee_code)}</b>${
+                m.linked ? "" : " · ยังไม่ผูก LINE"
+              }</div>
+            </div>${roleTag(m)}
+          </div>`,
+        )
+        .join("");
+      return `<div class="rgrp${g.system ? " sys" : ""}">
+        <div class="rhd">
+          <span class="rnm">${esc(g.name)}</span>
+          <span class="rcd">${esc(g.code)}</span>
+          <span class="rct">${g.members.length} คน</span>
+        </div>
+        <div class="rgr">${esc(g.grants)}</div>
+        <div class="plist">${rows}</div>
+      </div>`;
+    })
+    .join("");
+
+  // ทางสำรองที่ตั้งไว้ในค่า env — ถอดในหน้านี้ไม่ได้ ต้องไปแก้ที่ Cloudflare
+  // แต่ต้องบอกให้รู้ว่ามีอยู่ ไม่งั้นจะงงว่าทำไมคนที่ไม่อยู่ในรายชื่อยังเข้าหน้าผู้ดูแลได้
+  const fall = (rolesData.fallbackCodes || []).length
+    ? `<div class="rfall">มีรหัสพนักงานที่ตั้งเป็นผู้ดูแลสำรองไว้ในค่าระบบด้วย:
+        <b>${rolesData.fallbackCodes.map(esc).join(", ")}</b><br>
+        รหัสเหล่านี้เป็นผู้ดูแลเสมอ ถอดในหน้านี้ไม่ได้ ต้องแก้ค่า ADMIN_EMPLOYEE_CODES ที่ Cloudflare</div>`
+    : "";
+  $("#rolesList").innerHTML = html + fall;
+}
+
+/* ---------- เพิ่มผู้ดูแล ---------- */
+
+function openRolesFinder() {
+  $("#roles-add").style.display = "none";
+  $("#roles-find").style.display = "";
+  $("#roles-q").value = "";
+  $("#roles-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
+  setTimeout(() => $("#roles-q").focus(), 50);
+}
+function closeRolesFinder() {
+  $("#roles-add").style.display = "";
+  $("#roles-find").style.display = "none";
+}
+
+async function searchRolesEmployee(q) {
+  if (q.trim().length < 2) {
+    $("#roles-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
+    return;
+  }
+  try {
+    const r = await api("/api/admin/employees?status=active&q=" + encodeURIComponent(q.trim()));
+    const list = (r.employees || []).slice(0, 12);
+    $("#roles-hits").innerHTML = list.length
+      ? `<div class="plist">${list
+          .map(
+            (e) => `<div class="prow" data-pick-emp="${esc(e.id)}" data-name="${esc(e.full_name)}">
+              <div class="pw">
+                <div class="pnm">${esc(e.full_name)}</div>
+                <div class="psub"><b>${esc(e.employee_code)}</b>${
+                  e.department_name ? " · " + esc(e.department_name) : ""
+                }</div>
+              </div>${
+                (e.depts || []).length
+                  ? `<span class="rtag staff">${esc((e.depts || []).map((d) => d.code).join(" "))}</span>`
+                  : ""
+              }
+            </div>`,
+          )
+          .join("")}</div>`
+      : '<div class="empty">ไม่พบพนักงานที่ตรงกับที่ค้น</div>';
+  } catch (e) {
+    $("#roles-hits").innerHTML = `<div class="empty">${esc(e.message || "ค้นหาไม่สำเร็จ")}</div>`;
+  }
+}
+
+/** เลือกฝ่ายแล้วเลือกตำแหน่ง — แยกสองจังหวะเหมือนหน้าทะเบียน เพราะบนมือถืออ่านง่ายกว่า */
+async function addRole(employeeId, name) {
+  const m = await getMasters();
+  const depts = (m.departments || []).slice().sort((a, b) => {
+    const rank = (d) => (d.grants_admin ? 0 : 1);
+    return rank(a) - rank(b) || a.code.localeCompare(b.code);
+  });
+  const code = await openSheet(`ให้สิทธิ์ ${name} ในฝ่ายไหน`, depts.map((d) => ({
+    label: `${d.name} (${d.code})${d.grants_admin ? " — ผู้ดูแลระบบเต็มสิทธิ์" : ""}`,
+    value: d.code,
+  })));
+  if (!code) return;
+
+  const role = await openSheet(`ตำแหน่งใน ${deptName(code)}`, [
+    { label: "ผู้รับผิดชอบฝ่าย — รับเรื่องของฝ่าย", value: "staff" },
+    { label: "หัวหน้าฝ่าย — รับเรื่อง และรับการเตือนเมื่อเรื่องค้าง", value: "head" },
+  ]);
+  if (!role) return;
+
+  try {
+    await api(`/api/admin/employees/${employeeId}/departments`, {
+      method: "PATCH",
+      body: { department_code: code, role },
+    });
+    toast(`เพิ่ม ${name} เป็น${ROLE_LABEL[role]}ของ ${deptName(code)} แล้ว`);
+    goRoles();
+  } catch (e) {
+    toast(e.message || "บันทึกไม่สำเร็จ");
+  }
+}
+
+/* ---------- แก้ไข / ถอดสิทธิ์ ---------- */
+
+async function editRole(employeeId, code) {
+  const group = (rolesData.groups || []).find((g) => g.code === code);
+  const m = group && group.members.find((x) => x.id === employeeId);
+  if (!m) return;
+  const self = employeeId === rolesData.me;
+
+  const meta = `<div class="sub">${esc(m.employee_code)} · ${esc(group.name)} (${esc(code)})</div>
+    <div class="kv"><i>ตำแหน่งตอนนี้</i><b>${esc(ROLE_LABEL[m.role] || m.role)}</b></div>
+    <div class="kv"><i>สิทธิ์ที่ได้</i><b>${esc(group.grants)}</b></div>
+    ${self ? '<div class="kv"><i>หมายเหตุ</i><b>นี่คือสิทธิ์ของคุณเอง</b></div>' : ""}`;
+
+  const other = m.role === "head" ? "staff" : "head";
+  const act = await openSheet(m.full_name, [
+    { label: `เปลี่ยนเป็น${ROLE_LABEL[other]}`, value: "swap" },
+    { label: `ถอดออกจาก ${deptName(code)}`, value: "drop", danger: true },
+  ], { meta });
+  if (!act) return;
+
+  try {
+    if (act === "swap") {
+      await api(`/api/admin/employees/${employeeId}/departments`, {
+        method: "PATCH",
+        body: { department_code: code, role: other },
+      });
+      toast(`เปลี่ยนเป็น${ROLE_LABEL[other]}แล้ว`);
+      return goRoles();
+    }
+
+    const ok = await confirmDialog({
+      title: `ถอด ${m.full_name} ออกจาก ${deptName(code)}?`,
+      message: group.system
+        ? (self
+            ? "คุณกำลังถอดสิทธิ์ผู้ดูแลระบบของตัวเอง หลังจากนี้จะเข้าหน้าผู้ดูแลไม่ได้อีก " +
+              "และต้องให้ผู้ดูแลคนอื่นใส่สิทธิ์คืนให้"
+            : "คนนี้จะเข้าหน้าผู้ดูแลไม่ได้อีก ทั้งทะเบียนพนักงาน หน้านี้ และหน้าผู้ดูแลคิวนวด")
+        : "คนนี้จะไม่เห็นคิวงานของฝ่ายนี้อีก เรื่องที่เคยรับผิดชอบไว้ยังอยู่ครบ",
+      confirmLabel: "ถอดสิทธิ์",
+      cancelLabel: "ไม่ใช่",
+    });
+    if (!ok) return;
+    await api(`/api/admin/employees/${employeeId}/departments`, {
+      method: "PATCH",
+      body: { department_code: code, role: "" },
+    });
+    toast("ถอดสิทธิ์เรียบร้อยแล้ว");
+    goRoles();
+  } catch (e) {
+    toast(e.message || "บันทึกไม่สำเร็จ");
+  }
+}
+
 function bind() {
   // ลงทะเบียน
   $("#btn-check").onclick = checkEmp;
@@ -941,8 +1143,31 @@ function bind() {
 
   // แถบล่างของฝ่ายบุคคล — พนักงานทั่วไปไม่เห็นแถบนี้
   $$(".tabbar button").forEach((b) =>
-    b.addEventListener("click", () => (b.dataset.tab === "admin" ? goAdmin() : goMe())),
+    b.addEventListener("click", () => {
+      if (b.dataset.tab === "admin") return goAdmin();
+      if (b.dataset.tab === "roles") return goRoles();
+      return goMe();
+    }),
   );
+
+  // ── หน้าผู้ดูแลระบบ ──
+  $("#roles-add").onclick = openRolesFinder;
+  $("#roles-cancel").onclick = closeRolesFinder;
+  $("#roles-q").oninput = (e) => {
+    clearTimeout(rolesFindTimer);
+    const q = e.target.value;
+    rolesFindTimer = setTimeout(() => searchRolesEmployee(q), 250);
+  };
+  $("#roles-hits").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-pick-emp]");
+    if (!row) return;
+    closeRolesFinder();
+    addRole(row.dataset.pickEmp, row.dataset.name);
+  });
+  $("#rolesList").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-role-emp]");
+    if (row) editRole(row.dataset.roleEmp, row.dataset.code);
+  });
 
 
   // ผู้ดูแล: พับ/คลี่ฝ่าย · แตะแถวเพื่อเปิดแผ่นจัดการ · สลับไปหน้าผู้ถูกระงับสิทธิ์
