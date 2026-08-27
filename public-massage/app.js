@@ -62,9 +62,13 @@ function accessLost(code) {
   throw e;
 }
 
+/** ชิปสิทธิ์คงเหลือมีความหมายเฉพาะตอนจอง หน้าอื่นไม่ต้องโชว์ให้รก */
+const QUOTA_SCREENS = new Set(["s-book", "s-mine"]);
+
 function show(id) {
   $$(".screen").forEach((s) => s.classList.toggle("on", s.id === id));
   window.scrollTo(0, 0);
+  $("#quota").style.display = QUOTA_SCREENS.has(id) && state ? "" : "none";
 }
 
 function escapeHtml(s) {
@@ -215,6 +219,24 @@ async function boot() {
 
 async function loadState() {
   state = await api("/api/massage/state");
+  renderHeader();
+}
+
+/**
+ * หัวเรื่องอยู่นอกหน้าจอทั้งเจ็ดหน้า จึงต้องเติมค่าตรงนี้ที่เดียว
+ * ไม่ใช่ให้แต่ละหน้าเติมเอง ไม่งั้นเข้าหน้าคิวของฉันตรง ๆ แล้วหัวเรื่องจะยังว่าง
+ */
+function renderHeader() {
+  const emp = (session && session.employee) || {};
+  const dept = emp.department_name ? ` · ${emp.department_name}` : "";
+  if (emp.full_name) $("#welcome").textContent = `${emp.full_name}${dept}`;
+
+  // สิทธิ์คงเหลือเป็นชิปเล็กข้างหัวเรื่อง ไม่ใช่แถบเต็มความกว้าง
+  // ของที่ต้องรู้แค่ "เหลือกี่ครั้ง" ไม่ควรกินพื้นที่เท่ากับตารางที่ต้องอ่านทั้งวัน
+  const left = Math.max(0, state.quota - state.used);
+  const q = $("#quota");
+  q.className = left === 0 ? "pill out" : "pill";
+  q.innerHTML = left === 0 ? "ใช้สิทธิ์ครบแล้ว" : `เหลือ <b>${left}</b>/${state.quota}`;
 }
 
 const activeBookings = () => (state.mine || []).filter((b) => b.status === "booked");
@@ -230,18 +252,7 @@ function route() {
 /* ---------- หน้าจอง ---------- */
 
 function goBook() {
-  const emp = (session && session.employee) || {};
-  $("#welcome").innerHTML = `สวัสดีคุณ ${escapeHtml(emp.full_name || "")}<small>${escapeHtml(
-    emp.department_name || "",
-  )}</small>`;
-
   const left = Math.max(0, state.quota - state.used);
-  const q = $("#quota");
-  q.className = left === 0 ? "quota out" : "quota";
-  q.innerHTML =
-    left === 0
-      ? `เดือนนี้ใช้สิทธิ์ครบ <b>${state.quota}</b> ครั้งแล้ว`
-      : `เดือนนี้เหลือสิทธิ์อีก <b>${left}</b> จาก <b>${state.quota}</b> ครั้ง`;
 
   const mine = activeBookings();
   $("#btn-mine").style.display = mine.length ? "" : "none";
@@ -348,18 +359,28 @@ function renderGrid() {
 
 function clearPick() {
   pick = null;
-  $("#pickinfo").classList.remove("on");
+  $("#pickinfo").innerHTML = `<span class="none">ยังไม่ได้เลือกรอบ</span>`;
+  $("#btn-clear").classList.remove("on");
   $("#btn-book").disabled = true;
 }
 
 function updatePick() {
   if (!pick) return clearPick();
   const day = state.days.find((d) => d.day === currentDay);
-  $("#pickinfo").classList.add("on");
-  $("#pickinfo").innerHTML = `<b>${escapeHtml(day ? day.label : currentDay)}</b><br>
-    เวลา <b>${escapeHtml(pick.slotLabel)}</b><br>
-    โดย <b>${escapeHtml(pick.therapistName)}</b>`;
+  $("#pickinfo").innerHTML = `
+    <div class="t">${escapeHtml(day ? day.label : currentDay)} · ${escapeHtml(pick.slotLabel)}</div>
+    <div class="s">${escapeHtml(pick.therapistName)}</div>`;
+  $("#btn-clear").classList.add("on");
   $("#btn-book").disabled = false;
+}
+
+/** ยกเลิกการเลือกจากปุ่ม "ล้าง" บนแถบด้านล่าง */
+function unpick() {
+  $$("#slots .cell").forEach((x) => {
+    x.setAttribute("aria-pressed", "false");
+    x.textContent = x.dataset.label;
+  });
+  clearPick();
 }
 
 /* ---------- จอง ---------- */
@@ -650,14 +671,6 @@ function downloadSheet() {
 /* ---------- wiring ---------- */
 
 function bind() {
-  // โลโก้: ใช้ไฟล์ถ้ามี ถ้าไม่มีคงตัวอักษรไว้
-  const logo = $("#logo");
-  logo.onload = () => {
-    logo.style.display = "";
-    $("#wordmark").style.display = "none";
-  };
-  logo.onerror = () => logo.remove();
-
   $("#days").onclick = (e) => {
     const b = e.target.closest(".day");
     if (b && !b.disabled) selectDay(b.dataset.day);
@@ -684,6 +697,7 @@ function bind() {
   };
 
   $("#btn-book").onclick = doBook;
+  $("#btn-clear").onclick = unpick;
   $("#btn-mine").onclick = () => goMine({ justBooked: false });
   $("#closed-mine").onclick = () => goMine({ justBooked: false });
   $("#btn-book-more").onclick = () => goBook();
