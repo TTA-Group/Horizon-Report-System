@@ -8,7 +8,9 @@
 // เดิมงานนี้ต้องเข้าไปแก้ฐานข้อมูลเอง ซึ่งแปลว่าเวลามีคนย้ายฝ่ายหรือลาออกจริง ๆ ระบบจะค้าง
 // อยู่กับรายชื่อเก่าจนกว่าจะมีคนที่เขียน SQL เป็นมาแก้ให้
 
+import { assertKeepsOneAdmin } from "./_lib/admins";
 import { getSession, invalidateSessionByEmployeeId, requireAdmin } from "./_lib/auth";
+import { ADMIN_DEPARTMENT_CODE } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 
@@ -64,6 +66,13 @@ export default async (req: Request): Promise<Response> =>
     if (!clearAll && role && emp[0].status === "suspended") {
       throw new HttpError(400, "พนักงานคนนี้ถูกระงับสิทธิ์อยู่ กรุณาคืนสิทธิ์ก่อนกำหนดฝ่าย");
     }
+
+    // ทุกทางที่ทำให้คนคนนี้เลิกเป็นผู้ดูแลระบบ ต้องผ่านด่านเดียวกัน
+    // ถอดออกทุกฝ่าย · ถอดออกจากฝ่าย HR · หรือย้ายไปฝ่ายอื่นแบบแทนที่ของเดิมทั้งหมด
+    const dropsAdmin =
+      clearAll || (code === ADMIN_DEPARTMENT_CODE && !role) ||
+      (body.replace === true && role && code !== ADMIN_DEPARTMENT_CODE);
+    if (dropsAdmin) await assertKeepsOneAdmin(id, "ถอดสิทธิ์");
 
     if (clearAll) {
       // สถานะ "พนักงาน" คือไม่ดูแลฝ่ายใดเลย — ถอดออกทุกฝ่ายในครั้งเดียว

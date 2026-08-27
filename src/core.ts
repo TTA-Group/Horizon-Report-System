@@ -22,6 +22,7 @@ import health from "./api/health";
 import authSession from "./api/auth-session";
 import authVerifyEmployee from "./api/auth-verify-employee";
 import authLink from "./api/auth-link";
+import adminAdmins from "./api/admin-admins";
 import adminEmployees from "./api/admin-employees";
 import adminEmployeeCreate from "./api/admin-employee-create";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
@@ -53,6 +54,9 @@ function route(pathname: string, method: string): Handler | null {
 
   // รายชื่อฝ่ายและชั้น — หน้าเพิ่มพนักงานของ HR ใช้เติมตัวเลือกในฟอร์ม
   if (seg[1] === "masters" && seg.length === 2) return masters;
+
+  // /api/admin/admins — ใครถือสิทธิ์อะไรอยู่บ้าง (อ่านอย่างเดียว การแก้ไปที่ employees/:id/departments)
+  if (seg[1] === "admin" && seg[2] === "admins" && seg.length === 3) return adminAdmins;
 
   // /api/admin/employees — ทะเบียนพนักงาน สิทธิ์ และการผูกบัญชี ทั้งหมดอยู่ที่นี่ที่เดียว
   if (seg[1] === "admin" && seg[2] === "employees") {
