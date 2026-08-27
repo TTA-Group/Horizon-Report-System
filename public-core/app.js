@@ -949,10 +949,12 @@ function adminDeptCode() {
   return d ? d.code : "HR";
 }
 
-async function goRoles() {
+/** add: true = เข้ามาจากปุ่ม "เพิ่มผู้ดูแลระบบ" ที่หน้าจัดการ ให้เปิดช่องค้นหารอไว้เลย */
+async function goRoles({ add = false } = {}) {
   setTab("roles");
   show("s-roles");
-  closeRolesFinder();
+  if (add) openRolesFinder();
+  else closeRolesFinder();
   $("#rolesList").innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   try {
     rolesData = await api("/api/admin/admins");
@@ -1001,14 +1003,12 @@ function renderRoles() {
 /* ---------- เพิ่มผู้ดูแล ---------- */
 
 function openRolesFinder() {
-  $("#roles-add").style.display = "none";
   $("#roles-find").style.display = "";
   $("#roles-q").value = "";
   $("#roles-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
   setTimeout(() => $("#roles-q").focus(), 50);
 }
 function closeRolesFinder() {
-  $("#roles-add").style.display = "";
   $("#roles-find").style.display = "none";
 }
 
@@ -1131,7 +1131,7 @@ function bind() {
   );
 
   // ── หน้าผู้ดูแลระบบ ──
-  $("#roles-add").onclick = openRolesFinder;
+  $("#mg-role").onclick = () => goRoles({ add: true });
   $("#roles-cancel").onclick = closeRolesFinder;
   $("#roles-q").oninput = (e) => {
     clearTimeout(rolesFindTimer);
