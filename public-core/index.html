@@ -305,6 +305,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .shot{width:100%;border-radius:12px;margin-top:8px;display:block}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ปุ่มทางลัดไปหน้าผู้ดูแลของแอปจองคิวนวด — เป็นปุ่มโครงเขียว ไม่ใช่ปุ่มทึบ
+   เพราะไม่ใช่งานหลักของหน้านี้ แต่ก็ต้องหาเจอโดยไม่ต้องเลื่อนหา */
+.massage-link{margin-top:10px;background:#fff;color:#0B7A3E;box-shadow:none;border:1.5px solid var(--green)}
 </style>
 </head>
 <body>
@@ -400,8 +404,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       <div class="kv2"><b>ชั้นที่ปฏิบัติงาน</b><span id="mg-floor">—</span></div>
     </div>
     <button class="send" id="mg-add">+ เพิ่มพนักงานใหม่</button>
-    <!-- ทางลัดไปฟอร์มเช็คชื่อคิวนวด — ตัวฟอร์มอยู่ที่แอปจองคิว ที่นี่เป็นแค่ปุ่มเปิด -->
-    <button class="send" id="mg-sheet" style="margin-top:10px;background:#fff;color:#0B7A3E;box-shadow:none;border:1.5px solid var(--green)">ฟอร์มเช็คชื่อคิวนวด</button>
+    <!-- ทางลัดไปหน้าผู้ดูแลของแอปจองคิว — ตัวหน้าอยู่ที่แอปจองคิว ที่นี่เป็นแค่ปุ่มเปิด -->
+    <button class="send massage-link" id="mg-sheet">ฟอร์มเช็คชื่อคิวนวด</button>
+    <button class="send massage-link" id="mg-book">จองคิวนวดแทนพนักงาน</button>
+    <button class="send massage-link" id="mg-days">จัดการวันให้บริการคิวนวด</button>
     <button class="ghost" id="mg-close">ปิดหน้านี้</button>
   </section>
 

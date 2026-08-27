@@ -225,15 +225,18 @@ function enterApp() {
 }
 
 /**
- * เปิด "ฟอร์มเช็คชื่อคิวนวด" ซึ่งอยู่ในแอปจองคิว
+ * เปิดหน้าผู้ดูแลของแอปจองคิวนวด
  *
- * ที่นี่เป็นแค่ทางเข้า ไม่ได้ย้ายตัวฟอร์มมา เพราะข้อมูลคิวนวดเป็นของระบบจองคิว
- * ระบบกลางไม่ควรรู้จักตารางคิวหรือสิทธิ์ของระบบนั้น ใครเปิดฟอร์มได้ให้แอปจองคิวตัดสินเอง
+ * ที่นี่เป็นแค่ทางเข้า ไม่ได้ย้ายหน้าพวกนั้นมา เพราะข้อมูลคิวนวดเป็นของระบบจองคิว
+ * ระบบกลางไม่ควรรู้จักตารางคิว สิทธิ์ หรือวันให้บริการของระบบนั้น
+ * ใครเปิดได้ให้แอปจองคิวตัดสินเอง — ที่นี่เปิดลิงก์ให้เฉย ๆ
+ *
+ * which: "1" = ฟอร์มเช็คชื่อ (ค่าเดิม ห้ามเปลี่ยน มีคนบุ๊กมาร์กไว้) · "book" = จองแทน · "days" = วันให้บริการ
  */
-function openMassageSheet() {
+function openMassageAdmin(which) {
   const id = CFG.massageLiffId;
   if (!id || id.includes("ตั้งค่า")) return toast("ยังไม่ได้ตั้งค่าแอปจองคิวนวด");
-  const url = `https://liff.line.me/${id}?admin=1`;
+  const url = `https://liff.line.me/${id}?admin=${encodeURIComponent(which)}`;
   if (window.liff && liff.openWindow) liff.openWindow({ url, external: false });
   else window.location.href = url;
 }
@@ -975,7 +978,9 @@ function bind() {
     openEmpForm();
   };
   $("#mg-close").onclick = closeWindow;
-  $("#mg-sheet").onclick = openMassageSheet;
+  $("#mg-sheet").onclick = () => openMassageAdmin("1");
+  $("#mg-book").onclick = () => openMassageAdmin("book");
+  $("#mg-days").onclick = () => openMassageAdmin("days");
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;
   $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));

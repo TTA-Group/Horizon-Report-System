@@ -25,11 +25,14 @@ import massageSheet from "./api/massage-sheet";
 import massageAdminSheet from "./api/massage-admin-sheet";
 import massageAttend from "./api/massage-attend";
 import {
+  massageAdminBook,
   massageAdminCancel,
+  massageAdminDayGrid,
   massageAdminEmployees,
   massageAdminMove,
   massageAdminReassign,
 } from "./api/massage-admin-manage";
+import { massageAdminDays, massageAdminSetDay } from "./api/massage-admin-days";
 
 import massageCron from "./api/massage-cron";
 import massageOpenMonth from "./api/massage-open-month";
@@ -69,6 +72,11 @@ function route(pathname: string, method: string): Handler | null {
       if (seg[3] === "move") return method === "POST" ? massageAdminMove : null;
       if (seg[3] === "reassign") return method === "POST" ? massageAdminReassign : null;
       if (seg[3] === "employees") return method === "GET" ? massageAdminEmployees : null;
+      // จองแทนพนักงาน — ตารางทั้งวันพร้อมชื่อ แล้วเลือกช่องกับคนเอง
+      if (seg[3] === "day") return method === "GET" ? massageAdminDayGrid : null;
+      if (seg[3] === "book") return method === "POST" ? massageAdminBook : null;
+      // เปิดปิดวันให้บริการเอง โดยไม่ต้องเข้าไปรัน SQL
+      if (seg[3] === "days") return method === "POST" ? massageAdminSetDay : massageAdminDays;
       return null;
     }
     return null;

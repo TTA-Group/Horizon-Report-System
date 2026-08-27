@@ -1,29 +1,20 @@
-// POST /api/massage/admin/cancel · POST /api/massage/admin/move — ผู้ดูแลจัดการคิวแทนพนักงาน
+// /api/massage/admin/{cancel,move,reassign,book,day,employees} — ผู้ดูแลจัดการคิวแทนพนักงาน
 //
-// มีเพื่อให้ผู้ดูแลหน้างานแก้ของจริงได้ เช่น พนักงานโทรมาบอกว่ามาไม่ได้ หรือขอสลับรอบ
-// ถ้าไม่มีทางแก้ ช่องนั้นจะค้างเป็น "จองแล้ว" ทั้งที่ไม่มีใครมา และไม่มีใครจองแทนได้
+// มีเพื่อให้ผู้ดูแลหน้างานแก้ของจริงได้ เช่น พนักงานโทรมาบอกว่ามาไม่ได้ ขอสลับรอบ
+// หรือเดินมาขอคิวที่หน้าห้องนวดเลย ถ้าไม่มีทางแก้ ช่องนั้นจะค้างเป็น "จองแล้ว"
+// ทั้งที่ไม่มีใครมา และไม่มีใครจองแทนได้
 //
-// ทั้งสองเส้นทางบังคับสิทธิ์ด้วย assertMassageStaff เหมือนฟอร์มเช็คชื่อ
-// และแจ้งเจ้าตัวทางไลน์เสมอ เพราะเป็นการแก้คิวของคนอื่น เจ้าตัวต้องรู้ว่ามีอะไรเปลี่ยน
+// ทุกเส้นทางบังคับสิทธิ์ด้วย assertMassageStaff เหมือนฟอร์มเช็คชื่อ
+// และแจ้งเจ้าตัวทางไลน์เสมอ เพราะเป็นการแตะคิวของคนอื่น เจ้าตัวต้องรู้ว่ามีอะไรเปลี่ยน
 
 import { getSession } from "./_lib/auth";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { adminCancel, adminMove, adminReassign, assertMassageStaff } from "./_lib/massage";
+import {
+  adminBook, adminCancel, adminDayGrid, adminMove, adminReassign, assertMassageStaff,
+} from "./_lib/massage";
 import { massageNotice } from "./_lib/massage-flex";
-import { pushTo, textMessage } from "./_lib/line";
+import { notifyEmployee as notify } from "./_lib/massage-notify";
 import { db } from "./_lib/db";
-
-/** ส่งข้อความบอกเจ้าของคิว — ส่งไม่ได้ก็ไม่ให้ทั้งคำขอล้ม เพราะงานหลักบันทึกไปแล้ว */
-async function notify(employeeId: string, text: string): Promise<void> {
-  try {
-    const rows = await db()<{ line_user_id: string }[]>`
-      SELECT line_user_id FROM line_accounts WHERE employee_id = ${employeeId} AND channel_key = 'core'
-    `;
-    if (rows.length > 0) await pushTo(rows[0].line_user_id, [textMessage(text)]);
-  } catch (e) {
-    console.error("[massage] แจ้งเจ้าของคิวไม่สำเร็จ", e);
-  }
-}
 
 export const massageAdminCancel = async (req: Request): Promise<Response> =>
   run(async () => {
@@ -85,8 +76,18 @@ export const massageAdminEmployees = async (req: Request): Promise<Response> =>
     if (q.length < 2) return json({ employees: [] });
 
     // จำกัดจำนวนไว้ เพราะหน้าจอแสดงได้ไม่กี่รายการอยู่แล้ว และกันการดูดทะเบียนทั้งบริษัทออกไป
-    const rows = await db()<{ id: string; employee_code: string; full_name: string; dept: string | null }[]>`
-      SELECT e.id, e.employee_code, e.full_name, COALESCE(d.name, e.department_name) AS dept
+    //
+    // ส่งจำนวนสิทธิ์ที่ใช้ไปของเดือนนี้มาด้วย เพราะหน้าจองแทนต้องบอกผู้ดูแลก่อนกดว่า
+    // คิวนี้จะหักสิทธิ์หรือกลายเป็นคิวด่วน ถ้าไม่บอกก่อน ผู้ดูแลจะรู้ก็ต่อเมื่อกดไปแล้ว
+    const rows = await db()<
+      { id: string; employee_code: string; full_name: string; dept: string | null; used: number }[]
+    >`
+      SELECT e.id, e.employee_code, e.full_name, COALESCE(d.name, e.department_name) AS dept,
+             (SELECT count(*)::int FROM massage_bookings b
+               WHERE b.employee_id = e.id AND b.status = 'booked' AND b.kind = 'quota'
+                 AND b.day >= date_trunc('month', (now() AT TIME ZONE 'Asia/Bangkok'))::date
+                 AND b.day <  (date_trunc('month', (now() AT TIME ZONE 'Asia/Bangkok'))
+                               + INTERVAL '1 month')::date) AS used
       FROM employees e
       LEFT JOIN departments d ON d.id = e.department_id
       WHERE e.status = 'active' AND (e.full_name ILIKE ${"%" + q + "%"} OR e.employee_code ILIKE ${q + "%"})
@@ -121,4 +122,52 @@ export const massageAdminReassign = async (req: Request): Promise<Response> =>
         "เจ้าหน้าที่เปลี่ยนชื่อผู้จองเป็นคุณแล้ว กรุณามาตามเวลา"),
     );
     return json({ ok: true, id, toName: b.toName });
+  });
+
+/** GET /api/massage/admin/day?day=YYYY-MM-DD — ตารางทั้งวันพร้อมชื่อผู้จอง สำหรับหน้าจองแทน */
+export const massageAdminDayGrid = async (req: Request): Promise<Response> =>
+  run(async () => {
+    methodGuard(req, "GET");
+    const s = await getSession(req);
+    await assertMassageStaff(s);
+
+    const day = (new URL(req.url).searchParams.get("day") ?? "").trim();
+    if (!day) throw new HttpError(400, "ไม่ได้ระบุวัน");
+    return json(await adminDayGrid(day));
+  });
+
+/**
+ * POST /api/massage/admin/book — ผู้ดูแลจองคิวให้พนักงานคนอื่น
+ *
+ * แจ้งเจ้าตัวเสมอ เพราะพนักงานไม่ได้เป็นคนกดเอง ถ้าไม่แจ้งก็ไม่มีทางรู้ว่ามีคิวรออยู่
+ */
+export const massageAdminBook = async (req: Request): Promise<Response> =>
+  run(async () => {
+    methodGuard(req, "POST");
+    const s = await getSession(req);
+    await assertMassageStaff(s);
+
+    const { employeeId, day, slot, therapistId } = await readJson<{
+      employeeId?: string; day?: string; slot?: string; therapistId?: string;
+    }>(req);
+    if (!employeeId || !day || !slot || !therapistId) throw new HttpError(400, "ข้อมูลไม่ครบ");
+
+    const b = await adminBook({ employeeId, day, slot, therapistId });
+    console.log("[massage] จองแทน", b.name, b.day, b.slot, b.flash ? "(คิวด่วน)" : "(คิวสิทธิ์)",
+      "โดย", s.employee!.employee_code);
+
+    await notify(
+      b.employeeId,
+      massageNotice(
+        "เจ้าหน้าที่จองคิวนวดให้คุณแล้ว",
+        b.day, b.slot, b.therapistName,
+        b.flash
+          ? "คิวนี้เป็นคิวด่วน ยกเลิกในระบบไม่ได้ หากมาไม่ได้ กรุณาแจ้งฝ่ายบุคคล"
+          : "หากไม่สะดวก กรุณายกเลิกในแอปล่วงหน้าอย่างน้อย 15 นาที",
+      ),
+    );
+    return json({
+      ok: true, id: b.id, name: b.name, day: b.day, slot: b.slot,
+      therapistName: b.therapistName, flash: b.flash, used: b.used,
+    });
   });

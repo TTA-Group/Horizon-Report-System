@@ -102,7 +102,12 @@ const BOOKING_TERMS = [
   "กรณีไม่แสดงตนใช้บริการเกิน 10 นาที เจ้าหน้าที่จะทำการปล่อยคิวให้ท่านอื่นโดยที่ไม่ต้องแจ้งให้ทราบ",
 ];
 
-function dialog({ icon = "warn", title, body = "", confirm = "ตกลง", cancel = null, danger = false, terms = false }) {
+/**
+ * input: { placeholder, value } = มีช่องให้พิมพ์ในกล่อง แล้วคืนข้อความที่พิมพ์แทน true
+ * ใช้ตอนถามเหตุผลที่ปิดวัน ซึ่งเหตุผลนั้นถูกส่งต่อไปในข้อความที่แจ้งพนักงานทุกคน
+ * ถ้าไม่ถามตรงนี้ ผู้ดูแลต้องไปพิมพ์บอกทีละคนเองในไลน์
+ */
+function dialog({ icon = "warn", title, body = "", confirm = "ตกลง", cancel = null, danger = false, terms = false, input = null }) {
   return new Promise((resolve) => {
     $("#m-ic").className = `ic ${icon}`;
     $("#m-ic").textContent =
@@ -115,8 +120,12 @@ function dialog({ icon = "warn", title, body = "", confirm = "ตกลง", can
         ? `<ul class="terms${terms === "flash" ? " flash" : ""}">${rules
             .map((t) => `<li>${t}</li>`)
             .join("")}</ul>`
+        : "") +
+      (input
+        ? `<div class="finder"><input id="m-input" type="text" maxlength="120"
+             placeholder="${escapeHtml(input.placeholder || "")}" value="${escapeHtml(input.value || "")}" /></div>`
         : "");
-    $("#m-body").style.display = body || terms ? "" : "none";
+    $("#m-body").style.display = body || terms || input ? "" : "none";
 
     const btns = $("#m-btns");
     btns.innerHTML = "";
@@ -135,13 +144,14 @@ function dialog({ icon = "warn", title, body = "", confirm = "ตกลง", can
     const go = document.createElement("button");
     go.className = danger ? "go danger" : "go";
     go.textContent = confirm;
-    go.onclick = () => done(true);
+    go.onclick = () => done(input ? $("#m-input").value.trim() || true : true);
     btns.appendChild(go);
 
     $("#backdrop").classList.add("on");
     $("#backdrop").onclick = (e) => {
       if (e.target === $("#backdrop")) done(false);
     };
+    if (input) setTimeout(() => $("#m-input").focus(), 50);
   });
 }
 
@@ -224,8 +234,13 @@ async function boot() {
     const cancelId = (p.get("cancel") || "").trim();
     await loadState();
     if (cancelId) return openCancel(cancelId);
-    // เปิดจากปุ่ม "ฟอร์มเช็คชื่อคิวนวด" ในหน้าจัดการของระบบกลาง
-    if (p.get("admin") === "1" && state.canManage) return goAdmin();
+    // เปิดจากปุ่มในหน้าจัดการของระบบกลาง — admin=1 คือฟอร์มเช็คชื่อ (ลิงก์เดิม ห้ามเปลี่ยน)
+    const adm = (p.get("admin") || "").trim();
+    if (adm && state.canManage) {
+      if (adm === "book") return goAbook();
+      if (adm === "days") return goADays();
+      return goAdmin();
+    }
     route();
   } catch (e) {
     if (e && e.handled) return;
@@ -377,7 +392,7 @@ function renderGrid() {
     : "เดือนนี้ใช้สิทธิ์ครบแล้ว วันนี้ดูได้อย่างเดียว — รอคิวด่วนเปิดตอนบ่ายสามของวันก่อนหน้า";
   $("#flashnote").style.display = flash && !viewOnly ? "" : "none";
   $("#slots").classList.toggle("flash", flash && !viewOnly);
-  $(".bar").classList.toggle("flash", flash && !viewOnly);
+  $("#book-bar").classList.toggle("flash", flash && !viewOnly);
   $$("#legend em").forEach((el) => el.classList.toggle("f", flash && !viewOnly));
 
   const head = `<tr><th class="tcol"></th>${th
@@ -930,6 +945,309 @@ function downloadSheet() {
 
 /* ---------- wiring ---------- */
 
+/* ---------- ผู้ดูแล: จองแทนพนักงาน ---------- */
+//
+// มีไว้สำหรับสิ่งที่เกิดขึ้นจริงหน้างาน: พนักงานเดินมาขอคิวที่หน้าห้อง โทรมาฝากจอง
+// หรือคิวว่างอยู่ตอนบ่ายแล้วไม่มีใครจองผ่านแอปทัน ผู้ดูแลจึงกดให้ได้โดยไม่ติดกติกา
+// ที่มีไว้กำกับการกดเองของพนักงาน (เส้นตัด 15 นาที · สิทธิ์รายเดือน · เวลาเปิดจอง)
+
+let aDayOptions = [];  // วันที่ยังเปิดและยังไม่ผ่าน สำหรับกล่องเลือกวัน
+let aGrid = null;      // ตารางทั้งวันของวันที่เลือกอยู่
+let aPick = null;      // { slot, label, therapistId, therapistName }
+let aWho = null;       // { id, name, code, dept, used }
+let aFindTimer;
+
+/** เดือนถัดไปในรูปแบบ YYYY-MM */
+function nextMonthOf(month) {
+  const [y, m] = month.split("-").map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+}
+
+/** เดือนก่อนหน้าในรูปแบบ YYYY-MM */
+function prevMonthOf(month) {
+  const [y, m] = month.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
+/**
+ * รวมวันของเดือนนี้กับเดือนหน้า
+ *
+ * ต้องมีเดือนหน้าด้วย ไม่งั้นพอถึงศุกร์สุดท้ายของเดือน กล่องเลือกวันจะว่างเปล่า
+ * ทั้งที่เดือนหน้ามีวันให้จองอยู่ — ซึ่งเป็นช่วงที่ผู้ดูแลต้องใช้หน้านี้พอดี
+ */
+async function loadAdminDayOptions() {
+  const cur = await api("/api/massage/admin/days");
+  const nxt = await api(`/api/massage/admin/days?month=${encodeURIComponent(nextMonthOf(cur.month))}`);
+  aDayOptions = [...(cur.days || []), ...(nxt.days || [])].filter((d) => d.status === "open" && !d.past);
+}
+
+async function goAbook(day) {
+  show("s-loading");
+  $("#loading-text").textContent = "กำลังโหลดตารางคิว...";
+  try {
+    if (!aDayOptions.length) await loadAdminDayOptions();
+    const target = day || (aGrid && aGrid.day) || (aDayOptions[0] && aDayOptions[0].day);
+    if (!target) {
+      aGrid = null;
+      renderAbook();
+      return show("s-abook");
+    }
+    aGrid = await api(`/api/massage/admin/day?day=${encodeURIComponent(target)}`);
+    aPick = null;
+    renderAbook();
+    show("s-abook");
+  } catch (e) {
+    if (e && e.handled) return;
+    await dialog({ icon: "err", title: "เปิดหน้าจองแทนไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+    route();
+  }
+}
+
+function renderAbook() {
+  $("#abook-day").innerHTML = aDayOptions
+    .map((o) => `<option value="${escapeHtml(o.day)}"${aGrid && o.day === aGrid.day ? " selected" : ""}>${escapeHtml(o.label)}</option>`)
+    .join("");
+
+  // คนที่เลือกไว้ต้องค้างอยู่บนจอระหว่างไล่หาช่องว่าง ไม่งั้นต้องเลื่อนขึ้นไปดูซ้ำ
+  $("#abook-picked").innerHTML = aWho
+    ? `<div class="picked">
+         <div><b>${escapeHtml(aWho.name)}</b>
+           <span>${escapeHtml(aWho.code)}${aWho.dept ? " · " + escapeHtml(aWho.dept) : ""} · ใช้สิทธิ์เดือนนี้ ${aWho.used}/${state.quota}</span></div>
+         <button id="abook-change">เปลี่ยนคน</button>
+       </div>`
+    : "";
+  $("#abook-finder").style.display = aWho ? "none" : "";
+
+  if (!aGrid) {
+    $("#abook-grid").innerHTML = `<div class="empty">ยังไม่มีวันให้บริการที่เปิดอยู่<br>เปิดวันได้ที่แท็บ “วันให้บริการ”</div>`;
+    return updateAbookBar();
+  }
+
+  const th = aGrid.therapists;
+  const head = `<tr><th class="tcol"></th>${th.map((t) => `<th>${headName(t.name)}</th>`).join("")}</tr>`;
+  const body = aGrid.rows
+    .map((r) => {
+      const cells = r.cells
+        .map((c) => {
+          // ช่องที่มีคนแล้วโชว์ชื่อ ผู้ดูแลจะได้รู้ว่าใครอยู่ตรงไหนโดยไม่ต้องสลับไปหน้าเช็คชื่อ
+          // ช่องกว้างราว 60px ใส่ได้แค่ชื่อจริง ชื่อเต็มจะถูกตัดจนเหลือแต่คำแรกที่ซ้ำกันทุกช่อง
+          const label = c.name ? c.name.trim().split(/\s+/)[0] : r.past ? "ผ่านแล้ว" : "ว่าง";
+          const dis = c.name || r.past ? " disabled" : "";
+          return `<td><button class="cell${c.name ? " who" : ""}" aria-pressed="false"${dis}
+            data-aslot="${escapeHtml(r.slot)}" data-ath="${escapeHtml(c.therapistId)}"
+            title="${escapeHtml(label)}">${escapeHtml(label)}</button></td>`;
+        })
+        .join("");
+      const [from, to] = r.label.split("-");
+      return `<tr${r.past ? ' class="off"' : ""} data-slot="${escapeHtml(r.slot)}">
+        <td class="time">${escapeHtml(from)}<br>${escapeHtml(to ?? "")}</td>${cells}</tr>`;
+    })
+    .join("");
+  $("#abook-grid").innerHTML = `<table class="grid">${head}${body}</table>`;
+  updateAbookBar();
+}
+
+function updateAbookBar() {
+  const info = $("#abook-info");
+  if (!aPick) info.innerHTML = `<span class="none">ยังไม่ได้เลือกช่อง</span>`;
+  else {
+    info.innerHTML = `<div class="t">${escapeHtml(aPick.label)}</div>
+      <div class="s">${escapeHtml(aGrid.label)} · ${escapeHtml(aPick.therapistName)}</div>`;
+  }
+  $("#abook-clear").classList.toggle("on", Boolean(aPick));
+  $("#abook-go").disabled = !(aPick && aWho && aGrid);
+  $("#abook-go").textContent = aWho ? `จองให้ ${aWho.name}` : "จองให้พนักงาน";
+}
+
+function clearAbookPick() {
+  aPick = null;
+  $$("#abook-grid .cell").forEach((b) => b.setAttribute("aria-pressed", "false"));
+  updateAbookBar();
+}
+
+/** ค้นพนักงานบนหน้าจอ (ไม่ใช่ในกล่อง) เพราะต้องเลือกคนก่อนแล้วยังต้องเลือกช่องต่ออีก */
+async function searchAbookEmployee(q) {
+  if (q.trim().length < 2) {
+    $("#abook-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
+    return;
+  }
+  try {
+    const r = await api(`/api/massage/admin/employees?q=${encodeURIComponent(q.trim())}`);
+    const list = r.employees || [];
+    $("#abook-hits").innerHTML = list.length
+      ? list
+          .map(
+            (e) => `<button class="hit" data-aemp="${escapeHtml(e.id)}"
+              data-name="${escapeHtml(e.full_name)}" data-code="${escapeHtml(e.employee_code)}"
+              data-dept="${escapeHtml(e.dept || "")}" data-used="${e.used ?? 0}" aria-pressed="false">
+              <b>${escapeHtml(e.full_name)}</b>
+              <span>${escapeHtml(e.employee_code)}${e.dept ? " · " + escapeHtml(e.dept) : ""} · ใช้สิทธิ์ ${e.used ?? 0}/${state.quota}</span>
+            </button>`,
+          )
+          .join("")
+      : `<div class="none">ไม่พบพนักงานที่ตรงกับที่ค้น</div>`;
+  } catch {
+    $("#abook-hits").innerHTML = `<div class="none">ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง</div>`;
+  }
+}
+
+async function doAdminBook() {
+  if (!(aPick && aWho && aGrid)) return;
+  const over = aWho.used >= state.quota;
+  const yes = await dialog({
+    icon: over ? "flash" : "warn",
+    title: over ? "จองแทน (เกินสิทธิ์)" : "จองแทนพนักงาน",
+    body: `${aWho.name}\n${aGrid.label}\n${aPick.label} (${aPick.therapistName})\n\n` +
+      (over
+        ? `ใช้สิทธิ์ครบ ${state.quota} ครั้งแล้ว คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้`
+        : `จะหักสิทธิ์เป็นครั้งที่ ${aWho.used + 1} จาก ${state.quota} และระบบจะแจ้งเจ้าตัวทางไลน์`),
+    confirm: "ยืนยันจองให้",
+    cancel: "ไม่ใช่ตอนนี้",
+  });
+  if (!yes) return;
+
+  try {
+    const r = await api("/api/massage/admin/book", {
+      method: "POST",
+      body: { employeeId: aWho.id, day: aGrid.day, slot: aPick.slot, therapistId: aPick.therapistId },
+    });
+    toast(`จองให้ ${r.name} แล้ว${r.flash ? " (คิวด่วน)" : ""}`);
+    aWho = { ...aWho, used: r.used };
+    await goAbook(aGrid.day);
+  } catch (e) {
+    if (e && e.handled) return;
+    await dialog({ icon: "err", title: "จองไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+    await goAbook(aGrid.day);
+  }
+}
+
+/* ---------- ผู้ดูแล: เปิดปิดวันให้บริการ ---------- */
+//
+// แทนการเข้าไปรัน SQL เอง ซึ่งเป็นทางเดียวที่เคยทำได้ ทั้งที่เป็นงานที่ต้องทำทุกครั้ง
+// ที่บริษัทประกาศวันหยุดหรือหมอนวดลาทั้งวัน
+
+let aMonth = null;
+let aMonthDays = [];
+
+async function goADays(month) {
+  show("s-loading");
+  $("#loading-text").textContent = "กำลังโหลดวันให้บริการ...";
+  try {
+    const r = await api(`/api/massage/admin/days${month ? `?month=${encodeURIComponent(month)}` : ""}`);
+    aMonth = r.month;
+    aMonthDays = r.days || [];
+    renderADays();
+    show("s-adays");
+  } catch (e) {
+    if (e && e.handled) return;
+    await dialog({ icon: "err", title: "เปิดหน้าวันให้บริการไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+    route();
+  }
+}
+
+function renderADays() {
+  const [y, m] = aMonth.split("-").map(Number);
+  $("#adays-month").textContent = `${TH_MONTH_FULL[m - 1]} ${y + 543}`;
+
+  $("#adays-list").innerHTML = aMonthDays.length
+    ? aMonthDays
+        .map((d) => {
+          const shut = d.status === "closed";
+          const note = shut
+            ? `ปิด${d.closedReason ? " — " + escapeHtml(d.closedReason) : ""}`
+            : `เปิดให้บริการ · จองแล้ว ${d.booked}/${d.total}`;
+          return `<div class="drow${shut ? " shut" : ""}${d.past ? " gone" : ""}">
+            <div class="info">
+              <div class="d">${escapeHtml(d.label)}</div>
+              <div class="s">${note}</div>
+            </div>
+            <button class="go ${shut ? "open" : "shut"}" data-aday="${escapeHtml(d.day)}"
+              data-status="${shut ? "closed" : "open"}"${d.past ? " disabled" : ""}>
+              ${shut ? "เปิดวัน" : "ปิดวัน"}
+            </button>
+          </div>`;
+        })
+        .join("")
+    : `<div class="empty">เดือนนี้ยังไม่มีวันให้บริการ<br>เพิ่มวันเองได้ที่ช่องด้านล่าง</div>`;
+
+}
+
+async function toggleServiceDay(day, status) {
+  const row = aMonthDays.find((d) => d.day === day);
+  const label = row ? row.label : day;
+
+  if (status === "closed") {
+    const yes = await dialog({
+      icon: "ok",
+      title: "เปิดวันนี้ให้บริการ",
+      body: `${label}\n\nพนักงานจะจองวันนี้ได้ทันที คิวที่ถูกยกเลิกไปตอนปิดวันจะไม่ถูกคืนให้`,
+      confirm: "เปิดวัน",
+      cancel: "ไม่ใช่ตอนนี้",
+    });
+    if (!yes) return;
+    return saveServiceDay({ day, status: "open" });
+  }
+
+  const booked = row ? row.booked : 0;
+  const reason = await dialog({
+    icon: "warn",
+    title: "ปิดวันนี้",
+    body: `${label}\n\n` +
+      (booked > 0
+        ? `วันนี้มีคนจองอยู่ ${booked} คิว ปิดแล้วคิวทั้งหมดจะถูกยกเลิก และระบบจะแจ้งเจ้าตัวทุกคนทางไลน์`
+        : "ยังไม่มีใครจองวันนี้ ปิดได้เลย"),
+    input: { placeholder: "เหตุผล เช่น วันหยุดบริษัท", value: "" },
+    confirm: booked > 0 ? `ปิดวันและยกเลิก ${booked} คิว` : "ปิดวัน",
+    cancel: "ไม่ใช่ตอนนี้",
+    danger: true,
+  });
+  if (!reason) return;
+  return saveServiceDay({
+    day, status: "closed", force: true,
+    reason: typeof reason === "string" ? reason : "ปิดให้บริการ",
+  });
+}
+
+async function saveServiceDay(body) {
+  try {
+    const r = await api("/api/massage/admin/days", { method: "POST", body });
+    toast(
+      body.status === "open"
+        ? "เปิดวันเรียบร้อย"
+        : `ปิดวันเรียบร้อย${r.cancelled ? ` · ยกเลิกไป ${r.cancelled} คิว` : ""}`,
+    );
+    aDayOptions = [];  // กล่องเลือกวันของหน้าจองแทนต้องโหลดใหม่ เพราะวันที่เปิดอยู่เปลี่ยนไปแล้ว
+    await goADays(aMonth);
+  } catch (e) {
+    if (e && e.handled) return;
+    await dialog({ icon: "err", title: "บันทึกไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+  }
+}
+
+async function addServiceDay() {
+  const day = $("#adays-new").value;
+  if (!day) return toast("เลือกวันที่ก่อน");
+  const yes = await dialog({
+    icon: "ok",
+    title: "เพิ่มวันให้บริการ",
+    body: `${day}\n\nวันนี้จะเปิดให้พนักงานจองได้ทันที`,
+    confirm: "เพิ่มวัน",
+    cancel: "ไม่ใช่ตอนนี้",
+  });
+  if (!yes) return;
+  $("#adays-new").value = "";
+  // เด้งไปที่เดือนของวันที่เพิ่ง เพิ่ม เพื่อให้เห็นผลทันที ไม่ใช่ค้างอยู่เดือนเดิมแล้วนึกว่าไม่ติด
+  aMonth = day.slice(0, 7);
+  await saveServiceDay({ day, status: "open" });
+}
+
+/** สลับสามหน้าของผู้ดูแล */
+function goAdminTab(tab) {
+  if (tab === "book") return goAbook();
+  if (tab === "days") return goADays(aMonth);
+  return goAdmin(sheet ? sheet.day : undefined);
+}
+
 function bind() {
   $("#days").onclick = (e) => {
     const b = e.target.closest(".day");
@@ -972,6 +1290,40 @@ function bind() {
     if (sw) swapBooking(sw.dataset.swap);
     const dp = e.target.closest("[data-drop]");
     if (dp) dropBooking(dp.dataset.drop);
+
+    // แท็บสลับสามหน้าของผู้ดูแล
+    const tab = e.target.closest("[data-atab]");
+    if (tab) goAdminTab(tab.dataset.atab);
+
+    // เลือกช่องในตารางจองแทน
+    const ac = e.target.closest("[data-aslot]");
+    if (ac && !ac.disabled) {
+      $$("#abook-grid .cell").forEach((b) => b.setAttribute("aria-pressed", "false"));
+      ac.setAttribute("aria-pressed", "true");
+      const row = aGrid.rows.find((r) => r.slot === ac.dataset.aslot);
+      const th = aGrid.therapists.find((t) => t.id === ac.dataset.ath);
+      aPick = { slot: row.slot, label: row.label, therapistId: th.id, therapistName: th.name };
+      updateAbookBar();
+    }
+
+    // เลือกพนักงานที่จะจองให้
+    const ae = e.target.closest("[data-aemp]");
+    if (ae) {
+      aWho = { id: ae.dataset.aemp, name: ae.dataset.name, code: ae.dataset.code,
+        dept: ae.dataset.dept, used: Number(ae.dataset.used) || 0 };
+      $("#abook-find").value = "";
+      $("#abook-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
+      renderAbook();
+    }
+    if (e.target.closest("#abook-change")) {
+      aWho = null;
+      renderAbook();
+      setTimeout(() => $("#abook-find").focus(), 50);
+    }
+
+    // เปิดหรือปิดวันให้บริการ
+    const ad = e.target.closest("[data-aday]");
+    if (ad && !ad.disabled) toggleServiceDay(ad.dataset.aday, ad.dataset.status);
     const x = e.target.closest("[data-close]");
     if (x) closeWindow();
   });
@@ -985,6 +1337,23 @@ function bind() {
   $("#btn-admin-back").onclick = () => route();
   $("#sheet-day").onchange = (e) => goAdmin(e.target.value);
   $("#btn-download").onclick = downloadSheet;
+
+  // ── ผู้ดูแล: จองแทนพนักงาน ──
+  $("#abook-back").onclick = () => route();
+  $("#abook-day").onchange = (e) => goAbook(e.target.value);
+  $("#abook-clear").onclick = clearAbookPick;
+  $("#abook-go").onclick = doAdminBook;
+  $("#abook-find").oninput = (e) => {
+    clearTimeout(aFindTimer);
+    const q = e.target.value;
+    aFindTimer = setTimeout(() => searchAbookEmployee(q), 250);
+  };
+
+  // ── ผู้ดูแล: วันให้บริการ ──
+  $("#adays-back").onclick = () => route();
+  $("#adays-prev").onclick = () => goADays(prevMonthOf(aMonth));
+  $("#adays-next").onclick = () => goADays(nextMonthOf(aMonth));
+  $("#adays-add").onclick = addServiceDay;
 
   $("#btn-go-core").onclick = () => {
     const url = `https://liff.line.me/${CFG.coreLiffId}?back=${encodeURIComponent(CFG.liffId || "")}`;
