@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS massage_bookings (
   therapist_id  UUID NOT NULL REFERENCES massage_therapists(id),
   employee_id   UUID NOT NULL REFERENCES employees(id),
   status        VARCHAR(12) NOT NULL DEFAULT 'booked', -- booked | cancelled
+  -- quota = ใช้สิทธิ์ 2 ครั้ง/เดือน · flash = คิวด่วน ไม่นับสิทธิ์ และพนักงานยกเลิกเองไม่ได้
+  kind          VARCHAR(8)  NOT NULL DEFAULT 'quota',   -- quota | flash
   -- การเช็คชื่อหน้างาน NULL = ยังไม่ได้เช็ค
   attended      VARCHAR(10),                          -- present | no_show
   checked_at    TIMESTAMPTZ,
@@ -140,3 +142,7 @@ CREATE INDEX IF NOT EXISTS idx_massage_employee_day
 -- ดึงคิวทั้งวันสำหรับฟอร์มเช็คชื่อและงานเตือนล่วงหน้า
 CREATE INDEX IF NOT EXISTS idx_massage_day_status
   ON massage_bookings (day, status);
+
+-- แยกคิวสิทธิ์ออกจากคิวด่วนตอนนับสิทธิ์รายเดือน
+CREATE INDEX IF NOT EXISTS idx_massage_kind
+  ON massage_bookings (employee_id, kind, day);

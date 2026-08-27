@@ -8,7 +8,7 @@
 
 import { getSession } from "./_lib/auth";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { adminCancel, adminMove, assertMassageStaff } from "./_lib/massage";
+import { adminCancel, adminMove, adminReassign, assertMassageStaff } from "./_lib/massage";
 import { massageNotice } from "./_lib/massage-flex";
 import { pushTo, textMessage } from "./_lib/line";
 import { db } from "./_lib/db";
@@ -72,4 +72,53 @@ export const massageAdminMove = async (req: Request): Promise<Response> =>
       ),
     );
     return json({ ok: true, id, day: b.day, slot: b.slot, therapistId: b.therapistId });
+  });
+
+/** GET /api/massage/admin/employees?q= — ค้นชื่อพนักงานสำหรับเปลี่ยนคนจอง */
+export const massageAdminEmployees = async (req: Request): Promise<Response> =>
+  run(async () => {
+    methodGuard(req, "GET");
+    const s = await getSession(req);
+    await assertMassageStaff(s);
+
+    const q = (new URL(req.url).searchParams.get("q") ?? "").trim();
+    if (q.length < 2) return json({ employees: [] });
+
+    // จำกัดจำนวนไว้ เพราะหน้าจอแสดงได้ไม่กี่รายการอยู่แล้ว และกันการดูดทะเบียนทั้งบริษัทออกไป
+    const rows = await db()<{ id: string; employee_code: string; full_name: string; dept: string | null }[]>`
+      SELECT e.id, e.employee_code, e.full_name, COALESCE(d.name, e.department_name) AS dept
+      FROM employees e
+      LEFT JOIN departments d ON d.id = e.department_id
+      WHERE e.status = 'active' AND (e.full_name ILIKE ${"%" + q + "%"} OR e.employee_code ILIKE ${q + "%"})
+      ORDER BY e.full_name
+      LIMIT 10
+    `;
+    return json({ employees: rows });
+  });
+
+/** POST /api/massage/admin/reassign — เปลี่ยนชื่อผู้จองของคิวหนึ่ง */
+export const massageAdminReassign = async (req: Request): Promise<Response> =>
+  run(async () => {
+    methodGuard(req, "POST");
+    const s = await getSession(req);
+    await assertMassageStaff(s);
+
+    const { id, employeeId } = await readJson<{ id?: string; employeeId?: string }>(req);
+    if (!id || !employeeId) throw new HttpError(400, "ข้อมูลไม่ครบ");
+
+    const b = await adminReassign(id, employeeId);
+    console.log("[massage] เปลี่ยนคนจอง", id, "->", b.toName, "โดย", s.employee!.employee_code);
+
+    // แจ้งทั้งคนเดิมและคนใหม่ ทั้งคู่ต้องรู้ว่าคิวนี้เป็นของใครแล้ว
+    await notify(
+      b.employeeId,
+      massageNotice("คิวนวดของคุณถูกโอนให้ผู้อื่นแล้ว", b.day, b.slot, b.therapistName,
+        `เจ้าหน้าที่เปลี่ยนชื่อผู้จองเป็น ${b.toName} ตามที่แจ้งไว้`),
+    );
+    await notify(
+      employeeId,
+      massageNotice("คุณได้รับคิวนวดที่โอนมา", b.day, b.slot, b.therapistName,
+        "เจ้าหน้าที่เปลี่ยนชื่อผู้จองเป็นคุณแล้ว กรุณามาตามเวลา"),
+    );
+    return json({ ok: true, id, toName: b.toName });
   });

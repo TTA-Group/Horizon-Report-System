@@ -26,6 +26,7 @@
   --green:#06C755; --green-deep:#0B7A3E; --green-soft:#E6F9EE; --green-line:#BCEBD1;
   --sunk:#F1F4F6; --dim:#A9B4BC; --red:#E04A2F; --red-deep:#B3341D; --red-soft:#FCEBE7;
   --amber-soft:#FFF8E6; --amber-line:#F0DCAE; --amber-ink:#8A6A1F;
+  --flash:#F26A1B; --flash-deep:#B34706; --flash-soft:#FFF1E6; --flash-line:#F7CFAE;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:'Noto Sans Thai',system-ui,sans-serif;background:var(--canvas);color:var(--ink);
@@ -101,6 +102,48 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
   box-shadow:0 4px 14px -4px rgba(6,199,85,.55)}
 .legend{display:flex;gap:16px;justify-content:center;margin-top:14px;font-size:11.5px;color:var(--slate)}
 .legend em{font-style:normal;color:var(--green-deep);font-weight:600}
+
+/* ── โหมดคิวด่วน (Flash Queue) ──
+   ใช้สีส้มทั้งหน้าแทนเขียว เพื่อให้รู้ตั้งแต่ชายตาว่านี่คนละกติกากับการจองปกติ
+   ไม่ใช่แค่เพิ่มป้ายเล็ก ๆ เพราะกติกาที่ต่างคือ "กดแล้วยกเลิกไม่ได้" ซึ่งพลาดไม่ได้ */
+.day.flash{background:var(--flash-soft);border-color:var(--flash-line);color:var(--flash-deep)}
+.day.flash small{color:var(--flash-deep);font-weight:600}
+.day.flash[aria-pressed="true"]{background:var(--flash);border-color:var(--flash);color:#fff}
+.day.flash[aria-pressed="true"] small{color:rgba(255,255,255,.92)}
+.flashnote{background:var(--flash-soft);border:1px solid var(--flash-line);border-radius:14px;
+  padding:13px 15px;margin-bottom:12px}
+.flashnote b{display:block;font-size:14px;color:var(--flash-deep);margin-bottom:6px}
+.flashnote ul{list-style:none;margin:0}
+.flashnote li{position:relative;padding-left:14px;font-size:12.5px;color:#8A5A2B;line-height:1.65}
+.flashnote li+li{margin-top:5px}
+.flashnote li::before{content:"•";position:absolute;left:2px;color:var(--flash)}
+.panel.flash .cell{color:var(--flash-deep)}
+.panel.flash .cell[aria-pressed="true"]{background:var(--flash);border-color:var(--flash);color:#fff;
+  box-shadow:0 4px 14px -4px rgba(242,106,27,.6)}
+.legend em.f{color:var(--flash-deep)}
+.bar.flash .btn-submit{background:var(--flash)}
+.bar.flash .btn-submit:disabled{background:#CFD7DD}
+.mytag.flash{background:var(--flash-soft);color:var(--flash-deep)}
+.mycard.flashcard{border-left-color:var(--flash)}
+.mynote.flashwarn{background:var(--flash-soft);color:#8A5A2B;border:1px solid var(--flash-line)}
+.modal .ic.flash{background:var(--flash-soft);color:var(--flash-deep)}
+.modal .btns .go.flash{background:var(--flash)}
+.terms.flash{background:var(--flash-soft);border-color:var(--flash-line)}
+.terms.flash li{color:#8A5A2B}
+.terms.flash li::before{color:var(--flash)}
+
+/* ค้นชื่อพนักงานตอนเปลี่ยนคนจอง */
+.finder{margin-top:12px;text-align:left}
+.finder input{width:100%;font-family:inherit;font-size:15px;color:var(--ink);border-radius:12px;
+  padding:12px 14px;border:1px solid var(--hair);background:var(--surface);outline:none}
+.finder input:focus{border-color:var(--green)}
+.finder .hits{margin-top:8px;display:grid;gap:6px;max-height:200px;overflow-y:auto}
+.finder .hit{width:100%;text-align:left;font-family:inherit;border:1px solid var(--hair);
+  background:var(--surface);border-radius:11px;padding:10px 12px;cursor:pointer}
+.finder .hit[aria-pressed="true"]{border-color:var(--green);background:var(--green-soft)}
+.finder .hit b{display:block;font-size:14px;font-weight:600}
+.finder .hit span{font-size:11.5px;color:var(--slate)}
+.finder .none{font-size:12.5px;color:var(--slate);padding:10px 2px}
 
 /* เงื่อนไขการจอง — ขึ้นในกล่องยืนยันตอนกดจอง ไม่ใช่ค้างอยู่บนหน้า
    เพราะจุดที่ต้องอ่านจริง ๆ คือวินาทีก่อนกดยืนยัน ไม่ใช่ตอนกำลังไล่หาช่องว่าง */
@@ -183,7 +226,7 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .srow .who{font-size:11.5px;color:var(--slate)}
 .srow .nm{font-size:15px;font-weight:600;margin-top:3px;letter-spacing:-.01em}
 .srow .acts{display:flex;gap:8px;margin-top:12px}
-.srow .acts button{flex:1;font-family:inherit;font-size:13px;font-weight:600;padding:10px;border-radius:11px;
+.srow .acts button{flex:1;font-family:inherit;font-size:12.5px;font-weight:600;padding:10px 4px;border-radius:11px;
   border:1px solid var(--hair);background:var(--surface);color:var(--slate);cursor:pointer}
 .srow .acts button.danger{background:var(--red-soft);border-color:#F2C9C0;color:var(--red-deep)}
 /* กล่องเลือกช่องใหม่ตอนย้ายคิว — select อยู่ในกล่องยืนยัน จึงต้องชิดซ้ายไม่ใช่กลางเหมือนข้อความ */
@@ -303,6 +346,13 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
       <p class="viewnote" id="viewnote" style="display:none">
         โปรดเลือกวันอื่น คุณสามารถจองคิวนวดผ่อนคลายได้เพียง 1 คิว/วัน
       </p>
+      <div class="flashnote" id="flashnote" style="display:none">
+        <b>⚡ Flash Queue — คิวที่เหลือของวันนี้</b>
+        <ul>
+          <li>ใครก็จองได้ ไม่นับสิทธิ์ 2 ครั้งของเดือนนี้</li>
+          <li><b style="display:inline">กดแล้วยกเลิกในระบบไม่ได้</b> หากมาไม่ได้ ต้องหาคนมาแทนแล้วแจ้งฝ่ายบุคคล</li>
+        </ul>
+      </div>
       <div class="panel" id="slots"></div>
       <div class="legend" id="legend" style="display:none">
         <span><em>ว่าง</em> = กดจองได้</span><span>จอง = มีคนจองแล้ว</span>

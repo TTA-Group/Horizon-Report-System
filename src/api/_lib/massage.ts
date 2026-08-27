@@ -34,6 +34,20 @@ export const MONTHLY_QUOTA = 2;
  */
 export const CUTOFF_MINUTES = 15;
 
+/**
+ * Flash Queue — คิวด่วน
+ *
+ * ก่อน 15:00 ของวันก่อนหน้าวันให้บริการ = ช่วงสิทธิ์ ใครมีสิทธิ์เหลือจองได้ นับสิทธิ์ ยกเลิกได้
+ * ตั้งแต่ 15:00 เป็นต้นไป = ช่วงคิวด่วน ใครก็จองได้ ไม่นับสิทธิ์ ไม่จำกัดจำนวน แต่ยกเลิกเองไม่ได้
+ *
+ * เปิดแล้วเปิดยาวจนหมดวัน ไม่ปิดอีก ช่องที่มีคนยกเลิกระหว่างวันจึงกลับเข้าคิวด่วนได้เอง
+ * โดยไม่ต้องมีกลไกแยก — เป็นเหตุผลที่เลือกวิธีนี้แทนการเปิดเป็นช่วงสั้น ๆ
+ *
+ * โหมดตัดสินตอน "กดจอง" ไม่ใช่ย้อนหลัง คิวที่จองด้วยสิทธิ์ไว้ก่อนหน้าจึงยังยกเลิกได้ตามปกติ
+ */
+export const FLASH_FROM_HOUR = 15;
+export const FLASH_LEAD_DAYS = 1;
+
 /** วันให้บริการ = ศุกร์ (ISO: จันทร์=1 … อาทิตย์=7) */
 export const SERVICE_ISODOW = 5;
 
@@ -220,6 +234,8 @@ export interface DaySummary {
   chip: string;
   free: number;
   total: number;
+  /** true = วันนี้เข้าโหมดคิวด่วนแล้ว จองได้โดยไม่นับสิทธิ์ */
+  flash: boolean;
 }
 
 export interface MassageState {
@@ -286,6 +302,7 @@ export async function massageState(employeeId: string, now = new Date()): Promis
       chip: thaiDayChip(r.day),
       free: Math.max(0, total - r.taken),
       total,
+      flash: isFlashDay(r.day, now),
     };
   });
 
@@ -296,6 +313,17 @@ export async function massageState(employeeId: string, now = new Date()): Promis
   }
 
   return { open: true, days: usable, ...quota };
+}
+
+/** เวลาที่วันนั้นเปลี่ยนเป็นคิวด่วน — 15:00 ของวันก่อนหน้า ตามเวลาไทย */
+export function flashOpensAt(day: string): Date {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - FLASH_LEAD_DAYS, FLASH_FROM_HOUR, 0) - BKK_OFFSET_MS);
+}
+
+/** วันนี้อยู่ในช่วงคิวด่วนแล้วหรือยัง */
+export function isFlashDay(day: string, now = new Date()): boolean {
+  return now.getTime() >= flashOpensAt(day).getTime();
 }
 
 /** รอบนี้ยังจองได้ไหมเมื่อเทียบกับเวลาปัจจุบัน (ต้องเหลือมากกว่า 15 นาที) */
@@ -342,6 +370,8 @@ export interface DayAvailability {
   label: string;
   therapists: Therapist[];
   rows: SlotRow[];
+  /** true = วันนี้เข้าโหมดคิวด่วนแล้ว */
+  flash: boolean;
 }
 
 /**
@@ -379,6 +409,7 @@ export async function dayAvailability(
   return {
     day,
     label: thaiDayLabel(day),
+    flash: isFlashDay(day, now),
     therapists,
     rows: MASSAGE_SLOTS.map((slot) => ({
       slot,
@@ -395,10 +426,11 @@ export async function dayAvailability(
 // ───────────────────────── สิทธิ์รายเดือน ─────────────────────────
 
 /** ใช้สิทธิ์ไปกี่ครั้งแล้วในเดือนที่ day อยู่ (นับเฉพาะคิวที่ยังไม่ถูกยกเลิก) */
+/** สิทธิ์ที่ใช้ไปในเดือนนั้น — นับเฉพาะคิวสิทธิ์ คิวด่วนไม่นับ */
 export async function monthlyUsage(employeeId: string, day: string): Promise<number> {
   const rows = await db()<{ n: number }[]>`
     SELECT count(*)::int AS n FROM massage_bookings
-    WHERE employee_id = ${employeeId} AND status = 'booked'
+    WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
       AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
   `;
   return rows[0]?.n ?? 0;
@@ -418,6 +450,8 @@ export interface BookedRow {
   day: string;
   slot: string;
   therapistName: string;
+  /** true = คิวด่วน ไม่นับสิทธิ์ และพนักงานยกเลิกเองไม่ได้ */
+  flash: boolean;
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -443,6 +477,7 @@ function violatedConstraint(e: unknown): string {
  */
 export async function book(input: BookInput, now = new Date()): Promise<BookedRow> {
   const { employeeId, day, slot, therapistId } = input;
+  const flash = isFlashDay(day, now);
 
   if (!MASSAGE_SLOTS.includes(slot as (typeof MASSAGE_SLOTS)[number])) {
     throw new HttpError(400, "รอบเวลาไม่ถูกต้อง");
@@ -477,13 +512,16 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
       `;
       if (th.length === 0) throw new HttpError(409, "หมอนวดท่านนี้ไม่ได้เปิดรับคิว");
 
-      const used = await sql<{ n: number }[]>`
-        SELECT count(*)::int AS n FROM massage_bookings
-        WHERE employee_id = ${employeeId} AND status = 'booked'
-          AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
-      `;
-      if ((used[0]?.n ?? 0) >= MONTHLY_QUOTA) {
-        throw new HttpError(409, `เดือนนี้ใช้สิทธิ์ครบ ${MONTHLY_QUOTA} ครั้งแล้ว`, "quota_used");
+      // วันที่เข้าโหมดคิวด่วนแล้วไม่ต้องเช็คสิทธิ์ — เป็นของเหลือที่ถ้าไม่มีใครจองก็เสียเปล่า
+      if (!flash) {
+        const used = await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM massage_bookings
+          WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
+            AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
+        `;
+        if ((used[0]?.n ?? 0) >= MONTHLY_QUOTA) {
+          throw new HttpError(409, `เดือนนี้ใช้สิทธิ์ครบ ${MONTHLY_QUOTA} ครั้งแล้ว`, "quota_used");
+        }
       }
 
       // วันละคิวเดียว — เช็คตรงนี้เพื่อให้ได้ข้อความที่บอกสาเหตุชัด ๆ ส่วนการกันจริง
@@ -497,11 +535,11 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
       }
 
       const ins = await sql<{ id: string }[]>`
-        INSERT INTO massage_bookings (day, slot_start, therapist_id, employee_id)
-        VALUES (${day}::date, ${slot}::time, ${therapistId}, ${employeeId})
+        INSERT INTO massage_bookings (day, slot_start, therapist_id, employee_id, kind)
+        VALUES (${day}::date, ${slot}::time, ${therapistId}, ${employeeId}, ${flash ? "flash" : "quota"})
         RETURNING id
       `;
-      return { id: ins[0].id, day, slot, therapistName: th[0].name };
+      return { id: ins[0].id, day, slot, therapistName: th[0].name, flash };
     });
   } catch (e) {
     if (isUniqueViolation(e)) {
@@ -540,10 +578,11 @@ export async function cancel(
   const sql = db();
 
   const rows = await sql<
-    { id: string; day: string; slot: string; employee_id: string; status: string; name: string }[]
+    { id: string; day: string; slot: string; employee_id: string; status: string;
+      kind: string; name: string }[]
   >`
     SELECT b.id, to_char(b.day, 'YYYY-MM-DD') AS day, to_char(b.slot_start, 'HH24:MI') AS slot,
-           b.employee_id, b.status, t.name
+           b.employee_id, b.status, b.kind, t.name
     FROM massage_bookings b
     JOIN massage_therapists t ON t.id = b.therapist_id
     WHERE b.id = ${bookingId}
@@ -554,6 +593,16 @@ export async function cancel(
   // ตอบเหมือนกันกับกรณีไม่พบ เพื่อไม่ให้เดาได้ว่า id ไหนมีอยู่จริง
   if (b.employee_id !== employeeId) throw new HttpError(404, "ไม่พบคิวนี้ในระบบ");
   if (b.status !== "booked") throw new HttpError(409, "คิวนี้ถูกยกเลิกไปแล้ว", "already_cancelled");
+
+  // คิวด่วนยกเลิกเองไม่ได้ตามกติกา — ฝ่ายบุคคลยังยกเลิกหรือเปลี่ยนคนจองให้ได้จากฟอร์มเช็คชื่อ
+  // ถ้าปล่อยให้ยกเลิกเองได้ กติกา "กดแล้วต้องมา" จะไม่มีผลอะไรเลย
+  if (b.kind === "flash") {
+    throw new HttpError(
+      409,
+      "คิวด่วนยกเลิกในระบบไม่ได้ หากมาไม่ได้ กรุณาหาคนมาแทนแล้วแจ้งฝ่ายบุคคล",
+      "flash_no_cancel",
+    );
+  }
 
   const left = slotStartAt(b.day, b.slot).getTime() - now.getTime();
   if (left <= CUTOFF_MINUTES * 60_000) {
@@ -610,6 +659,45 @@ async function loadBooking(bookingId: string): Promise<AdminBookingRow> {
     therapistId: b.therapist_id, therapistName: b.therapist_name,
     employeeId: b.employee_id, name: b.full_name,
   };
+}
+
+/**
+ * ผู้ดูแลเปลี่ยนชื่อผู้จองของคิวหนึ่ง
+ *
+ * มีเพื่อรองรับกติกาของคิวด่วนที่ว่า "มาไม่ได้ให้หาคนมาแทนแล้วแจ้งฝ่ายบุคคล"
+ * ถ้าไม่มีเส้นทางนี้ ฝ่ายบุคคลต้องยกเลิกแล้วให้คนใหม่กดจองเอง ซึ่งคนอื่นตัดหน้าได้
+ * กลายเป็นว่าระบบผิดสัญญาที่ตัวเองบอกไว้
+ *
+ * ไม่แตะสิทธิ์ของทั้งสองฝ่าย เพราะคิวด่วนไม่นับสิทธิ์อยู่แล้ว ส่วนคิวสิทธิ์ที่เปลี่ยนคน
+ * จะย้ายภาระสิทธิ์ไปที่คนใหม่เองเมื่อคำนวณครั้งถัดไป (นับจากแถวที่มีอยู่จริง)
+ */
+export async function adminReassign(
+  bookingId: string,
+  toEmployeeId: string,
+): Promise<AdminBookingRow & { toName: string }> {
+  const b = await loadBooking(bookingId);
+  const sql = db();
+
+  const to = await sql<{ id: string; full_name: string; status: string }[]>`
+    SELECT id, full_name, status FROM employees WHERE id = ${toEmployeeId}
+  `;
+  if (to.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้");
+  if (to[0].status === "suspended") throw new HttpError(409, "พนักงานคนนี้ถูกระงับสิทธิ์อยู่");
+  if (to[0].id === b.employeeId) return { ...b, toName: to[0].full_name };
+
+  try {
+    await sql`
+      UPDATE massage_bookings SET employee_id = ${toEmployeeId}, updated_at = now()
+      WHERE id = ${bookingId} AND status = 'booked'
+    `;
+  } catch (e) {
+    // ดัชนี uq_massage_person_day กันไว้ — คนใหม่มีคิวของวันนั้นอยู่แล้ว
+    if (isUniqueViolation(e)) {
+      throw new HttpError(409, "คนที่จะเปลี่ยนไปมีคิวของวันนี้อยู่แล้ว", "same_day");
+    }
+    throw e;
+  }
+  return { ...b, toName: to[0].full_name };
 }
 
 /** ผู้ดูแลยกเลิกคิวของพนักงาน — ช่องนั้นกลับมาว่างให้คนอื่นจองได้ทันที */
@@ -677,6 +765,8 @@ export interface MyBooking {
   slotLabel: string;
   therapistName: string;
   status: string;
+  /** true = คิวด่วน ยกเลิกเองไม่ได้ */
+  flash: boolean;
   /** ยกเลิกได้อยู่ไหม ณ ตอนนี้ */
   cancellable: boolean;
   past: boolean;
@@ -689,10 +779,10 @@ export async function myBookings(
 ): Promise<MyBooking[]> {
   const today = bangkokDate(now);
   const rows = await db()<
-    { id: string; day: string; slot: string; status: string; name: string }[]
+    { id: string; day: string; slot: string; status: string; kind: string; name: string }[]
   >`
     SELECT b.id, to_char(b.day, 'YYYY-MM-DD') AS day, to_char(b.slot_start, 'HH24:MI') AS slot,
-           b.status, t.name
+           b.status, b.kind, t.name
     FROM massage_bookings b
     JOIN massage_therapists t ON t.id = b.therapist_id
     WHERE b.employee_id = ${employeeId}
@@ -710,7 +800,9 @@ export async function myBookings(
       slotLabel: slotLabel(r.slot),
       therapistName: r.name,
       status: r.status,
-      cancellable: r.status === "booked" && startsIn > CUTOFF_MINUTES * 60_000,
+      flash: r.kind === "flash",
+      cancellable:
+        r.status === "booked" && r.kind !== "flash" && startsIn > CUTOFF_MINUTES * 60_000,
       past: startsIn <= 0,
     };
   });

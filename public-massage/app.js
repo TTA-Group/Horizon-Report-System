@@ -89,6 +89,13 @@ function toast(msg) {
  * คืน true เมื่อกดปุ่มยืนยัน · false เมื่อยกเลิกหรือแตะพื้นหลัง
  */
 /** เงื่อนไขการใช้บริการ — ขึ้นในกล่องยืนยันตอนกดจอง เพราะเป็นวินาทีที่ต้องอ่านจริง ๆ */
+/** เงื่อนไขของคิวด่วน — ต่างจากคิวปกติที่ข้อแรกเป็นข้อห้าม ไม่ใช่ข้อแนะนำ */
+const FLASH_TERMS = [
+  "กดแล้ว <b>ยกเลิกในระบบไม่ได้</b>",
+  "หากมาไม่ได้ ต้องหาคนมาแทนเอง แล้วแจ้งฝ่ายบุคคลให้เปลี่ยนชื่อ",
+  "ไม่นับสิทธิ์ 2 ครั้งของเดือนนี้",
+];
+
 const BOOKING_TERMS = [
   "จำกัดสิทธิ์ 2 ครั้ง / ท่าน / เดือน",
   "หากไม่สามารถมาใช้บริการได้ กรุณายกเลิกคิวล่วงหน้าอย่างน้อย 15 นาที",
@@ -98,11 +105,17 @@ const BOOKING_TERMS = [
 function dialog({ icon = "warn", title, body = "", confirm = "ตกลง", cancel = null, danger = false, terms = false }) {
   return new Promise((resolve) => {
     $("#m-ic").className = `ic ${icon}`;
-    $("#m-ic").textContent = icon === "ok" ? "✓" : icon === "err" ? "✕" : "!";
+    $("#m-ic").textContent =
+      icon === "ok" ? "✓" : icon === "err" ? "✕" : icon === "flash" ? "⚡" : "!";
     $("#m-title").textContent = title;
+    const rules = terms === "flash" ? FLASH_TERMS : BOOKING_TERMS;
     $("#m-body").innerHTML =
       escapeHtml(body) +
-      (terms ? `<ul class="terms">${BOOKING_TERMS.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>` : "");
+      (terms
+        ? `<ul class="terms${terms === "flash" ? " flash" : ""}">${rules
+            .map((t) => `<li>${t}</li>`)
+            .join("")}</ul>`
+        : "");
     $("#m-body").style.display = body || terms ? "" : "none";
 
     const btns = $("#m-btns");
@@ -264,6 +277,9 @@ function route() {
 
 /* ---------- หน้าจอง ---------- */
 
+/** มีวันไหนเข้าโหมดคิวด่วนและยังเหลือช่องอยู่ไหม */
+const hasFlashDay = () => (state.days || []).some((d) => d.flash && d.free > 0);
+
 function goBook() {
   const left = Math.max(0, state.quota - state.used);
 
@@ -271,7 +287,9 @@ function goBook() {
   $("#btn-mine").style.display = mine.length ? "" : "none";
   $("#btn-mine").textContent = `ดูคิวของฉัน (${mine.length})`;
 
-  if (left === 0) return goMine({ justBooked: false });
+  // สิทธิ์หมดแล้วก็ยังเข้าหน้าจองได้ ถ้ามีคิวด่วนเปิดอยู่ — ไม่ยิงไลน์บอก
+  // คนจะรู้ว่ามีของเหลือก็ต่อเมื่อเปิดแอปเจอเอง ถ้าเด้งออกตั้งแต่แรกก็ไม่มีทางเจอเลย
+  if (left === 0 && !hasFlashDay()) return goMine({ justBooked: false });
 
   show("s-book");
   renderDays();
@@ -282,21 +300,32 @@ const isMyDay = (day) => activeBookings().some((b) => b.day === day);
 
 function renderDays() {
   const booked = new Set(activeBookings().map((b) => b.day));
+  const noQuota = state.used >= state.quota;
 
   $("#days").innerHTML = state.days
     .map((d) => {
       const mine = booked.has(d.day);
       const full = d.free === 0;
-      const note = mine ? "จองแล้ว" : full ? "เต็มแล้ว" : `ว่าง ${d.free} คิว`;
-      // วันที่จองไปแล้วยังกดเข้าไปดูตารางได้ ปิดแค่การจองซ้ำ
-      // เพราะพนักงานเปิดดูแทนเพื่อนกันว่าวันนั้นเหลือรอบไหน ถ้าปิดตายจะดูให้กันไม่ได้เลย
-      return `<button class="day${mine ? " mine" : ""}" data-day="${escapeHtml(d.day)}" aria-pressed="false"${
-        full && !mine ? " disabled" : ""
-      }>${escapeHtml(d.chip)}<small>${note}</small></button>`;
+      const note = mine
+        ? "จองแล้ว"
+        : full
+          ? "เต็มแล้ว"
+          : d.flash
+            ? `คิวด่วน · เหลือ ${d.free}`
+            : noQuota
+              ? "ใช้สิทธิ์ครบแล้ว"
+              : `ว่าง ${d.free} คิว`;
+      // ทุกวันกดเข้าไปดูตารางได้หมด ปิดแค่การจอง — พนักงานเปิดดูแทนเพื่อนกันว่าวันไหนเหลือรอบอะไร
+      // ปิดจริงเฉพาะวันที่เต็มแล้ว เพราะไม่มีอะไรให้ดู
+      const cls = d.flash ? " flash" : mine ? " mine" : "";
+      return `<button class="day${cls}" data-day="${escapeHtml(d.day)}" aria-pressed="false"${
+        full ? " disabled" : ""
+      }>${d.flash ? "⚡ " : ""}${escapeHtml(d.chip)}<small>${note}</small></button>`;
     })
     .join("");
 
-  const first = state.days.find((d) => d.free > 0 && !booked.has(d.day));
+  const canBookDay = (d) => d.free > 0 && !booked.has(d.day) && (d.flash || !noQuota);
+  const first = state.days.find(canBookDay) || state.days.find((d) => d.free > 0);
   if (first) selectDay(first.day);
   else {
     currentDay = null;
@@ -337,9 +366,19 @@ function headName(name) {
 
 function renderGrid() {
   const th = availability.therapists;
-  const viewOnly = isMyDay(currentDay);
+  const flash = availability.flash === true;
+  // ดูได้อย่างเดียวเมื่อ: จองวันนี้ไปแล้ว · หรือสิทธิ์หมดและวันนี้ยังไม่ใช่คิวด่วน
+  const noQuota = state.used >= state.quota;
+  const viewOnly = isMyDay(currentDay) || (noQuota && !flash);
 
   $("#viewnote").style.display = viewOnly ? "" : "none";
+  $("#viewnote").textContent = isMyDay(currentDay)
+    ? "โปรดเลือกวันอื่น คุณสามารถจองคิวนวดผ่อนคลายได้เพียง 1 คิว/วัน"
+    : "เดือนนี้ใช้สิทธิ์ครบแล้ว วันนี้ดูได้อย่างเดียว — รอคิวด่วนเปิดตอนบ่ายสามของวันก่อนหน้า";
+  $("#flashnote").style.display = flash && !viewOnly ? "" : "none";
+  $("#slots").classList.toggle("flash", flash && !viewOnly);
+  $(".bar").classList.toggle("flash", flash && !viewOnly);
+  $$("#legend em").forEach((el) => el.classList.toggle("f", flash && !viewOnly));
 
   const head = `<tr><th class="tcol"></th>${th
     .map((t) => `<th>${headName(t.name)}</th>`)
@@ -367,6 +406,7 @@ function renderGrid() {
 
   $("#slots").innerHTML = `<table class="grid">${head}${body}</table>`;
   $("#legend").style.display = "";
+  $("#btn-book").textContent = flash && !viewOnly ? "จองคิวด่วน" : "ยืนยันการจอง";
   if (viewOnly) clearPick();
 }
 
@@ -401,13 +441,14 @@ function unpick() {
 async function doBook() {
   if (!pick) return;
   const day = state.days.find((d) => d.day === currentDay);
+  const flash = availability && availability.flash === true;
   const okGo = await dialog({
-    icon: "warn",
-    title: "ยืนยันการจอง",
+    icon: flash ? "flash" : "warn",
+    title: flash ? "คิวด่วน — ยกเลิกไม่ได้" : "ยืนยันการจอง",
     body: `${day ? day.label : currentDay}\nเวลา ${pick.slotLabel}\n${pick.therapistName}`,
-    confirm: "ยืนยัน",
-    cancel: "แก้ไข",
-    terms: true,
+    confirm: flash ? "รับทราบ กดจองเลย" : "ยืนยัน",
+    cancel: flash ? "ไม่เอาแล้ว" : "แก้ไข",
+    terms: flash ? "flash" : true,
   });
   if (!okGo) return;
 
@@ -430,7 +471,7 @@ async function doBook() {
     await loadState();
     goBook();
   } finally {
-    btn.textContent = "ยืนยันการจอง";
+    btn.textContent = flash ? "จองคิวด่วน" : "ยืนยันการจอง";
   }
 }
 
@@ -449,10 +490,12 @@ function goMine({ justBooked }) {
             // สามสถานะ: ใช้บริการไปแล้ว · ใกล้ถึงคิวจนยกเลิกไม่ทัน · ยังยกเลิกได้
             const tag = b.past
               ? { cls: "done", text: "ใช้บริการแล้ว" }
-              : b.cancellable
-                ? { cls: "", text: "จองไว้แล้ว" }
-                : { cls: "soon", text: "ใกล้ถึงคิว" };
-            return `<div class="mycard${b.past ? " off" : ""}">
+              : b.flash
+                ? { cls: "flash", text: "⚡ คิวด่วน" }
+                : b.cancellable
+                  ? { cls: "", text: "จองไว้แล้ว" }
+                  : { cls: "soon", text: "ใกล้ถึงคิว" };
+            return `<div class="mycard${b.past ? " off" : b.flash ? " flashcard" : ""}">
             <div class="mytop">
               <div class="myday">${escapeHtml(b.dayLabel)}</div>
               <span class="mytag ${tag.cls}">${tag.text}</span>
@@ -464,7 +507,9 @@ function goMine({ justBooked }) {
                 ? `<button class="btn-cancel" data-cancel="${escapeHtml(b.id)}">ยกเลิกคิวนี้</button>`
                 : b.past
                   ? ""
-                  : `<div class="mynote">ยกเลิกได้ถึงก่อนรอบเริ่ม 15 นาที — ตอนนี้เลยเวลานั้นแล้ว</div>`
+                  : b.flash
+                    ? `<div class="mynote flashwarn">ยกเลิกในระบบไม่ได้ — หากมาไม่ได้ ต้องหาคนมาแทนเอง แล้วแจ้งฝ่ายบุคคลให้เปลี่ยนชื่อผู้จอง</div>`
+                    : `<div class="mynote">ยกเลิกได้ถึงก่อนรอบเริ่ม 15 นาที — ตอนนี้เลยเวลานั้นแล้ว</div>`
             }
           </div>`;
           },
@@ -472,10 +517,17 @@ function goMine({ justBooked }) {
         .join("")
     : `<div class="empty">ยังไม่ได้จองคิวไหนไว้</div>`;
 
+  // สิทธิ์หมดแล้วแต่มีคิวด่วนเปิดอยู่ ต้องยังมีทางกลับไปหน้าจอง
+  // ไม่งั้นคนที่มีคิวอยู่แล้วจะถูกพามาหน้านี้แล้วตันอยู่ตรงนี้ ไม่มีทางไปเจอคิวด่วนเลย
   const left = Math.max(0, state.quota - state.used);
+  const flash = hasFlashDay();
   const more = $("#btn-book-more");
-  more.style.display = state.open && left > 0 ? "" : "none";
-  more.textContent = list.length ? `จองคิวเพิ่ม (เหลือสิทธิ์อีก ${left} ครั้ง)` : "ไปหน้าจองคิว";
+  more.style.display = state.open && (left > 0 || flash) ? "" : "none";
+  more.textContent = !list.length
+    ? "ไปหน้าจองคิว"
+    : left > 0
+      ? `จองคิวเพิ่ม (เหลือสิทธิ์อีก ${left} ครั้ง)`
+      : "⚡ ดูคิวด่วนของวันนี้";
 
   $("#btn-mine-close").style.display = canCloseWindow() ? "" : "none";
   show("s-mine");
@@ -659,8 +711,9 @@ function renderSheet() {
         <div class="nm">${escapeHtml(c.name || "")}</div>
         <div class="who">${escapeHtml(c.dept || "")}</div>
         <div class="acts">
-          <button data-edit="${escapeHtml(c.bookingId)}">แก้ไขคิว</button>
-          <button class="danger" data-drop="${escapeHtml(c.bookingId)}">ยกเลิกคิว</button>
+          <button data-edit="${escapeHtml(c.bookingId)}">ย้ายรอบ</button>
+          <button data-swap="${escapeHtml(c.bookingId)}">เปลี่ยนคน</button>
+          <button class="danger" data-drop="${escapeHtml(c.bookingId)}">ยกเลิก</button>
         </div>
       </div>`,
         )
@@ -698,6 +751,109 @@ async function editBooking(id) {
     if (e && e.handled) return;
     toast(e.message || "ย้ายคิวไม่สำเร็จ");
   }
+}
+
+/**
+ * เปลี่ยนชื่อผู้จอง — รองรับกติกาคิวด่วนที่ว่า "มาไม่ได้ให้หาคนมาแทนแล้วแจ้งฝ่ายบุคคล"
+ *
+ * ต้องมีเส้นทางนี้จริง ๆ ไม่ใช่ให้ยกเลิกแล้วให้คนใหม่กดเอง เพราะพอยกเลิกช่องจะกลับเข้าคิวด่วน
+ * แล้วคนอื่นตัดหน้าคนที่รับปากไว้ได้ กลายเป็นระบบผิดสัญญาที่ตัวเองบอก
+ */
+async function swapBooking(id) {
+  const cur = sheet.rows.flatMap((r) => r.cells).find((c) => c.bookingId === id);
+  const to = await pickEmployee(cur);
+  if (!to) return;
+  try {
+    await api("/api/massage/admin/reassign", { method: "POST", body: { id, employeeId: to } });
+    toast("เปลี่ยนคนจองเรียบร้อย ระบบแจ้งทั้งสองฝ่ายทางไลน์แล้ว");
+    await goAdmin(sheet.day);
+  } catch (e) {
+    if (e && e.handled) return;
+    toast(e.message || "เปลี่ยนคนจองไม่สำเร็จ");
+  }
+}
+
+/** กล่องค้นชื่อพนักงาน — ค้นจากเซิร์ฟเวอร์ ไม่โหลดทะเบียนทั้งบริษัทมาไว้ในเครื่อง */
+function pickEmployee(cur) {
+  return new Promise((resolve) => {
+    let chosen = null;
+    let timer;
+
+    $("#m-ic").className = "ic warn";
+    $("#m-ic").textContent = "!";
+    $("#m-title").textContent = "เปลี่ยนคนจอง";
+    $("#m-body").style.display = "";
+    $("#m-body").innerHTML = `${escapeHtml(cur && cur.name ? "คิวของ " + cur.name : "")}
+      <div class="finder">
+        <input id="m-find" type="text" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
+        <div class="hits" id="m-hits"><div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div></div>
+      </div>`;
+
+    const btns = $("#m-btns");
+    btns.innerHTML = "";
+    const done = (v) => {
+      $("#backdrop").classList.remove("on");
+      $("#backdrop").onclick = null;
+      $("#m-body").innerHTML = "";
+      resolve(v);
+    };
+    const no = document.createElement("button");
+    no.className = "no";
+    no.textContent = "ไม่ใช่ตอนนี้";
+    no.onclick = () => done(null);
+    btns.appendChild(no);
+    const go = document.createElement("button");
+    go.className = "go";
+    go.textContent = "เปลี่ยนคนจอง";
+    go.disabled = true;
+    go.onclick = () => done(chosen);
+    btns.appendChild(go);
+
+    const search = async (q) => {
+      if (q.trim().length < 2) {
+        $("#m-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
+        return;
+      }
+      try {
+        const r = await api(`/api/massage/admin/employees?q=${encodeURIComponent(q.trim())}`);
+        const list = r.employees || [];
+        $("#m-hits").innerHTML = list.length
+          ? list
+              .map(
+                (e) => `<button class="hit" data-emp="${escapeHtml(e.id)}" aria-pressed="false">
+                  <b>${escapeHtml(e.full_name)}</b>
+                  <span>${escapeHtml(e.employee_code)}${e.dept ? " · " + escapeHtml(e.dept) : ""}</span>
+                </button>`,
+              )
+              .join("")
+          : `<div class="none">ไม่พบพนักงานที่ตรงกับที่ค้น</div>`;
+      } catch {
+        $("#m-hits").innerHTML = `<div class="none">ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง</div>`;
+      }
+    };
+
+    $("#m-find").oninput = (e) => {
+      chosen = null;
+      go.disabled = true;
+      clearTimeout(timer);
+      const q = e.target.value;
+      timer = setTimeout(() => search(q), 250);
+    };
+    $("#m-hits").onclick = (e) => {
+      const b = e.target.closest("[data-emp]");
+      if (!b) return;
+      $$("#m-hits .hit").forEach((x) => x.setAttribute("aria-pressed", "false"));
+      b.setAttribute("aria-pressed", "true");
+      chosen = b.dataset.emp;
+      go.disabled = false;
+    };
+
+    $("#backdrop").classList.add("on");
+    $("#backdrop").onclick = (e) => {
+      if (e.target === $("#backdrop")) done(null);
+    };
+    setTimeout(() => $("#m-find").focus(), 50);
+  });
 }
 
 async function dropBooking(id) {
@@ -812,6 +968,8 @@ function bind() {
     if (c) cancelBooking(c.dataset.cancel);
     const ed = e.target.closest("[data-edit]");
     if (ed) editBooking(ed.dataset.edit);
+    const sw = e.target.closest("[data-swap]");
+    if (sw) swapBooking(sw.dataset.swap);
     const dp = e.target.closest("[data-drop]");
     if (dp) dropBooking(dp.dataset.drop);
     const x = e.target.closest("[data-close]");
