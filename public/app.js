@@ -99,9 +99,14 @@ function setTab(id) {
 /**
  * ล็อกอินของไลน์ค้างสถานะเก่าไว้ — ล้างแล้วลองใหม่ให้หนึ่งครั้ง
  *
- * อาการคือ "code_verifier does not match" เกิดเมื่อการล็อกอินรอบก่อนค้างครึ่งทาง
+ * เกิดได้สองแบบ และทั้งสองแบบผู้ใช้แก้เองไม่ได้ ต้องกู้ให้จากตรงนี้
+ *
+ * แบบที่หนึ่ง "code_verifier does not match" เกิดเมื่อการล็อกอินรอบก่อนค้างครึ่งทาง
  * (ปิดหน้าไปกลางคัน · เปิดซ้ำเร็วเกินไป · เปิดตอนที่ยังตั้งค่า LIFF ไม่เสร็จ)
  * ตัวยืนยันที่เก็บไว้ในเครื่องจึงไม่ตรงกับรหัสที่ไลน์ส่งกลับมา
+ *
+ * แบบที่สอง "ตั๋วเข้าระบบหมดอายุ" เกิดกับคนที่เปิดลิงก์ค้างไว้นาน ๆ แล้วกลับมากดใหม่
+ * ไลน์คืนตั๋วใบเดิมที่หมดอายุแล้วมาให้ ทั้งที่ยังบอกว่าล็อกอินอยู่ (ดู idTokenUsable)
  *
  * ของเดิมขึ้นหน้า "เกิดข้อผิดพลาด" แล้วจบ ผู้ใช้ต้องไปปิดแอปไลน์ทั้งแอปเองถึงจะหาย
  * ซึ่งไม่มีทางเดาได้ จึงล้างสถานะแล้วโหลดใหม่ให้เลย ทำครั้งเดียวพอ
@@ -110,9 +115,38 @@ function setTab(id) {
 const LOGIN_RETRY_KEY = "liff-login-retried";
 const LOGIN_STATE_ERROR = /code[_ ]?verifier|invalid_grant|state does not match/i;
 
-function recoverFromStaleLogin(err) {
-  const msg = (err && (err.message || err.toString())) || "";
-  if (!LOGIN_STATE_ERROR.test(msg)) return false;
+// รหัสที่เซิร์ฟเวอร์ตอบกลับมาเมื่อ "ตั๋วเข้าระบบ" ที่แนบไปใช้ไม่ได้ — ขอตั๋วใบใหม่แล้วหาย
+// ไม่รวม token_config เพราะนั่นคือค่าตั้งค่าไม่ตรงกัน ขอใบใหม่กี่รอบก็ไม่หาย
+// ต้องปล่อยให้ข้อความจริงขึ้นหน้าจอ คนที่แก้ได้คือคนที่เข้าไปตั้งค่า Worker ตัวนั้น
+const LOGIN_TOKEN_ERROR = ["token_expired", "bad_token"];
+
+/**
+ * ตั๋วที่ไลน์ให้มายังใช้ได้อยู่ไหม — ดูวันหมดอายุที่เขียนอยู่ในตัวตั๋วเอง
+ *
+ * ไลน์เก็บตั๋วไว้ในเครื่องแล้วคืนใบเดิมมาให้แม้หมดอายุไปแล้ว โดยที่ liff.isLoggedIn()
+ * ยังตอบว่าล็อกอินอยู่ (สองอย่างนี้คนละใบกัน อายุไม่เท่ากัน) ใครเปิดลิงก์ค้างไว้นาน ๆ
+ * แล้วกลับมากดใหม่ จึงแนบใบที่หมดอายุไปเจอ "เกิดข้อผิดพลาด" โดยไม่มีทางแก้เองได้เลย
+ *
+ * ไม่ได้ตรวจลายเซ็นและไม่ต้องตรวจ — เซิร์ฟเวอร์ตรวจของจริงอยู่แล้ว ตรงนี้แค่ดูว่า
+ * ควรขอใบใหม่ก่อนส่งออกไปหรือเปล่า
+ */
+function idTokenUsable(token) {
+  const mid = String(token || "").split(".")[1];
+  if (!mid) return false; // ไม่มีตั๋ว หรือไม่ใช่รูปแบบที่อ่านได้
+  let exp = 0;
+  try {
+    const raw = atob(mid.replace(/-/g, "+").replace(/_/g, "/"));
+    const m = raw.match(/"exp"\s*:\s*(\d+)/);
+    exp = m ? Number(m[1]) * 1000 : 0;
+  } catch {
+    return true; // อ่านไม่ออกก็ปล่อยให้เซิร์ฟเวอร์เป็นคนตัดสิน ดีกว่าไล่ผู้ใช้ไปล็อกอินใหม่ฟรี ๆ
+  }
+  if (!exp) return true;
+  return exp - Date.now() > 60000; // เหลือไม่ถึงหนึ่งนาที ถือว่าใช้ไม่ได้แล้ว
+}
+
+/** ล้างล็อกอินของไลน์แล้วเริ่มใหม่ — ทำได้ครั้งเดียวต่อการเปิดหนึ่งรอบ คืน false ถ้าเคยลองแล้ว */
+function restartLineLogin() {
   try {
     if (sessionStorage.getItem(LOGIN_RETRY_KEY)) return false; // ลองไปแล้วรอบหนึ่ง
     sessionStorage.setItem(LOGIN_RETRY_KEY, "1");
@@ -134,6 +168,13 @@ function recoverFromStaleLogin(err) {
   return true;
 }
 
+function recoverFromStaleLogin(err) {
+  const msg = (err && (err.message || err.toString())) || "";
+  const code = (err && err.code) || "";
+  if (!LOGIN_STATE_ERROR.test(msg) && !LOGIN_TOKEN_ERROR.includes(code)) return false;
+  return restartLineLogin();
+}
+
 /* ---------- boot ---------- */
 async function boot() {
   try {
@@ -147,6 +188,8 @@ async function boot() {
       return;
     }
     idToken = liff.getIDToken();
+    // ตั๋วหมดอายุตั้งแต่ยังไม่ได้ส่ง — ขอใบใหม่เลย ดีกว่าปล่อยให้ไปโดนปฏิเสธที่ปลายทาง
+    if (!idTokenUsable(idToken) && restartLineLogin()) return;
     // ยิงข้อมูลตั้งต้น (หมวด/ฝ่าย/ชั้น) คู่ขนานไปกับการขอ session — ทั้งคู่ต้องใช้ token
     // จึงเริ่มได้ทันทีที่ได้ token ไม่ต้องรอให้ session เสร็จก่อน
     mastersPromise = api("/api/masters").catch(() => null);
