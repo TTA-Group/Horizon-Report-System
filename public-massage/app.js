@@ -502,15 +502,17 @@ function goMine({ justBooked }) {
     ? list
         .map(
           (b) => {
-            // สามสถานะ: ใช้บริการไปแล้ว · ใกล้ถึงคิวจนยกเลิกไม่ทัน · ยังยกเลิกได้
-            const tag = b.past
-              ? { cls: "done", text: "ใช้บริการแล้ว" }
-              : b.flash
-                ? { cls: "flash", text: "⚡ คิวด่วน" }
-                : b.cancellable
-                  ? { cls: "", text: "จองไว้แล้ว" }
-                  : { cls: "soon", text: "ใกล้ถึงคิว" };
-            return `<div class="mycard${b.past ? " off" : b.flash ? " flashcard" : ""}">
+            // ป้ายบอก "สถานะของคิวนี้" อย่างเดียว — ยกเลิกไปแล้ว · ใช้บริการไปแล้ว · ยังอยู่
+            // ส่วนเรื่องยกเลิกทันหรือไม่ทัน อยู่ในบรรทัดใต้การ์ดซึ่งบอกได้ละเอียดกว่าป้ายคำเดียว
+            const tag =
+              b.status === "cancelled"
+                ? { cls: "void", text: "ยกเลิกแล้ว" }
+                : b.past
+                  ? { cls: "done", text: "ใช้แล้ว" }
+                  : b.flash
+                    ? { cls: "flash", text: "⚡ ยืนยันแล้ว" }
+                    : { cls: "", text: "ยืนยันแล้ว" };
+            return `<div class="mycard${b.past ? " off" : ""}">
             <div class="mytop">
               <div class="myday">${escapeHtml(b.dayLabel)}</div>
               <span class="mytag ${tag.cls}">${tag.text}</span>
