@@ -12,7 +12,7 @@
 // และเป็นการเรียกจากเครื่องต่อเครื่อง ไม่มีคนล็อกอินให้ตรวจสิทธิ์แบบปกติได้
 
 import { requireCron } from "./_lib/cron";
-import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
+import { HttpError, json, listFrom, methodGuard, readJson, run } from "./_lib/http";
 import { planRichMenus } from "./_lib/richmenu";
 
 /** จำกัดต่อหนึ่งคำขอ ให้ฝั่งที่เรียกแบ่งส่งเป็นชุด ๆ แทนการยัดมาทีเดียวทั้งบริษัท */
@@ -23,8 +23,10 @@ export default async (req: Request): Promise<Response> =>
     methodGuard(req, "POST");
     requireCron(req);
 
-    const { userIds } = await readJson<{ userIds?: unknown }>(req);
-    if (!Array.isArray(userIds)) throw new HttpError(400, "userIds ต้องเป็นรายการ");
+    const userIds = listFrom(await readJson<unknown>(req), "userIds");
+    if (userIds === null) {
+      throw new HttpError(400, "ส่ง userIds มาเป็นรายการ หรือส่งรายการมาตรง ๆ ก็ได้");
+    }
     const ids = userIds
       .filter((v): v is string => typeof v === "string")
       .map((v) => v.trim())
