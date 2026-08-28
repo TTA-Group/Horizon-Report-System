@@ -1148,6 +1148,9 @@ async function goLinkAccounts() {
   show("s-link");
   $("#linkList").innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
   $("#link-tally").textContent = "—";
+  $("#imp-box").style.display = "none";
+  $("#imp-open").style.display = "";
+  $("#imp-result").innerHTML = "";
   try {
     const r = await api("/api/admin/followers");
     linkWaiting = r.waiting || [];
@@ -1290,6 +1293,123 @@ function pickEmployeeFor(follower) {
   });
 }
 
+/* ---------- วางข้อมูลทีละหลายคน ----------
+ *
+ * ฝ่ายบุคคลรวบรวมรหัสพนักงานคู่กับบัญชีไลน์มาเองในไฟล์ตาราง ก่อนหน้านี้ต้องเอาไปแปะ
+ * เป็นคำสั่ง SQL รันที่ฐานข้อมูลทุกครั้ง ซึ่งเป็นงานที่คนไม่ได้เขียนโปรแกรมไม่ควรต้องทำ
+ * และพลาดครั้งเดียวก็แก้ยาก
+ */
+
+const IMPORT_TAG = {
+  ready: { cls: "ok", text: "พร้อมผูก" },
+  done: { cls: "ok", text: "ผูกแล้ว" },
+  duplicate: { cls: "skip", text: "ซ้ำในรายการ" },
+  emp_taken: { cls: "skip", text: "ผูกบัญชีอื่นแล้ว" },
+  line_taken: { cls: "skip", text: "ไลน์นี้มีเจ้าของ" },
+  not_found: { cls: "bad", text: "ไม่พบรหัสนี้" },
+  suspended: { cls: "bad", text: "ถูกระงับสิทธิ์" },
+  bad_user_id: { cls: "bad", text: "userId ไม่ถูกต้อง" },
+  bad_row: { cls: "bad", text: "ข้อมูลไม่ครบ" },
+};
+
+/**
+ * แยกคอลัมน์จากข้อความที่วางมา โดยดูจากหน้าตาของข้อมูล ไม่ใช่จากลำดับคอลัมน์
+ *
+ * ไฟล์ตารางของแต่ละคนเรียงคอลัมน์ไม่เหมือนกัน และการบังคับลำดับแปลว่าคนวางต้อง
+ * ไปจัดคอลัมน์ใหม่ก่อนทุกครั้ง ซึ่งเป็นอีกจุดที่พลาดได้ — ดูจากหน้าตาแทน
+ * รหัสไลน์ขึ้นต้นด้วย U และยาว 33 ตัว · รหัสพนักงานเป็นตัวเลขล้วน · ที่เหลือคือชื่อ
+ */
+function parseImportLine(line) {
+  const parts = line.split(/[\t,;]+|\s{2,}/).map((x) => x.trim()).filter(Boolean);
+  const flat = parts.length > 1 ? parts : line.trim().split(/\s+/);
+  let userId = "", code = "";
+  const rest = [];
+  for (const p of flat) {
+    if (!userId && /^U[0-9a-f]{32}$/i.test(p)) userId = p;
+    else if (!code && /^\d+$/.test(p)) code = p;
+    else rest.push(p);
+  }
+  return { code, userId, lineName: rest.join(" ") };
+}
+
+function readImportRows() {
+  return $("#imp-text").value
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map(parseImportLine);
+}
+
+function renderImportRows(rows, applied) {
+  const ready = rows.filter((r) => r.status === "ready").length;
+  const list = rows
+    .map((r) => {
+      const tag = IMPORT_TAG[r.status] || { cls: "skip", text: r.status };
+      return `<div class="irow">
+        <div class="iw">
+          <div class="inm">${esc(r.employeeName || r.lineName || "—")}</div>
+          <div class="isub"><b>${esc(r.code || "ไม่มีรหัส")}</b>${
+            r.lineName && r.employeeName ? " · ไลน์: " + esc(r.lineName) : ""
+          }</div>
+        </div>
+        <span class="itag ${tag.cls}">${tag.text}</span>
+      </div>`;
+    })
+    .join("");
+
+  $("#imp-result").innerHTML = `
+    <div class="section" style="margin-top:16px">ผลการตรวจสอบ ${rows.length} บรรทัด</div>
+    <p class="hintnote">ดูให้แน่ใจว่า <b>ชื่อในทะเบียน</b> กับ <b>ชื่อในไลน์</b> เป็นคนเดียวกันจริง
+      ผูกผิดแล้วคนหนึ่งจะได้คิวนวดและเรื่องแจ้งของอีกคน</p>
+    <div class="plist">${list}</div>
+    ${
+      applied
+        ? `<p class="hintnote" style="margin-top:12px">ผูกให้แล้ว ${ready} คน</p>`
+        : ready > 0
+          ? `<button class="send" id="imp-apply" style="margin-top:12px">ผูกบัญชีให้ ${ready} คน</button>`
+          : `<p class="hintnote" style="margin-top:12px">ไม่มีบรรทัดไหนที่ผูกได้</p>`
+    }`;
+}
+
+async function checkImport() {
+  const rows = readImportRows();
+  if (!rows.length) return toast("ยังไม่ได้วางข้อมูล");
+  if (rows.length > 30) return toast("ครั้งละไม่เกิน 30 คน กรุณาแบ่งวางเป็นชุด");
+  try {
+    const r = await api("/api/admin/followers/import", { method: "POST", body: { rows } });
+    renderImportRows(r.rows || [], false);
+  } catch (e) {
+    toast(e.message || "ตรวจสอบไม่สำเร็จ");
+  }
+}
+
+async function applyImport() {
+  const rows = readImportRows();
+  const ok = await confirmDialog({
+    title: "ผูกบัญชีตามรายการนี้?",
+    message:
+      "ระบบจะผูกเฉพาะบรรทัดที่ขึ้นว่า “พร้อมผูก” เจ้าตัวจะเปิดแอปใช้งานได้ทันที " +
+      "โดยไม่ต้องลงทะเบียนเอง ถ้าผูกผิด ปลดได้ที่ทะเบียนพนักงาน",
+    confirmLabel: "ผูกบัญชี",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+  try {
+    const r = await api("/api/admin/followers/import", { method: "POST", body: { rows, apply: true } });
+    renderImportRows(r.rows || [], true);
+    toast(`ผูกบัญชีให้ ${r.linked} คนแล้ว`);
+    $("#imp-text").value = "";
+    // ตัวเลขสรุปกับรายชื่อที่รอจับคู่ด้านล่างเปลี่ยนไปแล้ว ต้องโหลดใหม่
+    const fresh = await api("/api/admin/followers");
+    linkWaiting = fresh.waiting || [];
+    $("#link-tally").innerHTML =
+      `เป็นเพื่อนกับ LINE OA ทั้งหมด <b>${fresh.total}</b> คน · ผูกรหัสพนักงานแล้ว <b>${fresh.linked}</b> คน`;
+    renderLinkList();
+  } catch (e) {
+    toast(e.message || "ผูกบัญชีไม่สำเร็จ");
+  }
+}
+
 function bind() {
   // ลงทะเบียน
   $("#btn-check").onclick = checkEmp;
@@ -1314,6 +1434,20 @@ function bind() {
   $("#mg-role").onclick = () => goRoles({ add: true });
   $("#mg-link").onclick = goLinkAccounts;
   $("#link-back").onclick = goMe;
+  $("#imp-open").onclick = () => {
+    $("#imp-open").style.display = "none";
+    $("#imp-box").style.display = "";
+    $("#imp-result").innerHTML = "";
+    setTimeout(() => $("#imp-text").focus(), 50);
+  };
+  $("#imp-cancel").onclick = () => {
+    $("#imp-box").style.display = "none";
+    $("#imp-open").style.display = "";
+  };
+  $("#imp-check").onclick = checkImport;
+  $("#imp-result").addEventListener("click", (e) => {
+    if (e.target.closest("#imp-apply")) applyImport();
+  });
   $("#linkList").addEventListener("click", (e) => {
     const row = e.target.closest("[data-follower]");
     if (row) linkFollower(row.dataset.follower);

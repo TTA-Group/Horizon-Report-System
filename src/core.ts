@@ -24,7 +24,7 @@ import authVerifyEmployee from "./api/auth-verify-employee";
 import authLink from "./api/auth-link";
 import adminAdmins from "./api/admin-admins";
 import adminEmployees from "./api/admin-employees";
-import { followersIngest, followersLink, followersList } from "./api/admin-followers";
+import { followersImport, followersIngest, followersLink, followersList } from "./api/admin-followers";
 import adminRichMenuPlan from "./api/admin-richmenu-plan";
 import adminEmployeeCreate from "./api/admin-employee-create";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
@@ -61,6 +61,7 @@ function route(pathname: string, method: string): Handler | null {
   if (seg[1] === "admin" && seg[2] === "followers") {
     if (seg.length === 3) return method === "POST" ? followersIngest : followersList;
     if (seg.length === 4 && seg[3] === "link") return method === "POST" ? followersLink : null;
+    if (seg.length === 4 && seg[3] === "import") return method === "POST" ? followersImport : null;
     return null;
   }
 
