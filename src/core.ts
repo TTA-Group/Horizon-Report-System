@@ -24,6 +24,7 @@ import authVerifyEmployee from "./api/auth-verify-employee";
 import authLink from "./api/auth-link";
 import adminAdmins from "./api/admin-admins";
 import adminEmployees from "./api/admin-employees";
+import adminRichMenuPlan from "./api/admin-richmenu-plan";
 import adminEmployeeCreate from "./api/admin-employee-create";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
 import adminEmployeeUnlink from "./api/admin-employee-unlink";
@@ -54,6 +55,11 @@ function route(pathname: string, method: string): Handler | null {
 
   // รายชื่อฝ่ายและชั้น — หน้าเพิ่มพนักงานของ HR ใช้เติมตัวเลือกในฟอร์ม
   if (seg[1] === "masters" && seg.length === 2) return masters;
+
+  // /api/admin/richmenu/plan — ไล่ตั้ง rich menu ให้คนที่เป็นเพื่อนอยู่ก่อนแล้ว (เรียกจากเครื่องต่อเครื่อง)
+  if (seg[1] === "admin" && seg[2] === "richmenu" && seg[3] === "plan" && seg.length === 4) {
+    return method === "POST" ? adminRichMenuPlan : null;
+  }
 
   // /api/admin/admins — ใครถือสิทธิ์อะไรอยู่บ้าง (อ่านอย่างเดียว การแก้ไปที่ employees/:id/departments)
   if (seg[1] === "admin" && seg[2] === "admins" && seg.length === 3) return adminAdmins;
