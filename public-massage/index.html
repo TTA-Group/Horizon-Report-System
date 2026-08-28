@@ -124,7 +124,6 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .bar.flash .btn-submit{background:var(--flash)}
 .bar.flash .btn-submit:disabled{background:#CFD7DD}
 .mytag.flash{background:var(--flash-soft);color:var(--flash-deep)}
-.mycard.flashcard{border-left-color:var(--flash)}
 .mynote.flashwarn{background:var(--flash-soft);color:#8A5A2B;border:1px solid var(--flash-line)}
 .modal .ic.flash{background:var(--flash-soft);color:var(--flash-deep)}
 .modal .btns .go.flash{background:var(--flash)}
@@ -241,15 +240,13 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 
 /* การ์ดคิว — คิวที่ยังไม่ถึงมีแถบเขียวบาง ๆ ด้านซ้าย คิวที่ผ่านไปแล้วเป็นแถบเทา
    ไม่ขีดฆ่าเวลาของคิวที่ผ่านไปแล้ว เพราะขีดฆ่าสื่อว่า "ถูกยกเลิก" ทั้งที่ความจริงคือใช้บริการไปแล้ว */
-.mycard{background:var(--surface);border:1px solid var(--hair);border-radius:16px;padding:15px 16px;
-  border-left:3px solid var(--green)}
-.mycard.off{border-left-color:var(--hair)}
+.mycard{background:var(--surface);border:1px solid var(--hair);border-radius:16px;padding:15px 16px}
 .mytop{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .myday{font-size:13.5px;font-weight:500;color:var(--slate)}
 .mytag{flex:0 0 auto;font-size:11px;font-weight:600;border-radius:999px;padding:4px 10px;
   background:var(--green-soft);color:var(--green-deep)}
 .mytag.done{background:var(--sunk);color:var(--slate)}
-.mytag.soon{background:var(--amber-soft);color:var(--amber-ink)}
+.mytag.void{background:var(--red-soft);color:var(--red-deep)}
 .mytime{font-family:'IBM Plex Mono',monospace;font-size:23px;font-weight:600;color:var(--ink);
   margin:7px 0 3px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .mycard.off .mytime{color:var(--slate)}
