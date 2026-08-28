@@ -41,17 +41,63 @@ async function lineJwks(refresh: boolean): Promise<JSONWebKeySet> {
   return set;
 }
 
-/** ตรวจลายเซ็นด้วยกุญแจชุดปัจจุบัน — คืน null ถ้าลายเซ็น/อายุ/ผู้รับไม่ผ่าน */
-async function tryVerify(idToken: string, clientId: string, refresh: boolean): Promise<JWTPayload | null> {
+/**
+ * สาเหตุที่ตั๋วเข้าระบบใช้ไม่ได้ — ต้องแยกให้ออก เพราะสามสาเหตุนี้แก้คนละทางกันคนละขั้ว
+ *
+ * เคยเสียเวลาไล่หาสาเหตุมาแล้วรอบหนึ่ง เพราะทุกสาเหตุขึ้นข้อความเดียวกันหมดว่า
+ * "invalid LINE id token" ซึ่งไม่ได้บอกเลยว่าต้องไปแก้ที่ผู้ใช้ ที่ค่าตั้งค่า หรือที่ไหน
+ *   หมดอายุ      → ผู้ใช้เปิดใหม่ก็หาย หน้าจอขอตั๋วใบใหม่ให้เองได้
+ *   ค่าตั้งไม่ตรง  → ผู้ใช้ทำอะไรก็ไม่หาย ต้องไปแก้ LINE_LOGIN_CHANNEL_ID ของ Worker ตัวนั้น
+ *   อ่านไม่ออก    → ตั๋วเพี้ยนหรือกุญแจของไลน์เปลี่ยน ลองดึงกุญแจใหม่แล้วตรวจซ้ำได้
+ */
+interface TokenFailure {
+  code: "token_expired" | "token_config" | "bad_token";
+  message: string;
+  /** ดึงกุญแจสาธารณะชุดใหม่แล้วตรวจซ้ำมีโอกาสช่วยไหม — มีแค่กรณีลายเซ็นเท่านั้น */
+  retryWithFreshKeys: boolean;
+}
+
+function classifyTokenError(e: unknown): TokenFailure {
+  const err = e as { code?: string; claim?: string } | null;
+  if (err?.code === "ERR_JWT_EXPIRED") {
+    return {
+      code: "token_expired",
+      message: "การล็อกอินไลน์หมดอายุแล้ว กรุณาปิดหน้านี้แล้วเปิดลิงก์ใหม่อีกครั้ง",
+      retryWithFreshKeys: false,
+    };
+  }
+  if (err?.code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
+    return {
+      code: "token_config",
+      message:
+        err.claim === "aud"
+          ? "ค่า LINE_LOGIN_CHANNEL_ID ของระบบนี้ไม่ตรงกับช่องทางล็อกอินของ LIFF ที่เปิดเข้ามา"
+          : `ตั๋วเข้าระบบมีค่า ${err.claim ?? "ที่จำเป็น"} ไม่ถูกต้อง`,
+      retryWithFreshKeys: false,
+    };
+  }
+  return {
+    code: "bad_token",
+    message: "ตั๋วเข้าระบบของไลน์ใช้ไม่ได้ กรุณาปิดหน้านี้แล้วเปิดลิงก์ใหม่อีกครั้ง",
+    retryWithFreshKeys: true,
+  };
+}
+
+type VerifyResult =
+  | { payload: JWTPayload; failure?: undefined }
+  | { payload?: undefined; failure: TokenFailure };
+
+/** ตรวจลายเซ็นด้วยกุญแจชุดปัจจุบัน — ถ้าไม่ผ่าน คืนเหตุผลมาด้วย ไม่ใช่แค่ null */
+async function tryVerify(idToken: string, clientId: string, refresh: boolean): Promise<VerifyResult> {
   const keys = createLocalJWKSet(await lineJwks(refresh));
   try {
     const { payload } = await jwtVerify(idToken, keys, {
       issuer: "https://access.line.me",
       audience: clientId,
     });
-    return payload;
-  } catch {
-    return null;
+    return { payload };
+  } catch (e) {
+    return { failure: classifyTokenError(e) };
   }
 }
 
@@ -64,12 +110,20 @@ export async function verifyIdToken(idToken: string): Promise<LineProfile> {
   if (!clientId) throw new Error("LINE_LOGIN_CHANNEL_ID is not set");
 
   const usedCache = jwksIsFresh();
-  let payload = await tryVerify(idToken, clientId, false);
-  // ถ้าใช้กุญแจที่แคชไว้แล้วไม่ผ่าน อาจเป็นเพราะ LINE เปลี่ยนกุญแจ — ดึงใหม่แล้วลองอีกครั้งเดียว
-  if (!payload && usedCache) payload = await tryVerify(idToken, clientId, true);
-  if (!payload) throw new HttpError(401, "invalid LINE id token");
+  let out = await tryVerify(idToken, clientId, false);
+  // ลายเซ็นไม่ผ่านทั้งที่ใช้กุญแจที่แคชไว้ อาจเป็นเพราะ LINE เปลี่ยนกุญแจ — ดึงใหม่แล้วลองอีกครั้งเดียว
+  // สาเหตุอื่น (หมดอายุ · ค่าตั้งไม่ตรง) กุญแจชุดใหม่ช่วยไม่ได้ ไม่ต้องเสียเวลายิงออกไปซ้ำ
+  if (out.failure && usedCache && out.failure.retryWithFreshKeys) {
+    out = await tryVerify(idToken, clientId, true);
+  }
+  if (out.failure) {
+    // ลงบันทึกไว้เฉพาะรหัสสาเหตุ ไม่ลงตัวตั๋ว เพราะตั๋วใช้เข้าระบบแทนเจ้าตัวได้
+    console.warn("[line] ตั๋วเข้าระบบใช้ไม่ได้:", out.failure.code);
+    throw new HttpError(401, out.failure.message, out.failure.code);
+  }
+  const payload = out.payload;
 
-  if (typeof payload.sub !== "string") throw new HttpError(401, "invalid LINE id token payload");
+  if (typeof payload.sub !== "string") throw new HttpError(401, "ตั๋วเข้าระบบของไลน์ไม่มีรหัสผู้ใช้", "bad_token");
   return {
     sub: payload.sub,
     name: typeof payload.name === "string" ? payload.name : undefined,
