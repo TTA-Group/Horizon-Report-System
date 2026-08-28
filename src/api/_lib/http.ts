@@ -41,6 +41,33 @@ export async function readJson<T = Record<string, unknown>>(req: Request): Promi
 }
 
 /**
+ * ดึงรายการออกมาจาก body ที่เครื่องมือ low-code ส่งมา ไม่ว่าจะส่งมาในรูปแบบไหน
+ *
+ * Power Automate แปลงอาร์เรย์เป็นข้อความเงียบ ๆ เมื่อเอาไปแทรกกลาง JSON ที่พิมพ์เอง
+ * สิ่งที่มาถึงจึงเป็นได้ทั้งสามแบบ และคนตั้งค่าฝั่งนั้นไม่มีทางรู้ว่าตัวเองส่งแบบไหนอยู่
+ *   [ {...} ]                 ส่งเป็นรายการมาตรง ๆ
+ *   { key: [ {...} ] }        ห่อด้วยชื่อฟิลด์
+ *   { key: "[ {...} ]" }      ห่อแล้วถูกแปลงเป็นข้อความ
+ *
+ * รับให้หมดทั้งสามแบบ เพราะปลายทางตรวจเนื้อในทีละรายการอยู่แล้ว การบังคับรูปแบบ
+ * จึงไม่ได้ทำให้ปลอดภัยขึ้น มีแต่ทำให้คนตั้งค่าต้องลองผิดลองถูกอยู่นาน
+ */
+export function listFrom(body: unknown, key: string): unknown[] | null {
+  if (Array.isArray(body)) return body;
+  const raw = (body as Record<string, unknown> | null)?.[key];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
  * สรุปข้อผิดพลาดเป็นข้อความสั้น ๆ ที่ปลอดภัยพอจะส่งออกไปได้
  * ตัดสตริงเชื่อมต่อฐานข้อมูลทิ้ง เพราะมีรหัสผ่านอยู่ข้างใน
  */

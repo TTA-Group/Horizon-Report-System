@@ -13,7 +13,7 @@ import { getSession, invalidateSessionByLineUserId, requireAdmin } from "./_lib/
 import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { requireCron } from "./_lib/cron";
 import { db } from "./_lib/db";
-import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
+import { HttpError, json, listFrom, methodGuard, readJson, run } from "./_lib/http";
 import { syncRichMenu } from "./_lib/richmenu";
 
 /** จำกัดต่อหนึ่งคำขอ ให้ฝั่งที่ส่งแบ่งเป็นชุด แทนการยัดมาทีเดียวทั้งบริษัท */
@@ -31,8 +31,10 @@ export const followersIngest = async (req: Request): Promise<Response> =>
     methodGuard(req, "POST");
     requireCron(req);
 
-    const { followers } = await readJson<{ followers?: unknown }>(req);
-    if (!Array.isArray(followers)) throw new HttpError(400, "followers ต้องเป็นรายการ");
+    const followers = listFrom(await readJson<unknown>(req), "followers");
+    if (followers === null) {
+      throw new HttpError(400, "ส่ง followers มาเป็นรายการ หรือส่งรายการมาตรง ๆ ก็ได้");
+    }
     if (followers.length > MAX_BATCH) {
       throw new HttpError(400, `ส่งได้ครั้งละไม่เกิน ${MAX_BATCH} รายชื่อ กรุณาแบ่งส่งเป็นชุด`);
     }
