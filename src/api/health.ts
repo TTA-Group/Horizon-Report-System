@@ -21,6 +21,10 @@ const CONFIG_KEYS = [
   "ADMIN_EMPLOYEE_CODES",
   "MASSAGE_WEBHOOK_URL",
   "CRON_SECRET",
+  // rich menu สลับเองไม่ได้ถ้าขาดตัวใดตัวหนึ่ง และอาการคือ "เมนูไม่เปลี่ยน" เฉย ๆ
+  // ไม่มี error ให้เห็นที่ไหนเลย จึงต้องตรวจได้จากตรงนี้ว่าตั้งค่าครบหรือยัง
+  "RICHMENU_NEW_ID",
+  "RICHMENU_MEMBER_ID",
 ];
 
 export default async (req: Request): Promise<Response> =>
