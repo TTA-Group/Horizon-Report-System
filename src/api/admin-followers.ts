@@ -151,3 +151,119 @@ export const followersLink = async (req: Request): Promise<Response> =>
     await syncRichMenu(lineUserId);
     return json({ ok: true, name: emp[0].full_name });
   });
+
+/**
+ * POST /api/admin/followers/import — วางข้อมูลทีละหลายคนแล้วผูกให้ในคราวเดียว
+ *
+ * มีเพราะข้อมูลที่ฝ่ายบุคคลรวบรวมมาเองอยู่ในไฟล์ตาราง ไม่ได้อยู่ในระบบ ก่อนหน้านี้
+ * ต้องเอาไปแปะเป็นคำสั่ง SQL รันที่ฐานข้อมูลทุกครั้ง ซึ่งเป็นงานที่คนไม่ได้เขียนโปรแกรม
+ * ไม่ควรต้องทำ และพลาดครั้งเดียวก็แก้ยาก
+ *
+ * ทำงานสองจังหวะ: apply=false คือตรวจอย่างเดียว ยังไม่เขียนอะไรลงฐานข้อมูล
+ * ให้คนดูก่อนว่าชื่อในไลน์กับชื่อในทะเบียนเป็นคนเดียวกันจริงไหม แล้วค่อยยืนยัน
+ * ด่านนี้สำคัญที่สุด เพราะจับคู่ผิดแปลว่าคนหนึ่งได้คิวนวดและเรื่องแจ้งของอีกคน
+ */
+const MAX_IMPORT = 30;
+
+interface ImportRow {
+  code?: unknown;
+  userId?: unknown;
+  lineName?: unknown;
+}
+
+export const followersImport = async (req: Request): Promise<Response> =>
+  run(async () => {
+    methodGuard(req, "POST");
+    const s = await getSession(req);
+    requireAdmin(s);
+
+    const body = await readJson<{ rows?: unknown; apply?: boolean }>(req);
+    const raw = Array.isArray(body.rows) ? (body.rows as ImportRow[]) : null;
+    if (raw === null) throw new HttpError(400, "ไม่มีข้อมูลส่งมา");
+    if (raw.length > MAX_IMPORT) {
+      // เพดานนี้มาจากจำนวนคำขอย่อยที่ Worker ยิงออกได้ต่อหนึ่งคำขอ (สลับเมนูคนละหนึ่งครั้ง)
+      throw new HttpError(400, `วางได้ครั้งละไม่เกิน ${MAX_IMPORT} คน กรุณาแบ่งวางเป็นชุด`);
+    }
+
+    const rows = raw.map((r) => ({
+      code: String(r.code ?? "").trim(),
+      userId: String(r.userId ?? "").trim(),
+      lineName: String(r.lineName ?? "").trim() || null,
+    }));
+
+    const sql = db();
+    const codes = rows.map((r) => r.code);
+    const uids = rows.map((r) => r.userId);
+
+    const emps = await sql<{ id: string; employee_code: string; full_name: string; status: string }[]>`
+      SELECT id, employee_code, full_name, status FROM employees WHERE employee_code = ANY(${codes})
+    `;
+    const byCode = new Map(emps.map((e) => [e.employee_code, e]));
+
+    const taken = await sql<{ employee_id: string; line_user_id: string }[]>`
+      SELECT employee_id, line_user_id FROM line_accounts
+      WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
+        AND (employee_id = ANY(${emps.map((e) => e.id)}::uuid[]) OR line_user_id = ANY(${uids}))
+    `;
+    const empTaken = new Set(taken.map((t) => t.employee_id));
+    const lineTaken = new Set(taken.map((t) => t.line_user_id));
+
+    // ซ้ำกันเองในรายการที่วางมา — เจอบ่อยเวลาก๊อปจากตารางแล้วมีบรรทัดซ้ำ
+    const seenCode = new Map<string, number>();
+    const seenUid = new Map<string, number>();
+    rows.forEach((r, i) => {
+      if (!seenCode.has(r.code)) seenCode.set(r.code, i);
+      if (!seenUid.has(r.userId)) seenUid.set(r.userId, i);
+    });
+
+    const decided = rows.map((r, i) => {
+      const e = byCode.get(r.code);
+      const status = !r.code || !r.userId
+        ? "bad_row"
+        : !r.userId.startsWith("U")
+          ? "bad_user_id"
+          : seenCode.get(r.code) !== i || seenUid.get(r.userId) !== i
+            ? "duplicate"
+            : !e
+              ? "not_found"
+              : e.status !== "active"
+                ? "suspended"
+                : empTaken.has(e.id)
+                  ? "emp_taken"
+                  : lineTaken.has(r.userId)
+                    ? "line_taken"
+                    : "ready";
+      return { ...r, employeeName: e?.full_name ?? null, status };
+    });
+
+    if (body.apply !== true) {
+      return json({ ok: true, applied: false, rows: decided });
+    }
+
+    const ready = decided.filter((r) => r.status === "ready");
+    for (const r of ready) {
+      const e = byCode.get(r.code)!;
+      await sql`
+        INSERT INTO line_followers (line_user_id, display_name)
+        VALUES (${r.userId}, ${r.lineName})
+        ON CONFLICT (line_user_id) DO UPDATE
+          SET display_name = EXCLUDED.display_name, fetched_at = now()
+      `;
+      await sql`
+        INSERT INTO line_accounts (employee_id, line_user_id, channel_key, display_name)
+        VALUES (${e.id}, ${r.userId}, ${CHANNEL_KEY}, ${r.lineName})
+        ON CONFLICT DO NOTHING
+      `;
+      invalidateSessionByLineUserId(r.userId);
+      // ผูกแล้วต้องได้เมนูใช้งานทันที เหมือนคนที่ลงทะเบียนเอง
+      await syncRichMenu(r.userId);
+    }
+
+    console.log("[link] นำเข้าเป็นชุด", ready.length, "คน โดย", s.employee.employee_code);
+    return json({
+      ok: true,
+      applied: true,
+      linked: ready.length,
+      rows: decided.map((r) => (r.status === "ready" ? { ...r, status: "done" } : r)),
+    });
+  });

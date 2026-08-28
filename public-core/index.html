@@ -328,6 +328,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .frow .fnm{font-size:13.5px;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frow .fid{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--slate);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── วางข้อมูลทีละหลายคน ── */
+.hintnote{font-size:11.5px;color:var(--slate);line-height:1.7;margin-bottom:10px}
+.hintnote b{color:var(--ink);font-weight:600}
+#imp-text{width:100%;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.7;
+  border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface);
+  color:var(--ink);outline:none;resize:vertical}
+#imp-text:focus{border-color:var(--green)}
+.irow{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
+.irow:last-child{border-bottom:0}
+.irow .iw{flex:1;min-width:0}
+.irow .inm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irow .isub{font-size:11px;color:var(--slate);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irow .isub b{font-family:'IBM Plex Mono',monospace;font-weight:400}
+.itag{flex:none;font-size:10.5px;font-weight:600;border-radius:999px;padding:3px 9px}
+.itag.ok{background:var(--green-soft);color:var(--green-deep)}
+.itag.skip{background:var(--canvas);color:var(--slate)}
+.itag.bad{background:#FCEBE7;color:#B3341D}
 </style>
 </head>
 <body>
@@ -474,6 +492,22 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       เทียบกับรายชื่อแชทใน OA Manager แล้วจับคู่เองได้เลย ผูกผิดแก้ได้ที่ทะเบียนพนักงาน
     </p>
     <div class="rfall" id="link-tally">—</div>
+
+    <!-- วางข้อมูลทีละหลายคน — ฝ่ายบุคคลรวบรวมมาเองในไฟล์ตาราง ก๊อปมาวางได้เลย -->
+    <button class="send" id="imp-open" style="margin-bottom:18px">+ วางข้อมูลทีละหลายคน</button>
+    <div id="imp-box" style="display:none;margin-bottom:22px">
+      <div class="section">วางข้อมูลจากไฟล์ตาราง</div>
+      <p class="hintnote">
+        บรรทัดละคน ใส่ <b>รหัสพนักงาน · LINE userId · ชื่อในไลน์</b> คั่นด้วยเว้นวรรค จุลภาค หรือ Tab<br>
+        สลับลำดับคอลัมน์ได้ ระบบดูจากหน้าตาของข้อมูลเอง · ครั้งละไม่เกิน 30 คน
+      </p>
+      <textarea id="imp-text" rows="6" placeholder="10885  U4af4980629...  สมชาย
+10886  U0c229f96c4...  Bee_work"></textarea>
+      <button class="send" id="imp-check" style="margin-top:10px">ตรวจสอบก่อน</button>
+      <div id="imp-result"></div>
+      <button class="ghost" id="imp-cancel">ยกเลิก</button>
+    </div>
+
     <div id="linkList"></div>
     <button class="ghost" id="link-back">กลับไปหน้าจัดการ</button>
   </section>
