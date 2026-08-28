@@ -24,6 +24,7 @@ import authVerifyEmployee from "./api/auth-verify-employee";
 import authLink from "./api/auth-link";
 import adminAdmins from "./api/admin-admins";
 import adminEmployees from "./api/admin-employees";
+import { followersIngest, followersLink, followersList } from "./api/admin-followers";
 import adminRichMenuPlan from "./api/admin-richmenu-plan";
 import adminEmployeeCreate from "./api/admin-employee-create";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
@@ -55,6 +56,13 @@ function route(pathname: string, method: string): Handler | null {
 
   // รายชื่อฝ่ายและชั้น — หน้าเพิ่มพนักงานของ HR ใช้เติมตัวเลือกในฟอร์ม
   if (seg[1] === "masters" && seg.length === 2) return masters;
+
+  // /api/admin/followers — รายชื่อคนที่เป็นเพื่อนกับ LINE OA และการผูกบัญชีให้แทนเจ้าตัว
+  if (seg[1] === "admin" && seg[2] === "followers") {
+    if (seg.length === 3) return method === "POST" ? followersIngest : followersList;
+    if (seg.length === 4 && seg[3] === "link") return method === "POST" ? followersLink : null;
+    return null;
+  }
 
   // /api/admin/richmenu/plan — ไล่ตั้ง rich menu ให้คนที่เป็นเพื่อนอยู่ก่อนแล้ว (เรียกจากเครื่องต่อเครื่อง)
   if (seg[1] === "admin" && seg[2] === "richmenu" && seg[3] === "plan" && seg.length === 4) {

@@ -60,6 +60,20 @@ CREATE TABLE line_accounts (
   UNIQUE (employee_id, channel_key)      -- 1 คน ผูกได้ 1 บัญชีต่อระบบ
 );
 
+-- รายชื่อคนที่เป็นเพื่อนกับ LINE OA — ตัวช่วยจับคู่ตอนฝ่ายบุคคลผูกบัญชีให้พนักงาน
+--
+-- ไม่ใช่ทะเบียนผู้ใช้ เป็นแค่รายชื่อไว้ให้คนจับคู่ ความจริงว่าใครผูกกับรหัสพนักงานไหน
+-- อยู่ที่ line_accounts ที่เดียวเหมือนเดิม
+--
+-- ข้อมูลถูกดึงมาจากภายนอกแล้วส่งเข้ามาเก็บ เพราะ Worker ยิงคำขอย่อยได้จำกัดต่อหนึ่งคำขอ
+-- จะถามโปรไฟล์ทีละคนสด ๆ ทั้งองค์กรไม่ได้
+CREATE TABLE line_followers (
+  line_user_id  VARCHAR(60) PRIMARY KEY,
+  display_name  VARCHAR(150),   -- ชื่อที่เจ้าตัวตั้งไว้ในไลน์ ไม่ใช่ชื่อที่เปลี่ยนไว้ใน OA Manager
+  picture_url   TEXT,
+  fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- เจ้าหน้าที่ประจำฝ่าย (คนหนึ่งอยู่ได้หลายฝ่าย)
 CREATE TABLE department_members (
   department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,

@@ -1134,6 +1134,162 @@ async function editRole(employeeId) {
   }
 }
 
+/* ---------- ผูกบัญชีไลน์ให้พนักงาน ----------
+ *
+ * LINE ไม่บอกว่า userId ไหนเป็นของใคร บอกได้แค่ชื่อที่เจ้าตัวตั้งไว้กับรูปโปรไฟล์
+ * คนที่รู้จริงคือฝ่ายบุคคลซึ่งเห็นรายชื่อแชทใน OA Manager อยู่แล้ว หน้านี้จึงกางรายชื่อ
+ * ให้ดู แล้วให้คนเป็นคนจับคู่ ระบบไม่เดาให้เอง — เดาผิดแปลว่าคนหนึ่งได้คิวนวดและ
+ * เรื่องแจ้งของอีกคน ส่วนเจ้าตัวจริงจะเข้าระบบไม่ได้เลยจนกว่าจะมีคนมาปลดให้
+ */
+
+let linkWaiting = [];
+
+async function goLinkAccounts() {
+  show("s-link");
+  $("#linkList").innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
+  $("#link-tally").textContent = "—";
+  try {
+    const r = await api("/api/admin/followers");
+    linkWaiting = r.waiting || [];
+    $("#link-tally").innerHTML =
+      `เป็นเพื่อนกับ LINE OA ทั้งหมด <b>${r.total}</b> คน · ผูกรหัสพนักงานแล้ว <b>${r.linked}</b> คน`;
+    renderLinkList();
+  } catch (e) {
+    $("#linkList").innerHTML = `<div class="empty">${esc(e.message || "โหลดข้อมูลไม่สำเร็จ")}</div>`;
+  }
+}
+
+function renderLinkList() {
+  if (!linkWaiting.length) {
+    $("#linkList").innerHTML =
+      `<div class="empty">ไม่มีใครรอผูกรหัส<br>ถ้ารายชื่อยังไม่ครบ ให้ดึงรายชื่อผู้ติดตามเข้ามาใหม่อีกรอบ</div>`;
+    return;
+  }
+  $("#linkList").innerHTML = `<div class="section">รอผูกรหัสพนักงาน ${linkWaiting.length} คน</div>
+    <div class="plist">${linkWaiting
+      .map(
+        (f) => `<div class="frow" data-follower="${esc(f.line_user_id)}">
+          ${
+            f.picture_url
+              ? `<img class="fav" src="${esc(f.picture_url)}" alt="" referrerpolicy="no-referrer" />`
+              : `<div class="fav none">?</div>`
+          }
+          <div class="fw">
+            <div class="fnm">${esc(f.display_name || "ไม่มีชื่อในไลน์")}</div>
+            <div class="fid">${esc(f.line_user_id)}</div>
+          </div>
+        </div>`,
+      )
+      .join("")}</div>`;
+}
+
+/** เลือกพนักงานให้บัญชีไลน์นี้ แล้วผูกให้เลย */
+async function linkFollower(lineUserId) {
+  const f = linkWaiting.find((x) => x.line_user_id === lineUserId);
+  if (!f) return;
+
+  const picked = await pickEmployeeFor(f);
+  if (!picked) return;
+
+  // ให้เห็นทั้งสองฝั่งพร้อมกันก่อนกดยืนยัน เพราะจับคู่ผิดแล้วเจ้าตัวจริงจะเข้าระบบไม่ได้
+  const ok = await confirmDialog({
+    title: "ผูกบัญชีนี้ใช่หรือไม่",
+    message:
+      `บัญชีไลน์: ${f.display_name || "ไม่มีชื่อในไลน์"}\n` +
+      `พนักงาน: ${picked.name} · ${picked.code}${picked.dept ? " · " + picked.dept : ""}\n\n` +
+      "หลังจากนี้เจ้าตัวเปิดแอปใช้งานได้ทันทีโดยไม่ต้องลงทะเบียนเอง " +
+      "ถ้าผูกผิด ปลดได้ที่ทะเบียนพนักงาน",
+    confirmLabel: "ผูกบัญชี",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+
+  try {
+    const r = await api("/api/admin/followers/link", {
+      method: "POST",
+      body: { lineUserId, employeeId: picked.id },
+    });
+    toast(`ผูกบัญชีให้ ${r.name} แล้ว`);
+    goLinkAccounts();
+  } catch (e) {
+    toast(e.message || "ผูกบัญชีไม่สำเร็จ");
+  }
+}
+
+/** กล่องค้นชื่อพนักงาน — โชว์บัญชีไลน์ที่กำลังจับคู่ค้างไว้ข้างบนตลอด */
+function pickEmployeeFor(follower) {
+  return new Promise((resolve) => {
+    let chosen = null;
+    let timer;
+
+    $("#sheet-title").textContent = "จับคู่กับพนักงานคนไหน";
+    $("#sheet-meta").innerHTML =
+      `<div class="sub">บัญชีไลน์: ${esc(follower.display_name || "ไม่มีชื่อในไลน์")}</div>
+       <div class="finder">
+         <input id="lk-find" type="text" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
+         <div class="hits" id="lk-hits"><div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div></div>
+       </div>`;
+    $("#sheet-opts").innerHTML = "";
+
+    const done = (v) => {
+      $("#sheet").classList.remove("on");
+      $("#backdrop").classList.remove("on");
+      $("#sheet-meta").innerHTML = "";
+      $("#backdrop").onclick = null;
+      // คืนปุ่มยกเลิกให้กล่องเลือกปกติ ไม่งั้นกล่องอื่นที่เปิดทีหลังจะปิดไม่ลง
+      $("#sheet-cancel").onclick = () => finishSheet(null);
+      resolve(v);
+    };
+    $("#sheet-cancel").onclick = () => done(null);
+    $("#backdrop").onclick = () => done(null);
+
+    const search = async (q) => {
+      if (q.trim().length < 2) {
+        $("#lk-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
+        return;
+      }
+      try {
+        const r = await api("/api/admin/employees?status=active&q=" + encodeURIComponent(q.trim()));
+        // คนที่ผูกบัญชีไลน์ไว้แล้วไม่ต้องขึ้น ผูกซ้ำไม่ได้อยู่แล้ว
+        const list = (r.employees || []).filter((e) => !e.linked).slice(0, 12);
+        $("#lk-hits").innerHTML = list.length
+          ? `<div class="plist">${list
+              .map(
+                (e) => `<div class="prow" data-pick="${esc(e.id)}" data-name="${esc(e.full_name)}"
+                  data-code="${esc(e.employee_code)}" data-dept="${esc(e.department_name || "")}">
+                  <div class="pw">
+                    <div class="pnm">${esc(e.full_name)}</div>
+                    <div class="psub"><b>${esc(e.employee_code)}</b>${
+                      e.department_name ? " · " + esc(e.department_name) : ""
+                    }</div>
+                  </div>
+                </div>`,
+              )
+              .join("")}</div>`
+          : '<div class="empty">ไม่พบพนักงานที่ยังไม่ได้ผูกบัญชี</div>';
+      } catch (e) {
+        $("#lk-hits").innerHTML = `<div class="empty">${esc(e.message || "ค้นหาไม่สำเร็จ")}</div>`;
+      }
+    };
+
+    $("#lk-find").oninput = (e) => {
+      clearTimeout(timer);
+      const q = e.target.value;
+      timer = setTimeout(() => search(q), 250);
+    };
+    $("#lk-hits").onclick = (e) => {
+      const row = e.target.closest("[data-pick]");
+      if (!row) return;
+      chosen = { id: row.dataset.pick, name: row.dataset.name, code: row.dataset.code, dept: row.dataset.dept };
+      done(chosen);
+    };
+
+    $("#sheet").classList.add("on");
+    $("#backdrop").classList.add("on");
+    setTimeout(() => $("#lk-find").focus(), 50);
+  });
+}
+
 function bind() {
   // ลงทะเบียน
   $("#btn-check").onclick = checkEmp;
@@ -1156,6 +1312,12 @@ function bind() {
 
   // ── หน้าผู้ดูแลระบบ ──
   $("#mg-role").onclick = () => goRoles({ add: true });
+  $("#mg-link").onclick = goLinkAccounts;
+  $("#link-back").onclick = goMe;
+  $("#linkList").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-follower]");
+    if (row) linkFollower(row.dataset.follower);
+  });
   $("#roles-cancel").onclick = closeRolesFinder;
   $("#roles-q").oninput = (e) => {
     clearTimeout(rolesFindTimer);
