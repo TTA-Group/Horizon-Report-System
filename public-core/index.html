@@ -308,15 +308,26 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 
 
 /* ── หน้าผู้ดูแลระบบ ── */
-.rolenote{font-size:12.5px;color:var(--slate);line-height:1.65;margin-bottom:14px}
+.pagenote{font-size:12.5px;color:var(--slate);line-height:1.65;margin-bottom:14px}
 #s-manage .send+.send{margin-top:10px}
-.rolenote b{color:var(--ink);font-weight:600}
+.pagenote b{color:var(--ink);font-weight:600}
 .rhead{display:flex;align-items:baseline;gap:8px;margin-bottom:9px}
 .rhead .rnm{font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--green-deep)}
 .rhead .rct{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate)}
 .rfall{font-size:11.5px;color:var(--slate);line-height:1.65;background:var(--canvas);
   border-radius:11px;padding:12px 14px;margin-top:6px}
 .rfall b{font-family:'IBM Plex Mono',monospace;color:var(--ink)}
+
+/* ── รายชื่อคนที่เป็นเพื่อนแต่ยังไม่ได้ผูกรหัสพนักงาน ── */
+.frow{display:flex;align-items:center;gap:11px;padding:11px 13px;border-bottom:1px solid var(--line);cursor:pointer}
+.frow:last-child{border-bottom:0}
+.frow:active{background:var(--canvas)}
+.frow .fav{width:38px;height:38px;border-radius:50%;flex:none;object-fit:cover;background:var(--canvas)}
+.frow .fav.none{display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--slate)}
+.frow .fw{min-width:0;flex:1}
+.frow .fnm{font-size:13.5px;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .fid{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--slate);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -408,6 +419,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <button class="send" id="mg-add">+ เพิ่มพนักงานใหม่</button>
     <!-- ปุ่ม "เพิ่ม" ทั้งสองอยู่ด้วยกันที่นี่ ส่วนแท็บผู้ดูแลระบบเหลือไว้ดูรายชื่ออย่างเดียว -->
     <button class="send" id="mg-role">+ เพิ่มผู้ดูแลระบบ</button>
+    <button class="send" id="mg-link">ผูกบัญชีไลน์ให้พนักงาน</button>
     <!-- ทางลัดไปหน้าผู้ดูแลของแอปจองคิว ปุ่มเดียวพอ เพราะสามหน้านั้นสลับกันได้ในตัวอยู่แล้ว -->
     <button class="send" id="mg-massage">หน้าจัดการคิวนวด</button>
     <button class="ghost" id="mg-close">ปิดหน้านี้</button>
@@ -441,7 +453,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   <!-- ผู้ดูแลระบบ — เฉพาะคนที่เข้าถึงได้ทุกอย่างเท่านั้น
        หัวหน้าฝ่ายและผู้รับผิดชอบของฝ่ายอื่นเป็นคนละเรื่อง อยู่ที่แท็บทะเบียนพนักงาน -->
   <section class="screen" id="s-roles">
-    <p class="rolenote">
+    <p class="pagenote">
       ผู้ดูแลระบบ<b>เข้าถึงได้ทุกอย่าง</b> — ทะเบียนพนักงาน · หน้านี้ · คิวงานทุกฝ่าย ·
       หน้าผู้ดูแลคิวนวด<br>
       ส่วนหัวหน้าฝ่ายและผู้รับผิดชอบของฝ่ายอื่น <b>ไม่ใช่</b>ผู้ดูแลระบบ
@@ -453,6 +465,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       <button class="ghost" id="roles-cancel">ยกเลิก</button>
     </div>
     <div id="rolesList"></div>
+  </section>
+
+  <!-- ผูกบัญชีไลน์ให้พนักงาน — ฝ่ายบุคคลจับคู่เอง สำหรับคนที่ไม่ได้ลงทะเบียนด้วยตัวเอง -->
+  <section class="screen" id="s-link">
+    <p class="pagenote">
+      LINE ไม่บอกว่าบัญชีไหนเป็นของใคร บอกได้แค่<b>ชื่อที่เจ้าตัวตั้งไว้ในไลน์</b>กับรูปโปรไฟล์<br>
+      เทียบกับรายชื่อแชทใน OA Manager แล้วจับคู่เองได้เลย ผูกผิดแก้ได้ที่ทะเบียนพนักงาน
+    </p>
+    <div class="rfall" id="link-tally">—</div>
+    <div id="linkList"></div>
+    <button class="ghost" id="link-back">กลับไปหน้าจัดการ</button>
   </section>
 
   <!-- tabbar — ขึ้นเฉพาะผู้ดูแล พนักงานทั่วไปมีหน้าเดียวจบ -->

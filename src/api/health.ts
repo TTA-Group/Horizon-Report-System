@@ -72,6 +72,13 @@ export default async (req: Request): Promise<Response> =>
         files["add-core-channel.sql"] = legacy[0].n === 0;
         if (legacy[0].n > 0) missing.push(`add-core-channel.sql (ยังมีบัญชีผูกด้วยกุญแจเดิม ${legacy[0].n} รายการ)`);
 
+        // ไฟล์นี้เพิ่มทั้งตาราง ไม่ใช่คอลัมน์ จึงตรวจจากว่ามีตารางนั้นหรือยัง
+        const tables = await sql<{ table_name: string }[]>`
+          SELECT table_name FROM information_schema.tables WHERE table_name = 'line_followers'
+        `;
+        files["line-followers.sql"] = tables.length > 0;
+        if (tables.length === 0) missing.push("line-followers.sql (ยังไม่มีตาราง line_followers)");
+
         migrations = { ok: missing.length === 0, files, ...(missing.length > 0 ? { missing } : {}) };
       } catch (e) {
         console.error("[health] migrations", e);
