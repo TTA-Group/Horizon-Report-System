@@ -53,18 +53,36 @@ export async function readJson<T = Record<string, unknown>>(req: Request): Promi
  * จึงไม่ได้ทำให้ปลอดภัยขึ้น มีแต่ทำให้คนตั้งค่าต้องลองผิดลองถูกอยู่นาน
  */
 export function listFrom(body: unknown, key: string): unknown[] | null {
-  if (Array.isArray(body)) return body;
-  const raw = (body as Record<string, unknown> | null)?.[key];
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === "string") {
+  // แกะข้อความที่เป็น JSON ซ้อนกันออกทีละชั้น บางเครื่องมือห่อไว้สองชั้นก็มี
+  const unwrap = (v: unknown, depth: number): unknown => {
+    if (depth >= 3 || typeof v !== "string") return v;
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      return unwrap(JSON.parse(v), depth + 1);
     } catch {
-      return null;
+      return v;
     }
+  };
+
+  const top = unwrap(body, 0);
+  if (Array.isArray(top)) return top;
+  if (top && typeof top === "object") {
+    const inner = unwrap((top as Record<string, unknown>)[key], 0);
+    if (Array.isArray(inner)) return inner;
   }
   return null;
+}
+
+/**
+ * อธิบายสั้น ๆ ว่าได้อะไรมา — ใช้ต่อท้ายข้อความปฏิเสธของเส้นทางที่เรียกจากเครื่องต่อเครื่อง
+ *
+ * ไม่มีคนนั่งดูหน้าจอตอนที่มันพัง คนตั้งค่าเห็นแค่ "BadRequest" แล้วต้องเดาต่อเอง
+ * บอกไปเลยว่าได้อะไรมาจะจบเร็วกว่ามาก — เส้นทางพวกนี้ผ่านด่าน secret มาแล้ว
+ * ผู้เรียกจึงเป็นเจ้าของข้อมูลนั้นอยู่แล้ว ไม่ได้เปิดอะไรให้คนนอกเห็นเพิ่ม
+ */
+export function describeBody(raw: string, max = 160): string {
+  const text = raw.trim();
+  if (!text) return "ไม่มี body มาเลย";
+  return `ได้มาเป็น: ${text.length > max ? `${text.slice(0, max)}…` : text}`;
 }
 
 /**
