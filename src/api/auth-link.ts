@@ -11,6 +11,7 @@ import { getSession, invalidateSessionByLineUserId } from "./_lib/auth";
 import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
+import { syncRichMenu } from "./_lib/richmenu";
 
 interface Body {
   employee_code?: string;
@@ -66,5 +67,7 @@ export default async (req: Request): Promise<Response> =>
     }
 
     invalidateSessionByLineUserId(s.lineUserId);
+    // เปลี่ยนเป็นเมนูของคนที่ลงทะเบียนแล้ว ปุ่มลงทะเบียนจะได้หายไปจากเมนูของเขา
+    await syncRichMenu(s.lineUserId);
     return json({ ok: true, employee_id: employeeId });
   });

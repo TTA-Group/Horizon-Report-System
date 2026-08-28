@@ -275,6 +275,29 @@ function goMe() {
  */
 const LIFF_ID_RE = /^\d{6,12}-[A-Za-z0-9]{4,20}$/;
 
+/**
+ * ส่งรหัสพนักงานเข้าห้องแชทในนามผู้ใช้ เพื่อให้ auto-reply ของ LINE OA ตอบข้อความต้อนรับ
+ *
+ * ต้องเป็นผู้ใช้ส่งเองเท่านั้น — ข้อความที่ระบบ push เข้าไปไม่ทำให้ auto-reply ทำงาน
+ * เพราะ LINE ไม่ถือว่าเป็นข้อความขาเข้า จึงใช้ liff.sendMessages ไม่ใช่ push จากเซิร์ฟเวอร์
+ *
+ * ส่งเฉพาะคนที่เข้ามาจาก rich menu เท่านั้น (ไม่มี back= ติดมา) — คนที่กดลิงก์ลงทะเบียน
+ * มาจากแอปจองคิวนวดหรือแจ้งปัญหา กำลังทำงานอื่นค้างอยู่ ไม่ควรมีข้อความต้อนรับมาคั่น
+ * แล้วเด้งเขาออกจากสิ่งที่กำลังทำ
+ *
+ * ต้องส่งรหัสเปล่า ๆ ไม่มีคำอื่นนำหน้าหรือต่อท้าย เพราะ auto-reply จับคำแบบตรงตัว
+ * และห้ามให้ล้มเหลวไปขวางการลงทะเบียน — ข้อมูลถูกบันทึกไปแล้วก่อนถึงบรรทัดนี้
+ */
+async function sendCodeToChat(code) {
+  if (readBackTarget()) return;
+  try {
+    if (!window.liff || !liff.isApiAvailable || !liff.isApiAvailable("sendMessages")) return;
+    await liff.sendMessages([{ type: "text", text: code }]);
+  } catch (err) {
+    console.error("sendMessages failed:", err);
+  }
+}
+
 function readBackTarget() {
   const direct = new URLSearchParams(location.search);
   // บางเส้นทางไลน์ห่อพารามิเตอร์ไว้ใน liff.state อีกชั้น ต้องรองรับทั้งสองแบบ
@@ -405,6 +428,7 @@ async function confirmFound() {
   try {
     await api("/api/auth/link", { method: "POST", body: { employee_code: code } });
     session = await api("/api/auth/session", { method: "POST" });
+    await sendCodeToChat(code);
     toast("ยืนยันตัวตนเรียบร้อยแล้ว");
     // ลงทะเบียนเสร็จแล้วออกจากหน้านี้เสมอ ไม่เว้นแม้แต่ฝ่ายบุคคล
     //

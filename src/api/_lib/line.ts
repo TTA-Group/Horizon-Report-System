@@ -105,6 +105,38 @@ async function callMessaging(path: string, body: unknown): Promise<boolean> {
   return res.ok;
 }
 
+/**
+ * ผูก rich menu ให้ผู้ใช้คนหนึ่ง · ถอดออกด้วย unlinkRichMenu
+ *
+ * เขียนแยกจาก callMessaging เพราะสอง endpoint นี้ไม่เหมือน endpoint อื่นของ Messaging API
+ * — ไม่มี body และตัวถอดใช้ method DELETE
+ *
+ * ใช้เปลี่ยนเมนูตามสถานะของคนคนนั้น: ยังไม่ลงทะเบียน = เมนูที่มีปุ่มลงทะเบียน ·
+ * ลงทะเบียนแล้ว = เมนูใช้งาน · ลาออกหรือถูกระงับ = ไม่มีเมนู (ดู _lib/richmenu.ts)
+ */
+async function callRichMenu(path: string, method: "POST" | "DELETE"): Promise<boolean> {
+  const token = envVar("LINE_CHANNEL_ACCESS_TOKEN");
+  if (!token) throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not set");
+  const res = await fetch(`${LINE_API}/v2/bot/${path}`, {
+    method,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  // 404 ตอนถอดเมนูแปลว่าคนนั้นไม่มีเมนูผูกอยู่แล้ว ซึ่งคือผลลัพธ์ที่ต้องการพอดี ไม่ใช่ข้อผิดพลาด
+  if (!res.ok && !(method === "DELETE" && res.status === 404)) {
+    console.error("[line]", path, res.status, await res.text().catch(() => ""));
+    return false;
+  }
+  return true;
+}
+
+export function linkRichMenu(userId: string, richMenuId: string): Promise<boolean> {
+  return callRichMenu(`user/${encodeURIComponent(userId)}/richmenu/${encodeURIComponent(richMenuId)}`, "POST");
+}
+
+export function unlinkRichMenu(userId: string): Promise<boolean> {
+  return callRichMenu(`user/${encodeURIComponent(userId)}/richmenu`, "DELETE");
+}
+
 interface LogMeta {
   ticketId?: string | null;
   channel?: "group" | "user";
