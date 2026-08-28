@@ -28,6 +28,7 @@ import {
   type TicketFlexInput,
 } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
+import { syncRichMenu } from "./_lib/richmenu";
 import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
 import { tellGroupMoved } from "./_lib/ticket-card";
 import { dueFromOption, dueFromPickedDate, shortName, thaiDateShort, thaiDateTimeShort } from "./_lib/tickets";
@@ -82,6 +83,7 @@ export default async (req: Request): Promise<Response> =>
         if (ev.type === "postback") await handlePostback(ev);
         else if (ev.type === "join") await handleJoin(ev);
         else if (ev.type === "message") await handleMessage(ev);
+        else if (ev.type === "follow") await handleFollow(ev);
       } catch (e) {
         console.error("[webhook event]", e);
       }
@@ -162,6 +164,20 @@ const PROGRESS_RE = /^อัปเดต\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\
 const BIND_RE = /^(?:ผูกฝ่าย|ผูกกลุ่ม)\s+([A-Za-z]{2,6})$/i;
 // ขอดูว่ากลุ่มนี้เป็นของฝ่ายไหน และฝ่ายไหนยังไม่มีกลุ่ม
 const WHICH_RE = /^(?:ฝ่ายนี้|กลุ่มนี้|ตรวจกลุ่ม)$/;
+
+/**
+ * มีคนแอดเพื่อนกับ LINE OA — ให้เมนูที่ตรงกับสถานะของเขา
+ *
+ * ระบบนี้ไม่ได้ตั้ง default rich menu ไว้ (ตั้งแล้วคนที่ลาออกจะตกกลับไปเห็นเมนูตั้งต้น
+ * ซึ่งมีปุ่มลงทะเบียน) เมนูจึงต้องผูกให้ทีละคน และจุดแรกสุดที่ทำได้คือตอนแอดเพื่อน
+ *
+ * คนที่เคยแอดแล้วบล็อกไปแล้วกลับมาแอดใหม่ก็เข้าทางนี้ ซึ่งได้เมนูถูกต้องเหมือนกัน
+ * เพราะ syncRichMenu อ่านสถานะจริงจากฐานข้อมูล ไม่ได้เดาจากว่าเป็นคนใหม่หรือคนเก่า
+ */
+async function handleFollow(ev: LineEvent): Promise<void> {
+  const userId = ev.source?.userId;
+  if (userId) await syncRichMenu(userId);
+}
 
 async function handleMessage(ev: LineEvent): Promise<void> {
   if (ev.message?.type !== "text") return;

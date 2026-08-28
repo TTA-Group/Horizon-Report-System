@@ -2,6 +2,7 @@
 // body: { action: "suspend" | "restore", reason?: string }
 
 import { assertKeepsOneAdmin } from "./_lib/admins";
+import { syncRichMenuForEmployee } from "./_lib/richmenu";
 import { getSession, invalidateSessionByEmployeeId, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
@@ -47,6 +48,8 @@ export default async (req: Request): Promise<Response> =>
       `;
       if (upd.length === 0) throw new HttpError(404, "ไม่พบพนักงานนี้");
       invalidateSessionByEmployeeId(id);
+      // ถอด rich menu ออกทั้งอัน คนที่ถูกระงับสิทธิ์จะได้ไม่เห็นทางเข้าระบบไหนเลย
+      await syncRichMenuForEmployee(id);
       return json({ ok: true, id, status: "suspended" });
     }
 
@@ -71,5 +74,7 @@ export default async (req: Request): Promise<Response> =>
     }
 
     invalidateSessionByEmployeeId(id);
+    // คืนเมนูใช้งานให้ (ไม่ใช่เมนูลงทะเบียน เพราะบัญชีไลน์ยังผูกอยู่เหมือนเดิม)
+    await syncRichMenuForEmployee(id);
     return json({ ok: true, id, status: "active" });
   });

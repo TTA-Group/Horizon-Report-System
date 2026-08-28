@@ -10,6 +10,7 @@ import { getSession, invalidateSessionByLineUserId, requireAdmin } from "./_lib/
 import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
+import { richMenuAfterUnlink } from "./_lib/richmenu";
 
 function employeeIdFromPath(req: Request): string {
   const seg = new URL(req.url).pathname.split("/").filter(Boolean); // ['api','admin','employees','<id>','unlink']
@@ -35,6 +36,8 @@ export default async (req: Request): Promise<Response> =>
 
     // ล้างแคช session ของบัญชีที่เพิ่งถูกปลด ไม่ให้ยังใช้งานต่อได้จนกว่าแคชจะหมดอายุ
     invalidateSessionByLineUserId(removed[0].line_user_id);
+    // และคืนเมนูที่มีปุ่มลงทะเบียนให้ ไม่งั้นเขาจะไม่มีทางลงทะเบียนใหม่ได้เลย
+    await richMenuAfterUnlink(removed[0].line_user_id);
 
     return json({ ok: true, id, linked: false });
   });

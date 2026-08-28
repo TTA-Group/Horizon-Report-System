@@ -1045,7 +1045,9 @@ function renderAbook() {
         <td class="time">${escapeHtml(from)}<br>${escapeHtml(to ?? "")}</td>${cells}</tr>`;
     })
     .join("");
-  $("#abook-grid").innerHTML = `<table class="grid">${head}${body}</table>`;
+  // ติดวันที่ไว้กับตาราง — ตอนสลับวัน ตารางเก่ายังค้างอยู่หนึ่งจังหวะระหว่างรอข้อมูลใหม่
+  // มีวันติดไว้จึงบอกได้ว่าที่เห็นอยู่เป็นตารางของวันไหนแล้ว
+  $("#abook-grid").innerHTML = `<table class="grid" data-day="${escapeHtml(aGrid.day)}">${head}${body}</table>`;
   updateAbookBar();
 }
 
