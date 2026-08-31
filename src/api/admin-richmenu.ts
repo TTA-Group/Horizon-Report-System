@@ -15,7 +15,14 @@ import { db } from "./_lib/db";
 import { envVar } from "./_lib/env";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { clearDefaultRichMenu, defaultRichMenuId, listRichMenus, richMenuOf } from "./_lib/line";
-import { applyRichMenus, configuredMenus, knownLineUserCount, knownLineUserIds, linkSameMenuTo, planRichMenus } from "./_lib/richmenu";
+import {
+  applyRichMenus,
+  configuredMenus,
+  knownLineUserCount,
+  knownLineUserIds,
+  planRichMenus,
+  unlinkRichMenuForEmployee,
+} from "./_lib/richmenu";
 
 /**
  * ตั้งได้ครั้งละไม่เกินเท่านี้ต่อหนึ่งคำขอ
@@ -139,7 +146,7 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       throw new HttpError(409, "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ที่ระบบนี้", "no_token");
     }
 
-    const body = await readJson<{ after?: string; richMenuId?: string; action?: string }>(req);
+    const body = await readJson<{ after?: string; action?: string; employeeId?: string }>(req);
     const after = typeof body.after === "string" ? body.after : "";
 
     // ถอดเมนูตั้งต้นของ OA ออก — ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น
@@ -150,9 +157,15 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       return json({ ok: true, cleared: true });
     }
 
-    // โหมด "ใบเดียวให้ทุกคน" — ส่งรหัสเมนูมาด้วยแปลว่าให้ใช้ใบนั้นกับทุกคน ไม่สนสถานะ
-    const same = typeof body.richMenuId === "string" ? body.richMenuId.trim() : "";
-    if (same) return applyOneToAll(req, same, after, s.employee!.id, s.employee!.employee_code);
+    // ถอดเมนูของพนักงานคนหนึ่ง — ใช้ตอนอยากให้คนคนนั้นไม่มีเมนูเป็นการเฉพาะ
+    if (body.action === "unlink") {
+      const id = (body.employeeId ?? "").trim();
+      if (!id) throw new HttpError(400, "ไม่ได้ระบุพนักงาน");
+      const done = await unlinkRichMenuForEmployee(id);
+      console.log("[richmenu] ถอดเมนูรายคน", id, done, "บัญชี โดย", s.employee!.employee_code);
+      if (done === 0) throw new HttpError(409, "คนนี้ยังไม่ได้ผูกบัญชีไลน์ จึงไม่มีเมนูให้ถอด", "no_line");
+      return json({ ok: true, unlinked: done });
+    }
 
     const ids = await knownLineUserIds(after, BATCH);
     if (ids.length === 0) return json({ ok: true, done: true, next: null, processed: 0, linked: 0, unlinked: 0, failed: 0 });
@@ -172,45 +185,3 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       failed: failed.length,
     });
   });
-
-/**
- * ตั้งเมนู "ใบเดียวกัน" ให้ทุกคนที่ระบบรู้จักตอนนี้
- *
- * ตั้งใจไม่แตะเมนูตั้งต้นของ OA — งานนี้คือ "เปลี่ยนของคนที่มีอยู่ตอนนี้" เท่านั้น
- * คนที่มาทีหลังต้องเข้าตามระบบปกติ คือได้เมนูที่มีปุ่มลงทะเบียนก่อน แล้วค่อยได้เมนูใช้งาน
- * เมื่อลงทะเบียนเสร็จ ถ้าตั้งเมนูตั้งต้นไว้ คนใหม่จะเห็นเมนูใช้งานตั้งแต่ยังไม่ลงทะเบียน
- * และคนที่ลาออกแล้วซึ่งถูกถอดเมนูออก ก็จะตกกลับไปเห็นเมนูตั้งต้นแทนที่จะไม่มีเมนู
- */
-async function applyOneToAll(
-  _req: Request,
-  richMenuId: string,
-  after: string,
-  employeeId: string,
-  code: string,
-): Promise<Response> {
-  // รหัสที่ไม่มีอยู่จริงคือสาเหตุที่ LINE ปฏิเสธเงียบ ๆ — ตรวจก่อนยิง ไม่ปล่อยให้ล้มทีละคน
-  if (after === "") {
-    const listed = await listRichMenus();
-    if (!listed.ok) throw new HttpError(502, `ถาม LINE ไม่ได้ · ${listed.error}`, "line_down");
-    if (!listed.data.some((m) => m.richMenuId === richMenuId)) {
-      throw new HttpError(400, "ไม่พบเมนูรหัสนี้บน LINE", "menu_not_found");
-    }
-  }
-
-  const ids = await knownLineUserIds(after, BATCH);
-  const out = ids.length > 0 ? await linkSameMenuTo(ids, richMenuId) : [];
-  const failed = out.filter((o) => !o.ok);
-  await noteApplied(employeeId, code);
-  console.log("[richmenu] ตั้งใบเดียวให้ทุกคน", richMenuId, out.length, "คน ไม่สำเร็จ", failed.length, "โดย", code);
-
-  return json({
-    ok: true,
-    mode: "all",
-    done: ids.length < BATCH,
-    next: ids.length > 0 ? ids[ids.length - 1] : null,
-    processed: out.length,
-    linked: out.length - failed.length,
-    unlinked: 0,
-    failed: failed.length,
-  });
-}

@@ -80,6 +80,7 @@ export default async (req: Request): Promise<Response> =>
 
     for (const ev of events) {
       try {
+        await rememberFollower(ev);
         if (ev.type === "postback") await handlePostback(ev);
         else if (ev.type === "join") await handleJoin(ev);
         else if (ev.type === "message") await handleMessage(ev);
@@ -91,6 +92,29 @@ export default async (req: Request): Promise<Response> =>
     // ต้องตอบ 200 เสมอเพื่อไม่ให้ LINE ส่งซ้ำ
     return json({ ok: true });
   });
+
+/**
+ * จำไว้ว่าเคยเห็นบัญชีไลน์นี้ — ใครที่ทักมาหรือแอดเพื่อน ถือว่าระบบรู้จักแล้ว
+ *
+ * มีเพราะปุ่ม "เปลี่ยน rich menu ให้ทุกคน" ไปถึงได้เฉพาะคนที่ระบบรู้จัก และการขอรายชื่อ
+ * ผู้ติดตามทั้งหมดจาก LINE ต้องเป็นบัญชีที่ผ่านการยืนยันแล้วเท่านั้น บัญชีทั่วไปขอไม่ได้
+ * ทางเดียวที่เหลือคือเก็บสะสมเองจากคนที่เข้ามาคุย ซึ่งครอบคลุมขึ้นเรื่อย ๆ เองโดยไม่ต้องทำอะไร
+ *
+ * เก็บแค่รหัสผู้ใช้ ไม่ถามชื่อเพิ่ม เพราะการถามโปรไฟล์ทีละคนกินโควตาคำขอย่อยของ Worker
+ * และชื่อไม่ได้จำเป็นกับการตั้งเมนู · ถ้ามีอยู่แล้วก็ไม่เขียนทับชื่อที่ฝ่ายบุคคลเคยนำเข้าไว้
+ */
+async function rememberFollower(ev: LineEvent): Promise<void> {
+  const userId = ev.source?.userId;
+  if (!userId || ev.source?.type !== "user") return;
+  try {
+    await db()`
+      INSERT INTO line_followers (line_user_id) VALUES (${userId})
+      ON CONFLICT (line_user_id) DO UPDATE SET fetched_at = now()
+    `;
+  } catch (e) {
+    console.error("[followers] จำบัญชีไลน์ไม่สำเร็จ", e);
+  }
+}
 
 const OWN_ACTIONS = new Set([
   "ack", "complete", "transfer", "cancel", "assess", "due", "duedate",

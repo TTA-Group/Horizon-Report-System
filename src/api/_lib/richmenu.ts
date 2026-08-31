@@ -144,29 +144,6 @@ export async function applyRichMenus(lineUserIds: string[]): Promise<ApplyOutcom
   return out;
 }
 
-/**
- * ผูกเมนู "ใบเดียวกัน" ให้ทุกคนในชุดนี้ โดยไม่สนสถานะของแต่ละคน
- *
- * ต่างจาก applyRichMenus ที่แจกตามสถานะ (ลงทะเบียนแล้ว / ยังไม่ลงทะเบียน / ถูกระงับสิทธิ์)
- * ตัวนี้มีไว้ตอนเปลี่ยนเมนูหลักแล้วอยากให้ทุกคนเห็นใบใหม่ทันที ไม่ต้องรอให้ใครลงทะเบียน
- *
- * ไม่ได้แทนที่กติกาปกติ — ครั้งต่อไปที่คนคนนั้นมีเหตุให้สลับเมนู (ลงทะเบียน · ถูกระงับสิทธิ์ ·
- * ถูกปลดการผูก) ระบบจะกลับไปแจกตามสถานะเหมือนเดิม
- */
-export async function linkSameMenuTo(lineUserIds: string[], richMenuId: string): Promise<ApplyOutcome[]> {
-  const out: ApplyOutcome[] = [];
-  for (const id of lineUserIds) {
-    let ok = false;
-    try {
-      ok = await linkRichMenu(id, richMenuId);
-    } catch (e) {
-      console.error("[richmenu] ตั้งเมนูให้ทุกคนไม่สำเร็จ", id, e);
-    }
-    out.push({ userId: id, action: "link", richMenuId, ok });
-  }
-  return out;
-}
-
 /** ปรับเมนูของบัญชีไลน์นี้ให้ตรงกับความจริงล่าสุดในฐานข้อมูล */
 export async function syncRichMenu(lineUserId: string): Promise<void> {
   const m = menus();
@@ -196,6 +173,28 @@ export async function syncRichMenuForEmployee(employeeId: string): Promise<void>
   } catch (e) {
     console.error("[richmenu] หาบัญชีไลน์ของพนักงานไม่สำเร็จ", employeeId, e);
   }
+}
+
+/**
+ * ถอดเมนูของพนักงานคนหนึ่งออก — ใช้ตอนผู้ดูแลสั่งเองเป็นรายคน
+ *
+ * คืนจำนวนบัญชีไลน์ที่ถอดสำเร็จ ไม่กลืน error เงียบเหมือน syncRichMenu เพราะคนกดปุ่ม
+ * ต้องรู้ว่าได้ผลหรือไม่ ต่างจากการสลับเมนูอัตโนมัติที่เป็นงานเสริมท้ายงานหลัก
+ */
+export async function unlinkRichMenuForEmployee(employeeId: string): Promise<number> {
+  const rows = await db()<{ line_user_id: string }[]>`
+    SELECT line_user_id FROM line_accounts
+    WHERE employee_id = ${employeeId} AND channel_key = ANY(${CHANNEL_KEYS_READ})
+  `;
+  let done = 0;
+  for (const r of rows) {
+    try {
+      if (await unlinkRichMenu(r.line_user_id)) done += 1;
+    } catch (e) {
+      console.error("[richmenu] ถอดเมนูไม่สำเร็จ", r.line_user_id, e);
+    }
+  }
+  return done;
 }
 
 /**
