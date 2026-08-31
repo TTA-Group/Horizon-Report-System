@@ -959,6 +959,23 @@ function renderMenuStatus(r) {
          <div class="isub mono">${esc(m.id)}</div></div></div>`).join("")}</div>`
     : "";
 
+  // ทางลัดสำหรับ "อยากให้ทุกคนเห็นใบนี้เดี๋ยวนี้" โดยไม่ต้องรอให้ใครลงทะเบียน
+  // แยกออกมาจากปุ่มด้านบนชัดเจน เพราะมันข้ามกติกาปกติของระบบ ไม่ควรกดสลับกันไปมาโดยไม่รู้ตัว
+  const one = r.line.ok && r.line.richmenus.length
+    ? `<div class="section" style="margin-top:24px">ตั้งเมนูใบเดียวให้ทุกคนเดี๋ยวนี้</div>
+       <p class="hintnote">
+         ใช้ตอนเปลี่ยนเมนูหลักแล้วอยากให้ทุกคนเห็นใบใหม่ทันที <b>ไม่ต้องรอให้ใครลงทะเบียน</b><br>
+         ทุกคนจะได้ใบเดียวกันหมด ทั้งคนที่ลงทะเบียนแล้วและยังไม่ได้ลงทะเบียน
+         และจะตั้งใบนี้เป็นเมนูตั้งต้นของ OA ด้วย คนที่ระบบยังไม่รู้จักจึงได้ตามไปด้วย
+       </p>
+       <select id="menu-pick">
+         <option value="">เลือกเมนูที่จะให้ทุกคนเห็น</option>
+         ${r.line.richmenus.map((m) => `<option value="${esc(m.id)}">${esc(m.name || "ไม่มีชื่อ")} — ${esc(m.id.slice(9, 21))}…</option>`).join("")}
+       </select>
+       <button class="send" id="menu-all" style="margin-top:10px">ตั้งใบนี้ให้ทุกคน</button>
+       <div id="menu-all-progress"></div>`
+    : "";
+
   $("#menu-body").innerHTML = `
     <div class="section">ผลตรวจ</div>
     <div class="plist" style="padding:2px 14px">${rows.join("")}</div>
@@ -971,7 +988,8 @@ function renderMenuStatus(r) {
     </p>
     <button class="send" id="menu-apply"${r.ready ? "" : " disabled"}>ตั้งเมนูใหม่ให้ทุกคน</button>
     ${r.ready ? "" : '<p class="hintnote">ตั้งค่าให้ครบก่อนถึงจะกดได้</p>'}
-    <div id="menu-progress"></div>`;
+    <div id="menu-progress"></div>
+    ${one}`;
 }
 
 async function goMenuCheck() {
@@ -1022,6 +1040,56 @@ async function applyRichMenus() {
         : `<p class="hintnote">ตั้งให้ ${total} คน แต่ไม่สำเร็จ ${failed} คน · มักเป็นคนที่บล็อกหรือลบ OA ไปแล้ว
              ซึ่งไลน์ไม่ให้ตั้งเมนูให้</p>`;
     toast(`ตั้งเมนูให้ ${total} คนแล้ว`);
+  } catch (e) {
+    box.innerHTML = `<p class="hintnote">หยุดกลางคัน: ${esc(e.message || "")}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/**
+ * ตั้งเมนูใบเดียวให้ทุกคนเดี๋ยวนี้ ไม่สนสถานะของแต่ละคน
+ *
+ * ต่างจากปุ่มด้านบนที่แจกตามสถานะ ตัวนี้ใช้ตอนเพิ่งเปลี่ยนเมนูหลัก แล้วอยากให้ทุกคนเห็น
+ * ใบใหม่ทันทีโดยไม่ต้องรอให้ใครลงทะเบียนหรือแอดเพื่อนใหม่
+ */
+async function applySameMenuToAll() {
+  const sel = $("#menu-pick");
+  const id = sel.value;
+  if (!id) return toast("เลือกเมนูก่อน");
+  const name = sel.options[sel.selectedIndex].textContent;
+
+  const ok = await confirmDialog({
+    title: "ตั้งเมนูนี้ให้ทุกคน?",
+    message:
+      `${name}\n\n` +
+      "ทุกคนจะได้เมนูใบนี้เหมือนกันหมด ไม่ว่าจะลงทะเบียนแล้วหรือยัง " +
+      "และจะถูกตั้งเป็นเมนูตั้งต้นของ OA ด้วย\n\n" +
+      "ข้อควรรู้: คนที่ลาออกหรือถูกระงับสิทธิ์จะเห็นเมนูนี้ด้วย จากเดิมที่ระบบถอดเมนูออกให้",
+    confirmLabel: "ตั้งให้ทุกคน",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+
+  const btn = $("#menu-all");
+  const box = $("#menu-all-progress");
+  btn.disabled = true;
+  let after = "", total = 0, failed = 0, rounds = 0;
+  try {
+    for (;;) {
+      const r = await api("/api/admin/richmenu", { method: "POST", body: { after, richMenuId: id } });
+      total += r.processed;
+      failed += r.failed;
+      rounds += 1;
+      box.innerHTML = `<p class="hintnote">ตั้งไปแล้ว <b>${total}</b> คน${failed ? ` · ไม่สำเร็จ ${failed} คน` : ""}</p>`;
+      if (r.done || !r.next || rounds > 100) break;
+      after = r.next;
+    }
+    box.innerHTML =
+      `<p class="hintnote">เสร็จแล้ว · ตั้งเป็นเมนูตั้งต้นของ OA และผูกให้คนที่ระบบรู้จักอีก ${total} คน` +
+      `${failed ? ` (ไม่สำเร็จ ${failed} คน มักเป็นคนที่บล็อกหรือลบ OA ไปแล้ว)` : ""}<br>` +
+      "ให้พนักงานปิดแล้วเปิดห้องแชทใหม่ถ้ายังเห็นของเดิม</p>";
+    toast("ตั้งเมนูให้ทุกคนแล้ว");
   } catch (e) {
     box.innerHTML = `<p class="hintnote">หยุดกลางคัน: ${esc(e.message || "")}</p>`;
   } finally {
@@ -1775,6 +1843,7 @@ function bind() {
   $("#menu-back").onclick = () => { setTab("me"); show("s-manage"); };
   $("#menu-body").addEventListener("click", (e) => {
     if (e.target.closest("#menu-apply")) applyRichMenus();
+    if (e.target.closest("#menu-all")) applySameMenuToAll();
   });
   $("#menu-body").addEventListener("input", (e) => {
     if (e.target.id !== "menu-find") return;

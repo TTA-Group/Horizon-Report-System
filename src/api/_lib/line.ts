@@ -237,6 +237,24 @@ export async function richMenuOf(userId: string): Promise<LineQuery<string | nul
   return r.ok ? { ok: true, data: r.data.richMenuId ?? null } : r;
 }
 
+/**
+ * ตั้งเมนูตั้งต้นของทั้ง OA — ทุกคนที่ "ไม่มีเมนูผูกไว้เป็นรายคน" จะเห็นใบนี้
+ *
+ * เป็นทางเดียวที่ไปถึงคนที่ระบบไม่รู้จักได้ เพราะการขอรายชื่อผู้ติดตามทั้งหมดจาก LINE
+ * ต้องเป็นบัญชีที่ผ่านการยืนยันแล้วเท่านั้น บัญชีทั่วไปขอไม่ได้
+ *
+ * ข้อควรรู้: เมนูที่ผูกไว้เป็นรายคน "ชนะ" เมนูตั้งต้นเสมอ การตั้งใบนี้จึงไม่ทำให้คนที่
+ * เคยถูกผูกใบอื่นไว้เปลี่ยนตาม ต้องไล่ผูกให้เป็นรายคนควบคู่กันไปด้วย
+ */
+export function setDefaultRichMenu(richMenuId: string): Promise<boolean> {
+  return callRichMenu(`user/all/richmenu/${encodeURIComponent(richMenuId)}`, "POST");
+}
+
+/** ยกเลิกเมนูตั้งต้นของทั้ง OA */
+export function clearDefaultRichMenu(): Promise<boolean> {
+  return callRichMenu("user/all/richmenu", "DELETE");
+}
+
 export function linkRichMenu(userId: string, richMenuId: string): Promise<boolean> {
   return callRichMenu(`user/${encodeURIComponent(userId)}/richmenu/${encodeURIComponent(richMenuId)}`, "POST");
 }

@@ -144,6 +144,29 @@ export async function applyRichMenus(lineUserIds: string[]): Promise<ApplyOutcom
   return out;
 }
 
+/**
+ * ผูกเมนู "ใบเดียวกัน" ให้ทุกคนในชุดนี้ โดยไม่สนสถานะของแต่ละคน
+ *
+ * ต่างจาก applyRichMenus ที่แจกตามสถานะ (ลงทะเบียนแล้ว / ยังไม่ลงทะเบียน / ถูกระงับสิทธิ์)
+ * ตัวนี้มีไว้ตอนเปลี่ยนเมนูหลักแล้วอยากให้ทุกคนเห็นใบใหม่ทันที ไม่ต้องรอให้ใครลงทะเบียน
+ *
+ * ไม่ได้แทนที่กติกาปกติ — ครั้งต่อไปที่คนคนนั้นมีเหตุให้สลับเมนู (ลงทะเบียน · ถูกระงับสิทธิ์ ·
+ * ถูกปลดการผูก) ระบบจะกลับไปแจกตามสถานะเหมือนเดิม
+ */
+export async function linkSameMenuTo(lineUserIds: string[], richMenuId: string): Promise<ApplyOutcome[]> {
+  const out: ApplyOutcome[] = [];
+  for (const id of lineUserIds) {
+    let ok = false;
+    try {
+      ok = await linkRichMenu(id, richMenuId);
+    } catch (e) {
+      console.error("[richmenu] ตั้งเมนูให้ทุกคนไม่สำเร็จ", id, e);
+    }
+    out.push({ userId: id, action: "link", richMenuId, ok });
+  }
+  return out;
+}
+
 /** ปรับเมนูของบัญชีไลน์นี้ให้ตรงกับความจริงล่าสุดในฐานข้อมูล */
 export async function syncRichMenu(lineUserId: string): Promise<void> {
   const m = menus();
