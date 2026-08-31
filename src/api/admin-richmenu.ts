@@ -11,6 +11,7 @@
 // และการไล่ตั้งเมนูก็บอกกลับว่าสำเร็จกี่คน ไม่สำเร็จกี่คน แทนที่จะเงียบเหมือนเดิม
 
 import { getSession, requireAdmin } from "./_lib/auth";
+import { db } from "./_lib/db";
 import { envVar } from "./_lib/env";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { defaultRichMenuId, listRichMenus, richMenuOf } from "./_lib/line";
@@ -23,6 +24,41 @@ import { applyRichMenus, configuredMenus, knownLineUserCount, knownLineUserIds, 
  * ใช้หนึ่งครั้งต่อคน เผื่อไว้ให้เหลือสำหรับคำขอฐานข้อมูลด้วย หน้าจอเป็นคนวนเรียกซ้ำเอง
  */
 const BATCH = 25;
+
+/**
+ * บันทึกว่าไล่ตั้งเมนูครั้งล่าสุดเมื่อไหร่ โดยใคร
+ *
+ * มีเพราะคำถามแรกเวลาเมนูไม่เปลี่ยนคือ "กดปุ่มไปหรือยัง" ซึ่งเดิมตอบไม่ได้เลย
+ * ต้องไปไล่ log ของ Worker ซึ่งไม่มีใครเปิดดู เก็บไว้ที่ app_settings ซึ่งเป็นตารางของกลาง
+ * ที่มีอยู่แล้ว ไม่ต้องเพิ่มตารางใหม่ให้ต้องรัน SQL อีกไฟล์
+ *
+ * ห้ามทำให้การตั้งเมนูล้มตาม — บันทึกไม่ได้ก็แค่ไม่รู้เวลา ไม่ใช่เรื่องที่ต้องหยุดงานหลัก
+ */
+const APPLY_KEY = "richmenu.last_apply";
+
+async function noteApplied(employeeId: string, code: string): Promise<void> {
+  try {
+    await db()`
+      INSERT INTO app_settings (key, value, updated_by) VALUES (${APPLY_KEY}, ${code}, ${employeeId})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+    `;
+  } catch (e) {
+    console.error("[richmenu] บันทึกเวลาไล่ตั้งเมนูไม่สำเร็จ", e);
+  }
+}
+
+async function lastApplied(): Promise<{ at: string; by: string } | null> {
+  try {
+    const rows = await db()<{ at: string; by: string }[]>`
+      SELECT to_char(updated_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI') AS at, value AS by
+      FROM app_settings WHERE key = ${APPLY_KEY}
+    `;
+    return rows[0] ?? null;
+  } catch {
+    return null; // ยังไม่ได้รันไฟล์ที่สร้างตารางนี้ — ไม่ใช่เรื่องที่ต้องทำให้หน้าตรวจพัง
+  }
+}
 
 export const richMenuStatus = async (req: Request): Promise<Response> =>
   run(async () => {
@@ -85,6 +121,7 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
       // ระบบนี้ตั้งใจไม่ตั้งเมนูตั้งต้น — ถ้ามี คนที่ลาออกแล้วจะตกกลับไปเห็นเมนูที่มีปุ่มลงทะเบียน
       defaultMenu: def.ok ? { ok: true, id: def.data, name: nameOf(def.data) } : { ok: false, error: def.error },
       people: await knownLineUserCount(),
+      lastApply: await lastApplied(),
       mine,
     });
   });
@@ -110,6 +147,7 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
 
     const out = await applyRichMenus(ids);
     const failed = out.filter((o) => !o.ok);
+    await noteApplied(s.employee!.id, s.employee!.employee_code);
     console.log("[richmenu] ไล่ตั้งเมนู", out.length, "คน ไม่สำเร็จ", failed.length, "โดย", s.employee?.employee_code);
 
     return json({
