@@ -442,6 +442,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <button class="ghost" id="btn-close" style="margin-top:18px">ปิดหน้านี้</button>
   </div></section>
 
+  <!-- ลงทะเบียนไว้อยู่แล้ว — คนที่เปิดระบบกลางเข้ามาเองทั้งที่ผูกบัญชีไว้เรียบร้อยแล้ว
+       ต้องไม่พาออกไปที่อื่นเอง เขาตั้งใจกดเข้ามาที่นี่ ให้เห็นก่อนว่าเกิดอะไรขึ้น
+       แล้วค่อยเลือกเองว่าจะไปต่อที่ไหน -->
+  <section class="screen" id="s-already"><div class="center">
+    <h2>ลงทะเบียนไว้แล้ว</h2>
+    <p id="al-who"></p>
+    <p style="margin-top:10px">ระบบกลางใช้ลงทะเบียนครั้งเดียวจบ<br>
+      การใช้งานประจำวันอยู่ที่แจ้งปัญหาและจองคิวนวด</p>
+    <button class="send" id="al-back" style="display:none;margin-top:18px">กลับไปหน้าที่พามา</button>
+    <button class="ghost" id="al-close" style="margin-top:10px">ปิดหน้านี้</button>
+  </div></section>
+
   <!-- หน้าจัดการของฝ่ายบุคคล — เหลือเฉพาะปุ่มของงานที่ทำจริง
        ชื่อและฝ่ายของคนที่ล็อกอินอยู่มีที่แถบบนสุดแล้ว ไม่ต้องเขียนซ้ำอีกรอบตรงนี้
        ส่วนการค้นหาและแก้ไขรายคนอยู่แท็บ "ทะเบียนพนักงาน" ซึ่งเป็นงานที่ต้องไล่ดูก่อน -->

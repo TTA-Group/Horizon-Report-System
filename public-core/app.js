@@ -264,7 +264,30 @@ function enterApp() {
     return goMe();
   }
   $("#tabbar").style.display = "none";
-  leaveAfterRegister();
+  showAlreadyRegistered();
+}
+
+/**
+ * คนที่ผูกบัญชีไว้แล้วและไม่ใช่ผู้ดูแล เปิดระบบกลางเข้ามาเอง
+ *
+ * เดิมใช้เส้นทางเดียวกับ "เพิ่งลงทะเบียนเสร็จ" ซึ่งผิดสองข้อ
+ *   1. ถ้าลิงก์ที่กดมามี back= ติดมาด้วย จะถูกพาออกไปที่ระบบนั้นทันทีโดยไม่ทันเห็นอะไรเลย
+ *      อาการคือ "กดระบบกลางแล้วเด้งไปหน้าแจ้งปัญหา" ทั้งที่ตั้งใจกดเข้ามาที่นี่
+ *      และถ้าระบบปลายทางดันคิดว่าคนนี้ยังไม่ลงทะเบียน สองหน้าจะโยนกันไปมาไม่จบ
+ *   2. ถ้าไม่มี back= จะขึ้นว่า "ลงทะเบียนสำเร็จ" แล้วปิดตัวเอง ทั้งที่เขาไม่ได้เพิ่งลงทะเบียน
+ *      หน้าต่างหายไปเฉย ๆ โดยไม่มีคำอธิบาย
+ *
+ * การพากลับยังมีอยู่ แต่เปลี่ยนเป็นปุ่มให้กดเอง — ระบบไม่ตัดสินใจแทนคนที่ตั้งใจเปิดมาเอง
+ */
+function showAlreadyRegistered() {
+  const emp = session.employee || {};
+  $("#al-who").textContent = [emp.full_name, emp.employee_code].filter(Boolean).join(" · ");
+  const back = readBackTarget();
+  const btn = $("#al-back");
+  btn.style.display = back ? "" : "none";
+  if (back) btn.onclick = () => { location.href = `https://liff.line.me/${back}`; };
+  $("#al-close").style.display = canCloseWindow() ? "" : "none";
+  show("s-already");
 }
 
 /**
@@ -1712,6 +1735,7 @@ function bind() {
   $("#mg-close").onclick = closeWindow;
   $("#mg-massage").onclick = () => openMassageAdmin("1");
   $("#mg-menu").onclick = goMenuCheck;
+  $("#al-close").onclick = closeWindow;
   $("#menu-back").onclick = () => { setTab("me"); show("s-manage"); };
   $("#menu-body").addEventListener("click", (e) => {
     if (e.target.closest("#menu-apply")) applyRichMenus();
