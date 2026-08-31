@@ -14,8 +14,8 @@ import { getSession, requireAdmin } from "./_lib/auth";
 import { db } from "./_lib/db";
 import { envVar } from "./_lib/env";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { defaultRichMenuId, listRichMenus, richMenuOf } from "./_lib/line";
-import { applyRichMenus, configuredMenus, knownLineUserCount, knownLineUserIds, planRichMenus } from "./_lib/richmenu";
+import { defaultRichMenuId, listRichMenus, richMenuOf, setDefaultRichMenu } from "./_lib/line";
+import { applyRichMenus, configuredMenus, knownLineUserCount, knownLineUserIds, linkSameMenuTo, planRichMenus } from "./_lib/richmenu";
 
 /**
  * ตั้งได้ครั้งละไม่เกินเท่านี้ต่อหนึ่งคำขอ
@@ -139,8 +139,12 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       throw new HttpError(409, "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ที่ระบบนี้", "no_token");
     }
 
-    const body = await readJson<{ after?: string }>(req);
+    const body = await readJson<{ after?: string; richMenuId?: string }>(req);
     const after = typeof body.after === "string" ? body.after : "";
+
+    // โหมด "ใบเดียวให้ทุกคน" — ส่งรหัสเมนูมาด้วยแปลว่าให้ใช้ใบนั้นกับทุกคน ไม่สนสถานะ
+    const same = typeof body.richMenuId === "string" ? body.richMenuId.trim() : "";
+    if (same) return applyOneToAll(req, same, after, s.employee!.id, s.employee!.employee_code);
 
     const ids = await knownLineUserIds(after, BATCH);
     if (ids.length === 0) return json({ ok: true, done: true, next: null, processed: 0, linked: 0, unlinked: 0, failed: 0 });
@@ -160,3 +164,51 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       failed: failed.length,
     });
   });
+
+/**
+ * ตั้งเมนู "ใบเดียวกัน" ให้ทุกคน
+ *
+ * ทำสองอย่างคู่กัน เพราะอย่างเดียวไม่พอสักอย่าง
+ *   ตั้งเป็นเมนูตั้งต้นของ OA  ไปถึงคนที่ระบบไม่รู้จัก ซึ่งขอรายชื่อจาก LINE ไม่ได้
+ *                             (ต้องเป็นบัญชีที่ผ่านการยืนยันแล้วเท่านั้น)
+ *   ไล่ผูกเป็นรายคน            เพราะเมนูที่ผูกไว้เป็นรายคนชนะเมนูตั้งต้นเสมอ
+ *                             คนที่เคยถูกระบบอื่นผูกใบเก่าไว้จึงไม่เปลี่ยนตามเมนูตั้งต้น
+ *
+ * ตั้งเมนูตั้งต้นเฉพาะชุดแรก ไม่ต้องยิงซ้ำทุกชุด
+ */
+async function applyOneToAll(
+  _req: Request,
+  richMenuId: string,
+  after: string,
+  employeeId: string,
+  code: string,
+): Promise<Response> {
+  // รหัสที่ไม่มีอยู่จริงคือสาเหตุที่ LINE ปฏิเสธเงียบ ๆ — ตรวจก่อนยิง ไม่ปล่อยให้ล้มทีละคน
+  if (after === "") {
+    const listed = await listRichMenus();
+    if (!listed.ok) throw new HttpError(502, `ถาม LINE ไม่ได้ · ${listed.error}`, "line_down");
+    if (!listed.data.some((m) => m.richMenuId === richMenuId)) {
+      throw new HttpError(400, "ไม่พบเมนูรหัสนี้บน LINE", "menu_not_found");
+    }
+  }
+
+  const asDefault = after === "" ? await setDefaultRichMenu(richMenuId) : null;
+  const ids = await knownLineUserIds(after, BATCH);
+  const out = ids.length > 0 ? await linkSameMenuTo(ids, richMenuId) : [];
+  const failed = out.filter((o) => !o.ok);
+  await noteApplied(employeeId, code);
+  console.log("[richmenu] ตั้งใบเดียวให้ทุกคน", richMenuId, out.length, "คน ไม่สำเร็จ", failed.length, "โดย", code);
+
+  return json({
+    ok: true,
+    mode: "all",
+    done: ids.length < BATCH,
+    next: ids.length > 0 ? ids[ids.length - 1] : null,
+    processed: out.length,
+    linked: out.length - failed.length,
+    unlinked: 0,
+    failed: failed.length,
+    // null = ชุดถัดไป ไม่ได้ตั้งซ้ำ
+    defaultSet: asDefault,
+  });
+}
