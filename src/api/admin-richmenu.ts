@@ -14,7 +14,14 @@ import { getSession, requireAdmin } from "./_lib/auth";
 import { db } from "./_lib/db";
 import { envVar } from "./_lib/env";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { clearDefaultRichMenu, defaultRichMenuId, followerIds, listRichMenus, richMenuOf } from "./_lib/line";
+import {
+  clearDefaultRichMenu,
+  defaultRichMenuId,
+  followerIds,
+  listRichMenus,
+  richMenuOf,
+  setDefaultRichMenu,
+} from "./_lib/line";
 import {
   applyRichMenus,
   configuredMenus,
@@ -127,7 +134,9 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
         ? { ok: true, count: onLine.length, richmenus: onLine.map((m) => ({ id: m.richMenuId, name: m.name })) }
         : { ok: false, error: listed.error },
       // ระบบนี้ตั้งใจไม่ตั้งเมนูตั้งต้น — ถ้ามี คนที่ลาออกแล้วจะตกกลับไปเห็นเมนูที่มีปุ่มลงทะเบียน
-      defaultMenu: def.ok ? { ok: true, id: def.data, name: nameOf(def.data) } : { ok: false, error: def.error },
+      defaultMenu: def.ok
+        ? { ok: true, id: def.data, name: nameOf(def.data), correct: set !== null && def.data === set.fresh }
+        : { ok: false, error: def.error },
       people: await knownLineUserCount(),
       // ขอรายชื่อเพื่อนทั้งหมดได้ไหม — เป็นตัวชี้ขาดว่าปุ่ม "เปลี่ยนให้ทุกคน" ไปถึงทุกคนจริงหรือไม่
       followers: await (async () => {
@@ -182,8 +191,22 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       return json({ ok: true, unlinked: done });
     }
 
+    // ชุดแรก: ตั้ง "เมนูของคนที่ยังไม่ลงทะเบียน" เป็นเมนูตั้งต้นของ OA
+    //
+    // นี่คือคำสั่งเดียวที่ถึงทุกคนใน OA พร้อมกันจริง ๆ โดยไม่ต้องรู้รายชื่อ (LINE เปิดให้ทุกบัญชี
+    // ไม่ต้องผ่านการยืนยัน ต่างจากการขอรายชื่อผู้ติดตามซึ่งต้องผ่าน)
+    //
+    // ทำไมเป็นเมนูของคนที่ยังไม่ลงทะเบียน: คนที่ระบบมองไม่เห็นคือคนที่ยังไม่เคยลงทะเบียนเสมอ
+    // เพราะทุกคนที่ลงทะเบียนแล้วมีแถวใน line_accounts อยู่แล้ว เมนูที่ถูกต้องของคนกลุ่มนั้น
+    // จึงเป็นเมนูที่มีปุ่มลงทะเบียน ตรงกับกติกาปกติของระบบพอดี
+    //
+    // ส่วนคนที่ระบบรู้จัก จะถูกผูกเมนูรายคนทับตามสถานะในขั้นถัดไป ซึ่งชนะเมนูตั้งต้นเสมอ
+    const asDefault = after === "" ? await setDefaultRichMenu(configuredMenus()!.fresh) : null;
+
     const ids = await knownLineUserIds(after, BATCH);
-    if (ids.length === 0) return json({ ok: true, done: true, next: null, processed: 0, linked: 0, unlinked: 0, failed: 0 });
+    if (ids.length === 0) {
+      return json({ ok: true, done: true, next: null, processed: 0, linked: 0, unlinked: 0, failed: 0, defaultSet: asDefault });
+    }
 
     const out = await applyRichMenus(ids);
     const failed = out.filter((o) => !o.ok);
@@ -198,5 +221,6 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       linked: out.filter((o) => o.ok && o.action === "link").length,
       unlinked: out.filter((o) => o.ok && o.action === "unlink").length,
       failed: failed.length,
+      defaultSet: asDefault,
     });
   });
