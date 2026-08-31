@@ -864,6 +864,20 @@ function checkRow(mark, text, sub) {
   </div>`;
 }
 
+/**
+ * ชื่อเมนูในกล่องเลือก — ติดป้ายบอกด้วยว่าใบไหนคือใบที่ตั้งค่าไว้
+ *
+ * บัญชีจริงมีเมนูสะสมหลายสิบใบและ "ชื่อซ้ำกันได้" ถ้ามีแต่ชื่อ คนเลือกจะแยกไม่ออกว่าใบไหน
+ * คือใบที่ตั้งไว้ในระบบ ต้องบอกไว้ตรงนี้เลย ไม่ใช่ให้ไปเทียบรหัสเองทีละใบ
+ */
+function menuLabel(m, r) {
+  const tags = [];
+  if (r.menus && m.id === r.menus.member.id) tags.push("ตั้งไว้เป็นเมนูคนที่ลงทะเบียนแล้ว");
+  if (r.menus && m.id === r.menus.fresh.id) tags.push("ตั้งไว้เป็นเมนูคนที่ยังไม่ลงทะเบียน");
+  if (r.defaultMenu && r.defaultMenu.ok && m.id === r.defaultMenu.id) tags.push("เมนูตั้งต้นตอนนี้");
+  return `${m.name || "ไม่มีชื่อ"}${tags.length ? ` · ${tags.join(" · ")}` : ""} — ${m.id}`;
+}
+
 function renderMenuStatus(r) {
   const rows = [];
 
@@ -970,8 +984,9 @@ function renderMenuStatus(r) {
        </p>
        <select id="menu-pick">
          <option value="">เลือกเมนูที่จะให้ทุกคนเห็น</option>
-         ${r.line.richmenus.map((m) => `<option value="${esc(m.id)}">${esc(m.name || "ไม่มีชื่อ")} — ${esc(m.id.slice(9, 21))}…</option>`).join("")}
+         ${r.line.richmenus.map((m) => `<option value="${esc(m.id)}">${esc(menuLabel(m, r))}</option>`).join("")}
        </select>
+       <p class="hintnote mono" id="menu-pick-id" style="margin-top:6px">—</p>
        <button class="send" id="menu-all" style="margin-top:10px">ตั้งใบนี้ให้ทุกคน</button>
        <div id="menu-all-progress"></div>`
     : "";
@@ -1851,6 +1866,12 @@ function bind() {
     $$("#menu-list .irow").forEach((row) => {
       row.style.display = !q || row.dataset.find.includes(q) ? "" : "none";
     });
+  });
+  // กล่องเลือกกว้างจำกัด รหัสยาว 42 ตัวจึงถูกตัดทิ้งเสมอไม่ว่าจะเขียนยังไง
+  // โชว์รหัสเต็มของใบที่เลือกอยู่ไว้ใต้กล่อง เพื่อให้ตรวจได้ก่อนกดว่าเลือกถูกใบจริง
+  $("#menu-body").addEventListener("change", (e) => {
+    if (e.target.id !== "menu-pick") return;
+    $("#menu-pick-id").textContent = e.target.value || "—";
   });
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;
