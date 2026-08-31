@@ -14,7 +14,7 @@ import { getSession, requireAdmin } from "./_lib/auth";
 import { db } from "./_lib/db";
 import { envVar } from "./_lib/env";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { defaultRichMenuId, listRichMenus, richMenuOf, setDefaultRichMenu } from "./_lib/line";
+import { clearDefaultRichMenu, defaultRichMenuId, listRichMenus, richMenuOf } from "./_lib/line";
 import { applyRichMenus, configuredMenus, knownLineUserCount, knownLineUserIds, linkSameMenuTo, planRichMenus } from "./_lib/richmenu";
 
 /**
@@ -139,8 +139,16 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       throw new HttpError(409, "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ที่ระบบนี้", "no_token");
     }
 
-    const body = await readJson<{ after?: string; richMenuId?: string }>(req);
+    const body = await readJson<{ after?: string; richMenuId?: string; action?: string }>(req);
     const after = typeof body.after === "string" ? body.after : "";
+
+    // ถอดเมนูตั้งต้นของ OA ออก — ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น
+    if (body.action === "clear_default") {
+      const ok = await clearDefaultRichMenu();
+      console.log("[richmenu] ถอดเมนูตั้งต้น", ok ? "สำเร็จ" : "ไม่สำเร็จ", "โดย", s.employee!.employee_code);
+      if (!ok) throw new HttpError(502, "ถอดเมนูตั้งต้นไม่สำเร็จ", "line_down");
+      return json({ ok: true, cleared: true });
+    }
 
     // โหมด "ใบเดียวให้ทุกคน" — ส่งรหัสเมนูมาด้วยแปลว่าให้ใช้ใบนั้นกับทุกคน ไม่สนสถานะ
     const same = typeof body.richMenuId === "string" ? body.richMenuId.trim() : "";
@@ -166,15 +174,12 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
   });
 
 /**
- * ตั้งเมนู "ใบเดียวกัน" ให้ทุกคน
+ * ตั้งเมนู "ใบเดียวกัน" ให้ทุกคนที่ระบบรู้จักตอนนี้
  *
- * ทำสองอย่างคู่กัน เพราะอย่างเดียวไม่พอสักอย่าง
- *   ตั้งเป็นเมนูตั้งต้นของ OA  ไปถึงคนที่ระบบไม่รู้จัก ซึ่งขอรายชื่อจาก LINE ไม่ได้
- *                             (ต้องเป็นบัญชีที่ผ่านการยืนยันแล้วเท่านั้น)
- *   ไล่ผูกเป็นรายคน            เพราะเมนูที่ผูกไว้เป็นรายคนชนะเมนูตั้งต้นเสมอ
- *                             คนที่เคยถูกระบบอื่นผูกใบเก่าไว้จึงไม่เปลี่ยนตามเมนูตั้งต้น
- *
- * ตั้งเมนูตั้งต้นเฉพาะชุดแรก ไม่ต้องยิงซ้ำทุกชุด
+ * ตั้งใจไม่แตะเมนูตั้งต้นของ OA — งานนี้คือ "เปลี่ยนของคนที่มีอยู่ตอนนี้" เท่านั้น
+ * คนที่มาทีหลังต้องเข้าตามระบบปกติ คือได้เมนูที่มีปุ่มลงทะเบียนก่อน แล้วค่อยได้เมนูใช้งาน
+ * เมื่อลงทะเบียนเสร็จ ถ้าตั้งเมนูตั้งต้นไว้ คนใหม่จะเห็นเมนูใช้งานตั้งแต่ยังไม่ลงทะเบียน
+ * และคนที่ลาออกแล้วซึ่งถูกถอดเมนูออก ก็จะตกกลับไปเห็นเมนูตั้งต้นแทนที่จะไม่มีเมนู
  */
 async function applyOneToAll(
   _req: Request,
@@ -192,7 +197,6 @@ async function applyOneToAll(
     }
   }
 
-  const asDefault = after === "" ? await setDefaultRichMenu(richMenuId) : null;
   const ids = await knownLineUserIds(after, BATCH);
   const out = ids.length > 0 ? await linkSameMenuTo(ids, richMenuId) : [];
   const failed = out.filter((o) => !o.ok);
@@ -208,7 +212,5 @@ async function applyOneToAll(
     linked: out.length - failed.length,
     unlinked: 0,
     failed: failed.length,
-    // null = ชุดถัดไป ไม่ได้ตั้งซ้ำ
-    defaultSet: asDefault,
   });
 }
