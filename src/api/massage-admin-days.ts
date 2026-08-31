@@ -8,7 +8,7 @@
 
 import { getSession } from "./_lib/auth";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { adminDays, adminSetDay, assertMassageStaff, bangkokDate } from "./_lib/massage";
+import { adminDays, adminRemoveDay, adminSetDay, assertMassageStaff, bangkokDate } from "./_lib/massage";
 import { massageNotice } from "./_lib/massage-flex";
 import { notifyEmployee } from "./_lib/massage-notify";
 
@@ -29,10 +29,28 @@ export const massageAdminSetDay = async (req: Request): Promise<Response> =>
     const s = await getSession(req);
     await assertMassageStaff(s);
 
-    const { day, status, reason, force } = await readJson<{
-      day?: string; status?: string; reason?: string; force?: boolean;
+    const { day, status, reason, force, action } = await readJson<{
+      day?: string; status?: string; reason?: string; force?: boolean; action?: string;
     }>(req);
     if (!day) throw new HttpError(400, "ไม่ได้ระบุวัน");
+
+    // ลบวันออกจากรายการ — คนละเรื่องกับปิดวัน (ปิดแล้วยังเห็นอยู่และเปิดกลับได้)
+    if (action === "remove") {
+      const r = await adminRemoveDay(day, { force: force === true, byEmployeeId: s.employee!.id });
+      console.log("[massage] ลบวัน", day, `ยกเลิก ${r.cancelled.length} คิว โดย`, s.employee!.employee_code);
+      for (const b of r.cancelled) {
+        await notifyEmployee(
+          b.employeeId,
+          massageNotice(
+            "คิวนวดของคุณถูกยกเลิก เนื่องจากยกเลิกวันให้บริการ",
+            b.day, b.slot, b.therapistName,
+            "กรุณาจองวันอื่นแทนได้เลย",
+          ),
+        );
+      }
+      return json({ ok: true, day: r.day, removed: true, cancelled: r.cancelled.length });
+    }
+
     if (status !== "open" && status !== "closed") throw new HttpError(400, "สถานะไม่ถูกต้อง");
 
     const r = await adminSetDay(day, status, {

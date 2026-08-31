@@ -1212,6 +1212,8 @@ function renderADays() {
               data-status="${shut ? "closed" : "open"}"${d.past ? " disabled" : ""}>
               ${shut ? "เปิดวัน" : "ปิดวัน"}
             </button>
+            <button class="kill" data-kill="${escapeHtml(d.day)}" aria-label="ลบวันนี้ออกจากรายการ"
+              title="ลบวันนี้ออกจากรายการ"${d.past ? " disabled" : ""}>×</button>
           </div>`;
         })
         .join("")
@@ -1253,6 +1255,47 @@ async function toggleServiceDay(day, status) {
     day, status: "closed", force: true,
     reason: typeof reason === "string" ? reason : "ปิดให้บริการ",
   });
+}
+
+/**
+ * ลบวันออกจากรายการ — ต่างจากปิดวันตรงที่หายไปเลย ไม่ใช่ขึ้นว่า "ปิด" ค้างไว้
+ *
+ * ใช้กับวันที่ไม่ควรมีตั้งแต่แรก เช่น กดเพิ่มวันนอกตารางผิดวัน ส่วนวันที่แค่หยุดชั่วคราว
+ * ควรใช้ "ปิดวัน" เพราะเปิดกลับได้ในที่เดียวกันและเห็นเหตุผลที่ปิดค้างไว้ด้วย
+ */
+async function removeServiceDay(day) {
+  const row = aMonthDays.find((d) => d.day === day);
+  const label = row ? row.label : day;
+  const booked = row ? row.booked : 0;
+
+  const yes = await dialog({
+    icon: "warn",
+    title: "ลบวันนี้ออกจากรายการ",
+    body:
+      `${label}\n\n` +
+      (booked > 0
+        ? `วันนี้มีคนจองอยู่ ${booked} คิว ลบแล้วคิวทั้งหมดจะถูกยกเลิก และระบบจะแจ้งเจ้าตัวทุกคนทางไลน์\n\n`
+        : "ยังไม่มีใครจองวันนี้\n\n") +
+      "ถ้าแค่หยุดชั่วคราวให้ใช้ปุ่ม “ปิดวัน” แทน จะได้เปิดกลับได้ง่าย\n" +
+      "ลบไปแล้วเอากลับมาได้ด้วยการเพิ่มวันเดิมซ้ำที่ช่องด้านล่าง",
+    confirm: booked > 0 ? `ลบวันและยกเลิก ${booked} คิว` : "ลบวันนี้",
+    cancel: "ไม่ใช่ตอนนี้",
+    danger: true,
+  });
+  if (!yes) return;
+
+  try {
+    const r = await api("/api/massage/admin/days", {
+      method: "POST",
+      body: { day, action: "remove", force: true },
+    });
+    toast(`ลบวันเรียบร้อย${r.cancelled ? ` · ยกเลิกไป ${r.cancelled} คิว` : ""}`);
+    aDayOptions = []; // กล่องเลือกวันของหน้าจองแทนต้องโหลดใหม่ วันที่เลือกได้เปลี่ยนไปแล้ว
+    await goADays(aMonth);
+  } catch (e) {
+    if (e && e.handled) return;
+    await dialog({ icon: "err", title: "ลบวันไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+  }
 }
 
 async function saveServiceDay(body) {
@@ -1371,6 +1414,9 @@ function bind() {
     // เปิดหรือปิดวันให้บริการ
     const ad = e.target.closest("[data-aday]");
     if (ad && !ad.disabled) toggleServiceDay(ad.dataset.aday, ad.dataset.status);
+    // ลบวันออกจากรายการ (ปุ่ม × ข้างปุ่มปิด/เปิดวัน)
+    const kill = e.target.closest("[data-kill]");
+    if (kill && !kill.disabled) removeServiceDay(kill.dataset.kill);
     const x = e.target.closest("[data-close]");
     if (x) closeWindow();
   });
