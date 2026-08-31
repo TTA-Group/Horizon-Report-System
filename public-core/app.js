@@ -849,7 +849,16 @@ function pickedValue(sel, input) {
   return sel.value === PICK_OTHER ? input.value.trim() : sel.value;
 }
 
-function openEmpForm() {
+/**
+ * เปิดฟอร์มเพิ่มพนักงาน
+ *
+ * ต้องรอรายชื่อชั้นให้มาก่อน — รายการชั้นเป็นของฝั่งเซิร์ฟเวอร์ (FLOORS ใน _lib/constants.ts)
+ * ไม่ใช่รายการที่เขียนไว้ในหน้าเว็บเหมือนฝ่าย/แผนก ถ้าเปิดฟอร์มก่อนที่ข้อมูลจะมาถึง
+ * ช่องเลือกชั้นจะเหลือแค่ "เลือกชั้น" กับ "ชั้นอื่น" คือไม่มีชั้นให้เลือกเลย
+ * ซึ่งต่างจากหน้าแจ้งปัญหาที่ขึ้นครบทุกชั้น ทั้งที่ควรเป็นรายการเดียวกัน
+ */
+async function openEmpForm() {
+  await getMasters().catch(() => null);
   fillSelect($("#n-dept"), "เลือกฝ่าย/แผนก", ORG_DEPTS, "อื่น ๆ (ระบุเอง)");
   fillSelect($("#n-floor"), "เลือกชั้น", (masters && masters.floors) || [], "ชั้นอื่น");
   $("#admin-new").style.display = "block";
@@ -1023,7 +1032,7 @@ let rolesFindTimer = null;
  * แหล่งความจริงอยู่ที่ ADMIN_DEPARTMENT_CODE ฝั่งเซิร์ฟเวอร์ ที่นี่แค่รับค่ามาใช้
  */
 function adminDeptCode() {
-  const d = (masters.departments || []).find((x) => x.grants_admin);
+  const d = ((masters && masters.departments) || []).find((x) => x.grants_admin);
   return d ? d.code : "HR";
 }
 
@@ -1554,7 +1563,7 @@ function bind() {
   // ผู้ดูแล: ฟอร์มเพิ่มพนักงานเข้าระบบ
   $("#mg-add").onclick = async () => {
     await goAdmin();
-    openEmpForm();
+    await openEmpForm();
   };
   $("#mg-close").onclick = closeWindow;
   $("#mg-massage").onclick = () => openMassageAdmin("1");
