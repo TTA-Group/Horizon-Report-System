@@ -903,6 +903,7 @@ function renderMenuStatus(r) {
     rows.push(
       r.defaultMenu.id
         ? checkRow("warn", `มีเมนูตั้งต้นของ OA อยู่ — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
+            `<span class="mono">${esc(r.defaultMenu.id)}</span><br>` +
             "ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น เพราะคนที่ลาออกแล้วจะตกกลับไปเห็นเมนูที่มีปุ่มลงทะเบียน " +
             "แล้วลงทะเบียนกลับเข้ามาใหม่ได้ ควรถอดออกที่ LINE OA Manager")
         : checkRow("good", "ไม่มีเมนูตั้งต้นของ OA ตามที่ควรเป็น"),
@@ -919,20 +920,31 @@ function renderMenuStatus(r) {
     if (r.mine.matches === true) {
       rows.push(checkRow("good", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`, "ตรงกับที่ควรได้แล้ว"));
     } else if (r.mine.matches === false) {
+      // ชื่อเมนูตั้งซ้ำกันได้ และเกิดขึ้นจริงเมื่อสร้างใบใหม่ทับของเดิมโดยใช้ชื่อเดิม
+      // ถ้าโชว์แต่ชื่อ ข้อความจะกลายเป็น "ได้ ก แต่ควรได้ ก" ซึ่งอ่านแล้วไม่ได้อะไรเลย
+      // ต้องโชว์รหัสคู่กันเสมอ เพราะรหัสคือสิ่งเดียวที่แยกสองใบนี้ออกจากกัน
+      const sameName = Boolean(r.mine.id) && now === want;
       rows.push(checkRow("bad", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`,
-        `แต่ที่ควรได้คือ <b>${esc(want)}</b><br>` +
         (r.mine.id ? `<span class="mono">${esc(r.mine.id)}</span><br>` : "") +
-        "กดปุ่ม “ตั้งเมนูใหม่ให้ทุกคน” ด้านล่างเพื่อแก้ให้ตรง"));
+        `แต่ที่ควรได้คือ <b>${esc(want)}</b>` +
+        (r.mine.expectedId ? `<br><span class="mono">${esc(r.mine.expectedId)}</span>` : "") +
+        (sameName ? "<br>สองใบนี้<b>ชื่อเหมือนกันแต่คนละใบ</b> ให้ดูที่รหัสเป็นหลัก" : "") +
+        "<br>กดปุ่ม “ตั้งเมนูใหม่ให้ทุกคน” ด้านล่างเพื่อแก้ให้ตรง"));
     } else {
       rows.push(checkRow("warn", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`,
         "ยังบอกไม่ได้ว่าตรงหรือไม่ตรง เพราะตั้งค่ารหัสเมนูยังไม่ครบ"));
     }
   }
 
+  // บัญชีที่ใช้งานมานานมีเมนูสะสมหลายสิบใบและชื่อซ้ำกันได้ กางทั้งหมดแล้วหาด้วยตาไม่ไหว
+  // จึงพับไว้ก่อนแล้วมีช่องค้นหา — ค้นได้ทั้งชื่อและรหัส
   const list = r.line.ok && r.line.richmenus.length
-    ? `<div class="section" style="margin-top:20px">เมนูที่มีอยู่จริงบน LINE</div>
-       <p class="hintnote">รหัสพวกนี้เอาไปวางใน RICHMENU_NEW_ID / RICHMENU_MEMBER_ID ได้เลย</p>
-       <div class="plist">${r.line.richmenus.map((m) => `<div class="irow">
+    ? `<div class="section" style="margin-top:20px">เมนูที่มีอยู่จริงบน LINE (${r.line.count} ใบ)</div>
+       <p class="hintnote">รหัสพวกนี้เอาไปวางใน RICHMENU_NEW_ID / RICHMENU_MEMBER_ID ได้เลย ·
+         <b>ชื่อซ้ำกันได้</b> ให้ยึดรหัสเป็นหลัก</p>
+       <input type="text" class="searchbox" id="menu-find" placeholder="ค้นชื่อเมนูหรือรหัส" />
+       <div class="plist" id="menu-list">${r.line.richmenus.map((m) => `<div class="irow"
+         data-find="${esc(((m.name || "") + " " + m.id).toLowerCase())}">
          <div class="iw"><div class="inm">${esc(m.name || "ไม่มีชื่อ")}</div>
          <div class="isub mono">${esc(m.id)}</div></div></div>`).join("")}</div>`
     : "";
@@ -1753,6 +1765,13 @@ function bind() {
   $("#menu-back").onclick = () => { setTab("me"); show("s-manage"); };
   $("#menu-body").addEventListener("click", (e) => {
     if (e.target.closest("#menu-apply")) applyRichMenus();
+  });
+  $("#menu-body").addEventListener("input", (e) => {
+    if (e.target.id !== "menu-find") return;
+    const q = e.target.value.trim().toLowerCase();
+    $$("#menu-list .irow").forEach((row) => {
+      row.style.display = !q || row.dataset.find.includes(q) ? "" : "none";
+    });
   });
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;
