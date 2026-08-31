@@ -183,6 +183,60 @@ async function callRichMenu(path: string, method: "POST" | "DELETE"): Promise<bo
   return true;
 }
 
+/**
+ * ผลของการ "ถาม" LINE — แยกให้ออกระหว่างถามไม่ได้ กับถามได้แล้วไม่มีข้อมูล
+ *
+ * สองอย่างนี้ต้องไม่ยุบเป็นค่าเดียวกัน เพราะ "ยังไม่ได้ตั้งโทเคน" กับ "ตั้งแล้วแต่ยังไม่มีเมนู"
+ * ต้องไปแก้คนละที่กัน และเป็นสาเหตุที่ทำให้เมนูไม่เปลี่ยนได้เหมือนกันทั้งคู่
+ */
+export type LineQuery<T> = { ok: true; data: T } | { ok: false; error: string };
+
+async function getFromLine<T>(path: string, notFound?: () => T): Promise<LineQuery<T>> {
+  const token = envVar("LINE_CHANNEL_ACCESS_TOKEN");
+  if (!token) return { ok: false, error: "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ที่ระบบนี้" };
+  try {
+    const res = await fetch(`${LINE_API}/v2/bot/${path}`, { headers: { authorization: `Bearer ${token}` } });
+    if (res.status === 404 && notFound) return { ok: true, data: notFound() };
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[line] GET", path, res.status, body);
+      // ข้อความจาก LINE เป็นภาษาอังกฤษ แต่บอกสาเหตุตรงที่สุด จึงส่งต่อไปให้คนอ่านเห็น
+      return { ok: false, error: `LINE ตอบกลับ ${res.status}${body ? ` · ${body.slice(0, 160)}` : ""}` };
+    }
+    return { ok: true, data: (await res.json()) as T };
+  } catch (e) {
+    console.error("[line] GET", path, e);
+    return { ok: false, error: "ต่อกับ LINE ไม่ได้" };
+  }
+}
+
+export interface RichMenuInfo {
+  richMenuId: string;
+  name: string;
+  chatBarText?: string;
+}
+
+/** รายการ rich menu ทั้งหมดที่มีอยู่จริงบน LINE — ใช้เทียบว่ารหัสที่ตั้งไว้มีอยู่จริงไหม */
+export async function listRichMenus(): Promise<LineQuery<RichMenuInfo[]>> {
+  const r = await getFromLine<{ richmenus?: RichMenuInfo[] }>("richmenu/list");
+  return r.ok ? { ok: true, data: r.data.richmenus ?? [] } : r;
+}
+
+/** เมนูตั้งต้นของทั้ง OA — ระบบนี้ต้องไม่มี ไม่งั้นคนที่ถูกถอดเมนูจะตกกลับไปเห็นเมนูนั้น */
+export async function defaultRichMenuId(): Promise<LineQuery<string | null>> {
+  const r = await getFromLine<{ richMenuId?: string }>("user/all/richmenu", () => ({}));
+  return r.ok ? { ok: true, data: r.data.richMenuId ?? null } : r;
+}
+
+/** เมนูที่ผูกอยู่กับคนคนนี้จริง ๆ ตอนนี้ — คำตอบสุดท้ายว่า "เปลี่ยนแล้วหรือยัง" */
+export async function richMenuOf(userId: string): Promise<LineQuery<string | null>> {
+  const r = await getFromLine<{ richMenuId?: string }>(
+    `user/${encodeURIComponent(userId)}/richmenu`,
+    () => ({}),
+  );
+  return r.ok ? { ok: true, data: r.data.richMenuId ?? null } : r;
+}
+
 export function linkRichMenu(userId: string, richMenuId: string): Promise<boolean> {
   return callRichMenu(`user/${encodeURIComponent(userId)}/richmenu/${encodeURIComponent(richMenuId)}`, "POST");
 }

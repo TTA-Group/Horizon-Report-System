@@ -330,6 +330,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ── วางข้อมูลทีละหลายคน ── */
+/* บรรทัดผลตรวจของหน้า rich menu — ป้ายหน้าบรรทัดบอกผ่าน/ไม่ผ่านโดยไม่ต้องอ่านข้อความทั้งบรรทัด */
+.crow{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--hair)}
+.crow:last-child{border-bottom:0}
+.cmark{flex:0 0 auto;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:12px;font-weight:700;line-height:1}
+.cmark.good{background:#E4F5E9;color:#1E7A3C}
+.cmark.bad{background:#FBE3DE;color:#B23A21}
+.cmark.warn{background:#FDF2D9;color:#8A6410}
+.ctext{flex:1;min-width:0;font-size:13px;line-height:1.6}
+.ctext b{font-weight:600}
+.ctext .sub{display:block;color:var(--slate);font-size:11.5px;margin-top:2px;line-height:1.55}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:11px;word-break:break-all}
 .hintnote{font-size:11.5px;color:var(--slate);line-height:1.7;margin-bottom:10px}
 .hintnote b{color:var(--ink);font-weight:600}
 #imp-text{width:100%;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.7;
@@ -440,7 +452,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <button class="send" id="mg-link">ผูกบัญชีไลน์ให้พนักงาน</button>
     <!-- ทางลัดไปหน้าผู้ดูแลของแอปจองคิว ปุ่มเดียวพอ เพราะสามหน้านั้นสลับกันได้ในตัวอยู่แล้ว -->
     <button class="send" id="mg-massage">หน้าจัดการคิวนวด</button>
+    <!-- เมนูของไลน์สลับให้เองเบื้องหลัง เวลาไม่ทำงานจึงเงียบสนิท ต้องมีที่ให้กดดูว่าติดตรงไหน -->
+    <button class="send" id="mg-menu">ตรวจเมนูไลน์ (rich menu)</button>
     <button class="ghost" id="mg-close">ปิดหน้านี้</button>
+  </section>
+
+  <!-- ตรวจและตั้ง rich menu — บอกว่าทำไมเมนูไม่เปลี่ยน แล้วตั้งใหม่ให้ทุกคนได้จากที่เดียว -->
+  <section class="screen" id="s-menu">
+    <p class="pagenote">
+      เมนูด้านล่างของหน้าแชทถูกผูกไว้<b>ทีละคน</b> ไม่ใช่ตั้งทีเดียวแล้วเปลี่ยนทุกคน<br>
+      เปลี่ยนรหัสเมนูแล้ว คนที่ผูกใบเก่าไว้จะยังเห็นใบเก่าจนกว่าจะกดตั้งใหม่ให้
+    </p>
+    <div id="menu-body"></div>
+    <button class="ghost" id="menu-back">กลับไปหน้าจัดการ</button>
   </section>
 
   <!-- admin (HR) -->

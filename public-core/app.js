@@ -826,6 +826,150 @@ function deptName(code) {
 // ซ่อนไว้ก่อนแล้วให้กดแสดงเมื่อต้องใช้จริง
 const UID_MASK = "••••••••••••";
 
+/* ---------- ตรวจและตั้งเมนูไลน์ (rich menu) ----------
+ *
+ * มีเพราะการสลับเมนูล้มแบบเงียบได้หลายทาง และทุกทางหน้าจอเหมือนกันหมดคือ "เมนูไม่เปลี่ยน"
+ * หน้านี้จึงต้องบอกให้ได้ว่าติดตรงไหน ไม่ใช่บอกแค่ว่าสำเร็จหรือไม่สำเร็จ
+ */
+
+/** หนึ่งบรรทัดของผลตรวจ — mark: good | bad | warn */
+function checkRow(mark, text, sub) {
+  const icon = { good: "✓", bad: "✕", warn: "!" }[mark] || "?";
+  return `<div class="crow">
+    <span class="cmark ${mark}">${icon}</span>
+    <span class="ctext">${text}${sub ? `<span class="sub">${sub}</span>` : ""}</span>
+  </div>`;
+}
+
+function renderMenuStatus(r) {
+  const rows = [];
+
+  // 1. ค่าตั้งค่าครบไหม — ขาดตัวไหนก็เงียบเหมือนกันหมด ต้องแยกให้เห็นทีละตัว
+  const miss = Object.entries(r.config).filter(([, v]) => !v).map(([k]) => k);
+  rows.push(
+    miss.length === 0
+      ? checkRow("good", "ตั้งค่าครบทั้งสามตัวแล้ว")
+      : checkRow("bad", `ยังไม่ได้ตั้งค่า <b>${miss.join(" และ ")}</b>`,
+          "ตั้งที่ Cloudflare → Worker <b>core</b> → Settings → Variables ชนิด Secret เท่านั้น " +
+          "และต้องตั้งที่ Worker <b>report</b> ด้วย ไม่งั้นตอนมีคนแอดเพื่อนจะไม่ได้เมนู"),
+  );
+
+  // 2. ถาม LINE ได้ไหม — ถามไม่ได้แปลว่าโทเคนผิดหรือหมดอายุ คนละเรื่องกับยังไม่ได้ตั้ง
+  if (!r.line.ok) {
+    rows.push(checkRow("bad", "ถาม LINE ไม่ได้", esc(r.line.error || "")));
+  } else {
+    rows.push(checkRow("good", `ต่อกับ LINE ได้ · มีเมนูอยู่ทั้งหมด ${r.line.count} ใบ`));
+  }
+
+  // 3. รหัสที่ตั้งไว้ มีเมนูใบนั้นอยู่จริงไหม — ก๊อปรหัสผิดตัวคือสาเหตุที่ LINE ปฏิเสธเงียบ ๆ
+  if (r.menus && r.line.ok) {
+    for (const [key, label] of [["fresh", "เมนูของคนที่ยังไม่ลงทะเบียน"], ["member", "เมนูของคนที่ลงทะเบียนแล้ว"]]) {
+      const m = r.menus[key];
+      rows.push(
+        m.exists
+          ? checkRow("good", `${label} — <b>${esc(m.name || "ไม่มีชื่อ")}</b>`, `<span class="mono">${esc(m.id)}</span>`)
+          : checkRow("bad", `${label} — ไม่พบเมนูรหัสนี้บน LINE`,
+              `<span class="mono">${esc(m.id)}</span><br>รหัสที่ตั้งไว้ไม่ตรงกับเมนูใบไหนเลย ` +
+              "อาจก๊อปมาผิดตัว หรือเมนูใบนั้นถูกลบไปแล้ว ดูรายชื่อเมนูจริงด้านล่าง"),
+      );
+    }
+  }
+
+  // 4. เมนูตั้งต้น — ระบบนี้ตั้งใจไม่ใช้ ถ้ามีจะทำให้คนที่ลาออกกลับไปเห็นปุ่มลงทะเบียน
+  if (r.defaultMenu && r.defaultMenu.ok) {
+    rows.push(
+      r.defaultMenu.id
+        ? checkRow("warn", `มีเมนูตั้งต้นของ OA อยู่ — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
+            "ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น เพราะคนที่ลาออกแล้วจะตกกลับไปเห็นเมนูที่มีปุ่มลงทะเบียน " +
+            "แล้วลงทะเบียนกลับเข้ามาใหม่ได้ ควรถอดออกที่ LINE OA Manager")
+        : checkRow("good", "ไม่มีเมนูตั้งต้นของ OA ตามที่ควรเป็น"),
+    );
+  }
+
+  // 5. เมนูของคนที่กำลังดูอยู่ — คำตอบสุดท้ายว่าตอนนี้ LINE ผูกใบไหนไว้ให้จริง
+  if (r.mine && r.mine.ok) {
+    rows.push(checkRow("good", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(r.mine.name || "ไม่มีเมนูผูกอยู่")}</b>`,
+      r.mine.id ? `<span class="mono">${esc(r.mine.id)}</span>` : "ยังไม่มีเมนูผูกกับบัญชีนี้"));
+  }
+
+  const list = r.line.ok && r.line.richmenus.length
+    ? `<div class="section" style="margin-top:20px">เมนูที่มีอยู่จริงบน LINE</div>
+       <p class="hintnote">รหัสพวกนี้เอาไปวางใน RICHMENU_NEW_ID / RICHMENU_MEMBER_ID ได้เลย</p>
+       <div class="plist">${r.line.richmenus.map((m) => `<div class="irow">
+         <div class="iw"><div class="inm">${esc(m.name || "ไม่มีชื่อ")}</div>
+         <div class="isub mono">${esc(m.id)}</div></div></div>`).join("")}</div>`
+    : "";
+
+  $("#menu-body").innerHTML = `
+    <div class="section">ผลตรวจ</div>
+    <div class="plist" style="padding:2px 14px">${rows.join("")}</div>
+    ${list}
+    <div class="section" style="margin-top:20px">ตั้งเมนูใหม่ให้ทุกคน</div>
+    <p class="hintnote">
+      ระบบรู้จักบัญชีไลน์อยู่ <b>${r.people}</b> บัญชี · กดแล้วจะไล่ตั้งเมนูให้ตรงกับสถานะของแต่ละคน
+      ทีละชุดจนครบ<br>ใช้หลังเปลี่ยนรหัสเมนู เพราะเมนูถูกผูกไว้ทีละคน การเปลี่ยนค่าตั้งค่าอย่างเดียว
+      ไม่ทำให้เมนูของคนที่ผูกไว้แล้วเปลี่ยนตาม
+    </p>
+    <button class="send" id="menu-apply"${r.ready ? "" : " disabled"}>ตั้งเมนูใหม่ให้ทุกคน</button>
+    ${r.ready ? "" : '<p class="hintnote">ตั้งค่าให้ครบก่อนถึงจะกดได้</p>'}
+    <div id="menu-progress"></div>`;
+}
+
+async function goMenuCheck() {
+  setTab("me");
+  show("s-menu");
+  $("#menu-body").innerHTML = '<p class="hintnote">กำลังตรวจ...</p>';
+  try {
+    renderMenuStatus(await api("/api/admin/richmenu"));
+  } catch (e) {
+    $("#menu-body").innerHTML = `<p class="hintnote">ตรวจไม่สำเร็จ: ${esc(e.message || "")}</p>`;
+  }
+}
+
+/**
+ * ไล่ตั้งเมนูทีละชุดจนครบ
+ *
+ * วนเรียกจากหน้าจอ ไม่ใช่วนในเซิร์ฟเวอร์ เพราะ Worker ยิงคำขอย่อยได้จำกัดต่อหนึ่งคำขอ
+ * และการเห็นความคืบหน้าระหว่างทางสำคัญ องค์กรหลายร้อยคนใช้เวลาหลายรอบกว่าจะจบ
+ */
+async function applyRichMenus() {
+  const ok = await confirmDialog({
+    title: "ตั้งเมนูใหม่ให้ทุกคน?",
+    message:
+      "ระบบจะไล่ผูกเมนูให้ตรงกับสถานะของแต่ละคน — คนที่ลงทะเบียนแล้วได้เมนูใช้งาน " +
+      "คนที่ยังไม่ลงทะเบียนได้เมนูที่มีปุ่มลงทะเบียน ส่วนคนที่ถูกระงับสิทธิ์จะถูกถอดเมนูออก",
+    confirmLabel: "ตั้งเมนูใหม่",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+
+  const btn = $("#menu-apply");
+  const box = $("#menu-progress");
+  btn.disabled = true;
+  let after = "", total = 0, failed = 0, rounds = 0;
+  try {
+    for (;;) {
+      const r = await api("/api/admin/richmenu", { method: "POST", body: { after } });
+      total += r.processed;
+      failed += r.failed;
+      rounds += 1;
+      box.innerHTML = `<p class="hintnote">ตั้งไปแล้ว <b>${total}</b> คน${failed ? ` · ไม่สำเร็จ ${failed} คน` : ""}</p>`;
+      if (r.done || !r.next || rounds > 100) break;
+      after = r.next;
+    }
+    box.innerHTML =
+      failed === 0
+        ? `<p class="hintnote">เสร็จแล้ว ตั้งเมนูให้ ${total} คน · ให้พนักงานปิดแล้วเปิดห้องแชทใหม่ถ้ายังเห็นของเดิม</p>`
+        : `<p class="hintnote">ตั้งให้ ${total} คน แต่ไม่สำเร็จ ${failed} คน · มักเป็นคนที่บล็อกหรือลบ OA ไปแล้ว
+             ซึ่งไลน์ไม่ให้ตั้งเมนูให้</p>`;
+    toast(`ตั้งเมนูให้ ${total} คนแล้ว`);
+  } catch (e) {
+    box.innerHTML = `<p class="hintnote">หยุดกลางคัน: ${esc(e.message || "")}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ---------- เพิ่มพนักงานเข้าระบบ (ผู้ดูแล) ---------- */
 
 /** ใส่ตัวเลือกลงใน select พร้อมบรรทัดหัวข้อว่าง และตัวเลือก "อื่น ๆ" ปิดท้ายถ้าต้องการ */
@@ -1567,6 +1711,11 @@ function bind() {
   };
   $("#mg-close").onclick = closeWindow;
   $("#mg-massage").onclick = () => openMassageAdmin("1");
+  $("#mg-menu").onclick = goMenuCheck;
+  $("#menu-back").onclick = () => { setTab("me"); show("s-manage"); };
+  $("#menu-body").addEventListener("click", (e) => {
+    if (e.target.closest("#menu-apply")) applyRichMenus();
+  });
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;
   $("#n-dept").onchange = () => revealOther($("#n-dept"), $("#n-deptOther"));
