@@ -910,9 +910,23 @@ function renderMenuStatus(r) {
   }
 
   // 5. เมนูของคนที่กำลังดูอยู่ — คำตอบสุดท้ายว่าตอนนี้ LINE ผูกใบไหนไว้ให้จริง
+  //
+  // ต้องบอกด้วยว่า "ตรงกับที่ควรได้ไหม" ไม่ใช่บอกแค่ชื่อใบที่ได้ ไม่งั้นคนอ่านต้องจำเองว่า
+  // ใบไหนถูกใบไหนผิด ซึ่งเป็นจุดที่หลงได้ง่ายที่สุดตอนไล่หาว่าทำไมเมนูไม่เปลี่ยน
   if (r.mine && r.mine.ok) {
-    rows.push(checkRow("good", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(r.mine.name || "ไม่มีเมนูผูกอยู่")}</b>`,
-      r.mine.id ? `<span class="mono">${esc(r.mine.id)}</span>` : "ยังไม่มีเมนูผูกกับบัญชีนี้"));
+    const now = r.mine.name || (r.mine.id ? "ไม่ทราบชื่อ" : "ไม่มีเมนูผูกอยู่");
+    const want = r.mine.expectedId === null ? "ไม่มีเมนู (ถูกระงับสิทธิ์)" : r.mine.expectedName || "ไม่ทราบชื่อ";
+    if (r.mine.matches === true) {
+      rows.push(checkRow("good", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`, "ตรงกับที่ควรได้แล้ว"));
+    } else if (r.mine.matches === false) {
+      rows.push(checkRow("bad", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`,
+        `แต่ที่ควรได้คือ <b>${esc(want)}</b><br>` +
+        (r.mine.id ? `<span class="mono">${esc(r.mine.id)}</span><br>` : "") +
+        "กดปุ่ม “ตั้งเมนูใหม่ให้ทุกคน” ด้านล่างเพื่อแก้ให้ตรง"));
+    } else {
+      rows.push(checkRow("warn", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`,
+        "ยังบอกไม่ได้ว่าตรงหรือไม่ตรง เพราะตั้งค่ารหัสเมนูยังไม่ครบ"));
+    }
   }
 
   const list = r.line.ok && r.line.richmenus.length
