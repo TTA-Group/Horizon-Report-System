@@ -112,6 +112,18 @@ export async function knownLineUserCount(): Promise<number> {
   return row?.n ?? 0;
 }
 
+/** เก็บรายชื่อเพื่อนที่ดึงมาจาก LINE ไว้ ไม่ทับชื่อที่ฝ่ายบุคคลเคยนำเข้าไว้ */
+export async function rememberFollowers(lineUserIds: string[]): Promise<number> {
+  if (lineUserIds.length === 0) return 0;
+  const rows = await db()<{ line_user_id: string }[]>`
+    INSERT INTO line_followers (line_user_id)
+    SELECT unnest(${lineUserIds}::varchar[])
+    ON CONFLICT (line_user_id) DO UPDATE SET fetched_at = now()
+    RETURNING line_user_id
+  `;
+  return rows.length;
+}
+
 export interface ApplyOutcome {
   userId: string;
   action: "link" | "unlink";
