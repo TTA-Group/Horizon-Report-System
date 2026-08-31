@@ -641,6 +641,9 @@ function personRow(e) {
 async function openEmployeeSheet(id) {
   const e = adminEmployeeIndex.get(id);
   if (!e) return;
+  // ต้องมีรายชื่อฝ่ายก่อนถึงจะแปลงรหัสฝ่ายเป็นชื่อได้ — โหลดพลาดก็ยังเปิดแผ่นต่อได้
+  // (จะขึ้นเป็นรหัสฝ่ายแทนชื่อ) เพราะการเปลี่ยนสถานะต้องทำได้เสมอ แม้ข้อมูลตั้งต้นจะโหลดไม่ขึ้น
+  await getMasters().catch(() => null);
   const suspended = e.status === "suspended";
   const roles = (e.depts || []).map((d) => `${deptName(d.code)} (${ROLE_LABEL[d.role] || d.role})`).join("<br>");
   // บัญชีไลน์ที่ผูกไว้ — ชื่อที่โชว์คือชื่อในไลน์จริงของเจ้าตัว (ปรับตามทุกครั้งที่เขาเปิดแอป)
@@ -730,6 +733,7 @@ const ROLE_LABEL = { head: "หัวหน้าฝ่าย", staff: "ผู�
  * แยกเป็นสองจังหวะเพราะบนมือถือการกดทีละอย่างอ่านง่ายกว่าตารางที่ต้องเล็งให้ตรงช่อง
  */
 async function openDeptSheet(id, name, current) {
+  await getMasters().catch(() => null);
   const mine = current || [];
   const have = new Map(mine.map((d) => [d.code, d.role]));
   // สถานะปัจจุบันของคนคนนี้ — เป็นหัวหน้าที่ไหนสักฝ่ายถือว่าเป็นหัวหน้าฝ่าย
@@ -767,7 +771,7 @@ async function openDeptSheet(id, name, current) {
   } else {
     // ฝ่ายที่ให้สิทธิ์ผู้ดูแลต้องบอกไว้ตรงนี้ ไม่งั้นการเพิ่มคนเข้าฝ่ายนั้นดูเหมือนงานธรรมดา
     // ทั้งที่ผลคือคนนั้นเห็นและแก้ข้อมูลพนักงานทั้งองค์กรได้
-    const opts = (masters.departments || []).map((d) => ({
+    const opts = ((masters && masters.departments) || []).map((d) => ({
       label:
         `${d.name}${d.grants_admin ? " · ให้สิทธิ์ผู้ดูแลระบบ" : ""}` +
         `${have.get(d.code) ? ` — ปัจจุบัน: ${ROLE_LABEL[have.get(d.code)]}` : ""}`,
@@ -805,9 +809,16 @@ async function openDeptSheet(id, name, current) {
   }
 }
 
-/** ชื่อเต็มของฝ่ายจากรหัส — ฝ่ายที่ถูกปิดใช้งานไปแล้วจะไม่มีในรายการ ก็แสดงรหัสไปตรง ๆ */
+/**
+ * ชื่อเต็มของฝ่ายจากรหัส — ฝ่ายที่ถูกปิดใช้งานไปแล้วจะไม่มีในรายการ ก็แสดงรหัสไปตรง ๆ
+ *
+ * ต้องทนกับกรณีที่ masters ยังไม่ถูกโหลด (เป็น null) ด้วย ไม่ใช่แค่กรณีที่โหลดแล้วไม่เจอฝ่าย
+ * เคยพังมาแล้ว: หน้าทะเบียนพนักงานเรียกฟังก์ชันนี้เฉพาะคนที่ "มีตำแหน่งอยู่แล้ว" เท่านั้น
+ * พอ masters ยังเป็น null แผ่นจัดการของคนกลุ่มนั้นจึงเปิดไม่ขึ้นเลย ทั้งที่คนที่ยังไม่มี
+ * ตำแหน่งเปิดได้ปกติ — อาการเลยดูเหมือน "เปลี่ยนสถานะคนที่เคยกำหนดไว้แล้วไม่ได้"
+ */
 function deptName(code) {
-  const d = (masters.departments || []).find((x) => x.code === code);
+  const d = ((masters && masters.departments) || []).find((x) => x.code === code);
   return d ? d.name : code;
 }
 

@@ -935,6 +935,7 @@ export async function adminDays(month: string, now = new Date()): Promise<AdminD
     FROM massage_days d
     LEFT JOIN massage_bookings b ON b.day = d.day
     WHERE d.day >= ${`${month}-01`}::date AND d.day < ${nextMonthStart(`${month}-01`)}::date
+      AND d.status <> 'removed'
     GROUP BY d.day, d.status, d.closed_reason
     ORDER BY d.day
   `;
@@ -1029,6 +1030,78 @@ export async function adminSetDay(
   };
 }
 
+/**
+ * ลบวันให้บริการออกจากรายการ
+ *
+ * ต่างจาก "ปิดวัน" ตรงที่ปิดแล้ววันนั้นยังอยู่ในรายการให้เห็นว่าปิดอยู่ (และเปิดกลับได้)
+ * ส่วนลบคือเอาออกจากสายตาไปเลย ใช้กับวันที่ไม่ควรมีตั้งแต่แรก เช่น เพิ่มวันนอกตารางผิดวัน
+ *
+ * ไม่ลบแถวจริงด้วยสองเหตุผล
+ *   1. massage_bookings.day ผูก foreign key ไว้กับตารางนี้ ลบแถวทิ้งจะพาประวัติคิวเก่าหายไปด้วย
+ *      ซึ่งขัดกับที่ตั้งใจไว้ตั้งแต่ต้นว่าคิวที่ยกเลิกแล้วต้องยังตอบได้ว่าใครยกเลิกบ่อย
+ *   2. ตัวสร้างวันของเดือน (ensureMonthDays) จะสร้างวันศุกร์กลับมาให้ใหม่ทุกครั้งที่เปิดหน้านี้
+ *      ลบแถวทิ้งจึงได้ผลแค่ชั่วคราว วันเดิมจะโผล่กลับมาเองในไม่กี่วินาที
+ *
+ * ใช้ status = 'removed' แทน แถวยังอยู่ ประวัติยังอยู่ ตัวสร้างวันไม่แตะ (ON CONFLICT DO NOTHING)
+ * และเอากลับมาได้ด้วยการเพิ่มวันเดิมซ้ำที่ช่อง "เพิ่มวันให้บริการนอกตาราง"
+ */
+export async function adminRemoveDay(
+  day: string,
+  opts: { force?: boolean; byEmployeeId: string },
+): Promise<AdminDayChange> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new HttpError(400, "รูปแบบวันที่ไม่ถูกต้อง");
+  const sql = db();
+
+  const exists = await sql<{ status: string }[]>`
+    SELECT status FROM massage_days WHERE day = ${day}::date
+  `;
+  if (exists.length === 0 || exists[0].status === "removed") {
+    throw new HttpError(404, "ไม่มีวันนี้ในระบบอยู่แล้ว");
+  }
+
+  // คิวที่ยังไม่ถูกยกเลิกต้องถูกยกเลิกไปพร้อมกัน ไม่ปล่อยให้ค้างเป็นคิวของวันที่ไม่มีอยู่แล้ว
+  const active = await sql<
+    { id: string; slot: string; therapist_id: string; therapist_name: string;
+      employee_id: string; full_name: string }[]
+  >`
+    SELECT b.id, to_char(b.slot_start, 'HH24:MI') AS slot,
+           b.therapist_id, t.name AS therapist_name, b.employee_id, e.full_name
+    FROM massage_bookings b
+    JOIN employees e ON e.id = b.employee_id
+    JOIN massage_therapists t ON t.id = b.therapist_id
+    WHERE b.day = ${day}::date AND b.status = 'booked'
+    ORDER BY b.slot_start
+  `;
+  if (active.length > 0 && !opts.force) {
+    throw new HttpError(409, `วันนี้มีคนจองอยู่ ${active.length} คิว`, "has_bookings");
+  }
+
+  const reason = "ยกเลิกวันให้บริการ";
+  await sql.begin(async (tx) => {
+    await tx`
+      UPDATE massage_days SET status = 'removed', closed_reason = ${reason} WHERE day = ${day}::date
+    `;
+    if (active.length > 0) {
+      await tx`
+        UPDATE massage_bookings
+        SET status = 'cancelled', cancelled_at = now(), cancelled_by = ${opts.byEmployeeId},
+            cancel_reason = ${reason}, updated_at = now()
+        WHERE day = ${day}::date AND status = 'booked'
+      `;
+    }
+  });
+
+  return {
+    day,
+    status: "closed",
+    cancelled: active.map((b) => ({
+      id: b.id, day, slot: b.slot,
+      therapistId: b.therapist_id, therapistName: b.therapist_name,
+      employeeId: b.employee_id, name: b.full_name,
+    })),
+  };
+}
+
 export interface AdminGridCell {
   therapistId: string;
   bookingId: string | null;
@@ -1065,7 +1138,8 @@ export async function adminDayGrid(day: string, now = new Date()): Promise<Admin
   const rows = await db()<{ status: string }[]>`
     SELECT status FROM massage_days WHERE day = ${day}::date
   `;
-  if (rows.length === 0) throw new HttpError(404, "ไม่มีวันนี้ในระบบ");
+  // วันที่ถูกลบออกไปแล้วยังมีแถวอยู่ (ประวัติคิวเก่าอ้างถึงอยู่) แต่ต้องถือว่าไม่มีวันนี้
+  if (rows.length === 0 || rows[0].status === "removed") throw new HttpError(404, "ไม่มีวันนี้ในระบบ");
 
   const therapists = await activeTherapists();
   const booked = await db()<

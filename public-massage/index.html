@@ -173,6 +173,13 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .drow.shut{background:var(--sunk);border-color:var(--sunk)}
 .drow.shut .d{color:var(--slate)}
 .drow.gone{opacity:.5}
+/* ปุ่มลบวัน — วางไว้ข้างปุ่มปิด/เปิดวัน ทำให้เล็กและจางกว่าโดยตั้งใจ
+   เพราะเป็นการทำลายที่ย้อนกลับได้ยากกว่าการปิดวัน จึงไม่ควรเด่นเท่ากันจนกดพลาด */
+.drow .kill{flex:0 0 auto;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  font-family:inherit;font-size:17px;line-height:1;border-radius:11px;border:1px solid var(--hair);
+  background:var(--surface);color:var(--slate);cursor:pointer;padding:0}
+.drow .kill:hover{background:var(--red-soft);border-color:#F2C9C0;color:var(--red-deep)}
+.drow .kill:disabled{background:var(--sunk);border-color:var(--sunk);color:var(--dim);cursor:not-allowed}
 .addday{display:flex;gap:8px;margin-top:6px}
 .addday input{flex:1;font-family:inherit;font-size:14px;color:var(--ink);border-radius:12px;
   padding:12px 13px;border:1px solid var(--hair);background:var(--surface);outline:none}
