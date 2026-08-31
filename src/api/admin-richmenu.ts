@@ -14,13 +14,14 @@ import { getSession, requireAdmin } from "./_lib/auth";
 import { db } from "./_lib/db";
 import { envVar } from "./_lib/env";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
-import { clearDefaultRichMenu, defaultRichMenuId, listRichMenus, richMenuOf } from "./_lib/line";
+import { clearDefaultRichMenu, defaultRichMenuId, followerIds, listRichMenus, richMenuOf } from "./_lib/line";
 import {
   applyRichMenus,
   configuredMenus,
   knownLineUserCount,
   knownLineUserIds,
   planRichMenus,
+  rememberFollowers,
   unlinkRichMenuForEmployee,
 } from "./_lib/richmenu";
 
@@ -128,6 +129,11 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
       // ระบบนี้ตั้งใจไม่ตั้งเมนูตั้งต้น — ถ้ามี คนที่ลาออกแล้วจะตกกลับไปเห็นเมนูที่มีปุ่มลงทะเบียน
       defaultMenu: def.ok ? { ok: true, id: def.data, name: nameOf(def.data) } : { ok: false, error: def.error },
       people: await knownLineUserCount(),
+      // ขอรายชื่อเพื่อนทั้งหมดได้ไหม — เป็นตัวชี้ขาดว่าปุ่ม "เปลี่ยนให้ทุกคน" ไปถึงทุกคนจริงหรือไม่
+      followers: await (async () => {
+        const r = await followerIds();
+        return r.ok ? { ok: true as const, firstPage: r.data.ids.length, more: r.data.next !== null } : r;
+      })(),
       lastApply: await lastApplied(),
       mine,
     });
@@ -146,7 +152,7 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       throw new HttpError(409, "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ที่ระบบนี้", "no_token");
     }
 
-    const body = await readJson<{ after?: string; action?: string; employeeId?: string }>(req);
+    const body = await readJson<{ after?: string; action?: string; employeeId?: string; start?: string }>(req);
     const after = typeof body.after === "string" ? body.after : "";
 
     // ถอดเมนูตั้งต้นของ OA ออก — ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น
@@ -155,6 +161,15 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       console.log("[richmenu] ถอดเมนูตั้งต้น", ok ? "สำเร็จ" : "ไม่สำเร็จ", "โดย", s.employee!.employee_code);
       if (!ok) throw new HttpError(502, "ถอดเมนูตั้งต้นไม่สำเร็จ", "line_down");
       return json({ ok: true, cleared: true });
+    }
+
+    // ดึงรายชื่อเพื่อนทั้งหมดจาก LINE มาเก็บไว้ ทีละหน้า — ทำก่อนไล่ตั้งเมนู ปุ่มจะได้ไปถึงทุกคนจริง
+    if (body.action === "sync_followers") {
+      const r = await followerIds(typeof body.start === "string" && body.start ? body.start : undefined);
+      if (!r.ok) throw new HttpError(502, r.error, "followers_unavailable");
+      const saved = await rememberFollowers(r.data.ids);
+      console.log("[richmenu] ดึงรายชื่อเพื่อน", r.data.ids.length, "คน โดย", s.employee!.employee_code);
+      return json({ ok: true, fetched: r.data.ids.length, saved, next: r.data.next, done: r.data.next === null });
     }
 
     // ถอดเมนูของพนักงานคนหนึ่ง — ใช้ตอนอยากให้คนคนนั้นไม่มีเมนูเป็นการเฉพาะ

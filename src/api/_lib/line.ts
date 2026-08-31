@@ -238,6 +238,23 @@ export async function richMenuOf(userId: string): Promise<LineQuery<string | nul
 }
 
 /**
+ * รายชื่อ "ทุกคนที่เป็นเพื่อนกับ OA" จาก LINE โดยตรง — ทีละหน้า หน้าละไม่เกิน 1000 คน
+ *
+ * เป็นแหล่งเดียวที่ตอบได้ว่าใครเป็นเพื่อนบ้าง ระบบเองรู้จักแค่คนที่ลงทะเบียน คนที่ฝ่ายบุคคล
+ * นำเข้ามา และคนที่เคยทักแชท ซึ่งไม่ใช่ทุกคน
+ *
+ * ข้อจำกัดของ LINE: เส้นทางนี้เปิดให้เฉพาะบัญชีที่ผ่านการยืนยัน (Verified) หรือ Premium
+ * บัญชีทั่วไปจะถูกปฏิเสธ จึงต้องแยกให้ออกว่า "ขอไม่ได้เพราะบัญชียังไม่ผ่านการยืนยัน"
+ * ไม่ใช่ "ไม่มีเพื่อนสักคน" — สองอย่างนี้ต้องบอกคนใช้ต่างกัน
+ */
+export async function followerIds(start?: string): Promise<LineQuery<{ ids: string[]; next: string | null }>> {
+  const q = new URLSearchParams({ limit: "1000" });
+  if (start) q.set("start", start);
+  const r = await getFromLine<{ userIds?: string[]; next?: string }>(`followers/ids?${q.toString()}`);
+  return r.ok ? { ok: true, data: { ids: r.data.userIds ?? [], next: r.data.next ?? null } } : r;
+}
+
+/**
  * ตั้งเมนูตั้งต้นของทั้ง OA — ทุกคนที่ "ไม่มีเมนูผูกไว้เป็นรายคน" จะเห็นใบนี้
  *
  * เป็นทางเดียวที่ไปถึงคนที่ระบบไม่รู้จักได้ เพราะการขอรายชื่อผู้ติดตามทั้งหมดจาก LINE
