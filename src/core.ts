@@ -26,6 +26,7 @@ import adminAdmins from "./api/admin-admins";
 import adminEmployees from "./api/admin-employees";
 import { followersImport, followersIngest, followersLink, followersList } from "./api/admin-followers";
 import adminRichMenuPlan from "./api/admin-richmenu-plan";
+import { richMenuApply, richMenuStatus } from "./api/admin-richmenu";
 import adminEmployeeCreate from "./api/admin-employee-create";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
 import adminEmployeeUnlink from "./api/admin-employee-unlink";
@@ -66,6 +67,10 @@ function route(pathname: string, method: string): Handler | null {
   }
 
   // /api/admin/richmenu/plan — ไล่ตั้ง rich menu ให้คนที่เป็นเพื่อนอยู่ก่อนแล้ว (เรียกจากเครื่องต่อเครื่อง)
+  // /api/admin/richmenu — ตรวจว่าทำไมเมนูไม่เปลี่ยน · ไล่ตั้งเมนูใหม่ให้ทุกคน (ฝ่ายบุคคลกดเอง)
+  if (seg[1] === "admin" && seg[2] === "richmenu" && seg.length === 3) {
+    return method === "POST" ? richMenuApply : richMenuStatus;
+  }
   if (seg[1] === "admin" && seg[2] === "richmenu" && seg[3] === "plan" && seg.length === 4) {
     return method === "POST" ? adminRichMenuPlan : null;
   }

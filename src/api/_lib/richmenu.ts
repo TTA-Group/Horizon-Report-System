@@ -74,6 +74,76 @@ export async function planRichMenus(lineUserIds: string[]): Promise<MenuPlan[] |
   return lineUserIds.map((id) => decide(m, id, found.has(id) ? found.get(id)! : null));
 }
 
+/** รหัสเมนูที่ตั้งไว้ตอนนี้ — ให้หน้าตรวจสอบเอาไปเทียบกับเมนูที่มีอยู่จริงบน LINE */
+export function configuredMenus(): { fresh: string; member: string } | null {
+  return menus();
+}
+
+/**
+ * บัญชีไลน์ทั้งหมดที่ระบบรู้จัก เรียงคงที่ เพื่อไล่ตั้งเมนูทีละชุดได้
+ *
+ * รวมสองแหล่ง: คนที่ผูกรหัสพนักงานแล้ว (line_accounts) และคนที่เป็นเพื่อนแต่ยังไม่ผูก
+ * (line_followers) — กลุ่มหลังคือคนที่ต้องได้เมนูที่มีปุ่มลงทะเบียน ถ้าไม่รวมมาด้วย
+ * คนที่ยังไม่ลงทะเบียนจะไม่มีทางได้เมนูเลย ซึ่งคือกลุ่มที่ต้องการเมนูมากที่สุด
+ */
+export async function knownLineUserIds(after: string, limit: number): Promise<string[]> {
+  const rows = await db()<{ line_user_id: string }[]>`
+    SELECT line_user_id FROM (
+      SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
+      UNION
+      SELECT line_user_id FROM line_followers
+    ) AS everyone
+    WHERE line_user_id > ${after}
+    ORDER BY line_user_id
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => r.line_user_id);
+}
+
+/** จำนวนบัญชีไลน์ทั้งหมดที่ระบบรู้จัก — ใช้บอกความคืบหน้าตอนไล่ตั้งเมนู */
+export async function knownLineUserCount(): Promise<number> {
+  const [row] = await db()<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM (
+      SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
+      UNION
+      SELECT line_user_id FROM line_followers
+    ) AS everyone
+  `;
+  return row?.n ?? 0;
+}
+
+export interface ApplyOutcome {
+  userId: string;
+  action: "link" | "unlink";
+  richMenuId: string | null;
+  ok: boolean;
+}
+
+/**
+ * ไล่ตั้งเมนูให้บัญชีไลน์ชุดหนึ่ง แล้ว "บอกผลกลับมาทีละคน"
+ *
+ * ต่างจาก syncRichMenu ตรงที่ตัวนั้นกลืน error ไว้ทั้งหมดโดยตั้งใจ (เป็นงานเสริมที่ต้องไม่
+ * ทำให้การลงทะเบียนล้มตาม) ผลคือถ้าตั้งค่าผิด ระบบจะเงียบสนิทไม่มีอะไรบอกเลย
+ * ตัวนี้จึงมีไว้สำหรับหน้าที่คนกดเอง คนกดต้องได้เห็นว่าสำเร็จกี่คน ไม่สำเร็จกี่คน
+ */
+export async function applyRichMenus(lineUserIds: string[]): Promise<ApplyOutcome[]> {
+  const m = menus();
+  if (!m) return [];
+  const found = await statusOf(lineUserIds);
+  const out: ApplyOutcome[] = [];
+  for (const id of lineUserIds) {
+    const plan = decide(m, id, found.has(id) ? found.get(id)! : null);
+    let ok = false;
+    try {
+      ok = plan.action === "unlink" ? await unlinkRichMenu(id) : await linkRichMenu(id, plan.richMenuId!);
+    } catch (e) {
+      console.error("[richmenu] ตั้งเมนูไม่สำเร็จ", id, e);
+    }
+    out.push({ userId: id, action: plan.action, richMenuId: plan.richMenuId, ok });
+  }
+  return out;
+}
+
 /** ปรับเมนูของบัญชีไลน์นี้ให้ตรงกับความจริงล่าสุดในฐานข้อมูล */
 export async function syncRichMenu(lineUserId: string): Promise<void> {
   const m = menus();
