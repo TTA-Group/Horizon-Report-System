@@ -864,20 +864,6 @@ function checkRow(mark, text, sub) {
   </div>`;
 }
 
-/**
- * ชื่อเมนูในกล่องเลือก — ติดป้ายบอกด้วยว่าใบไหนคือใบที่ตั้งค่าไว้
- *
- * บัญชีจริงมีเมนูสะสมหลายสิบใบและ "ชื่อซ้ำกันได้" ถ้ามีแต่ชื่อ คนเลือกจะแยกไม่ออกว่าใบไหน
- * คือใบที่ตั้งไว้ในระบบ ต้องบอกไว้ตรงนี้เลย ไม่ใช่ให้ไปเทียบรหัสเองทีละใบ
- */
-function menuLabel(m, r) {
-  const tags = [];
-  if (r.menus && m.id === r.menus.member.id) tags.push("ตั้งไว้เป็นเมนูคนที่ลงทะเบียนแล้ว");
-  if (r.menus && m.id === r.menus.fresh.id) tags.push("ตั้งไว้เป็นเมนูคนที่ยังไม่ลงทะเบียน");
-  if (r.defaultMenu && r.defaultMenu.ok && m.id === r.defaultMenu.id) tags.push("เมนูตั้งต้นตอนนี้");
-  return `${m.name || "ไม่มีชื่อ"}${tags.length ? ` · ${tags.join(" · ")}` : ""} — ${m.id}`;
-}
-
 function renderMenuStatus(r) {
   const rows = [];
 
@@ -974,38 +960,28 @@ function renderMenuStatus(r) {
          <div class="isub mono">${esc(m.id)}</div></div></div>`).join("")}</div>`
     : "";
 
-  // ทางลัดสำหรับ "อยากให้ทุกคนเห็นใบนี้เดี๋ยวนี้" โดยไม่ต้องรอให้ใครลงทะเบียน
-  // แยกออกมาจากปุ่มด้านบนชัดเจน เพราะมันข้ามกติกาปกติของระบบ ไม่ควรกดสลับกันไปมาโดยไม่รู้ตัว
-  const one = r.line.ok && r.line.richmenus.length
-    ? `<div class="section" style="margin-top:24px">ตั้งเมนูใบเดียวให้ทุกคนเดี๋ยวนี้</div>
-       <p class="hintnote">
-         ใช้ตอนเปลี่ยนเมนูหลักแล้วอยากให้ทุกคนเห็นใบใหม่ทันที <b>ไม่ต้องรอให้ใครลงทะเบียน</b><br>
-         เปลี่ยนให้ <b>${r.people}</b> บัญชีที่ระบบรู้จักตอนนี้ ทั้งคนที่ลงทะเบียนแล้วและยังไม่ได้ลงทะเบียน<br>
-         <b>ไม่แตะเมนูตั้งต้นของ OA</b> คนที่มาทีหลังจึงยังเข้าตามระบบลงทะเบียนเหมือนเดิม
-       </p>
-       <select id="menu-pick">
-         <option value="">เลือกเมนูที่จะให้ทุกคนเห็น</option>
-         ${r.line.richmenus.map((m) => `<option value="${esc(m.id)}">${esc(menuLabel(m, r))}</option>`).join("")}
-       </select>
-       <p class="hintnote mono" id="menu-pick-id" style="margin-top:6px">—</p>
-       <button class="send" id="menu-all" style="margin-top:10px">ตั้งใบนี้ให้ทุกคน</button>
-       <div id="menu-all-progress"></div>`
-    : "";
-
   $("#menu-body").innerHTML = `
     <div class="section">ผลตรวจ</div>
     <div class="plist" style="padding:2px 14px">${rows.join("")}</div>
-    ${list}
-    <div class="section" style="margin-top:20px">ตั้งเมนูใหม่ให้ทุกคน</div>
+
+    <div class="section" style="margin-top:22px">สั่งงาน</div>
     <p class="hintnote">
-      ระบบรู้จักบัญชีไลน์อยู่ <b>${r.people}</b> บัญชี · กดแล้วจะไล่ตั้งเมนูให้ตรงกับสถานะของแต่ละคน
-      ทีละชุดจนครบ<br>ใช้หลังเปลี่ยนรหัสเมนู เพราะเมนูถูกผูกไว้ทีละคน การเปลี่ยนค่าตั้งค่าอย่างเดียว
-      ไม่ทำให้เมนูของคนที่ผูกไว้แล้วเปลี่ยนตาม
+      เมนูถูกผูกไว้<b>ทีละคน</b> การเปลี่ยนรหัสเมนูในค่าตั้งค่าจึงไม่ทำให้เมนูของคนที่ผูกไว้แล้ว
+      เปลี่ยนตาม ต้องกดปุ่มนี้หนึ่งครั้ง
     </p>
-    <button class="send" id="menu-apply"${r.ready ? "" : " disabled"}>ตั้งเมนูใหม่ให้ทุกคน</button>
-    ${r.ready ? "" : '<p class="hintnote">ตั้งค่าให้ครบก่อนถึงจะกดได้</p>'}
+    <button class="send" id="menu-apply"${r.ready ? "" : " disabled"}>เปลี่ยน rich menu ให้ทุกคน</button>
+    <p class="hintnote">
+      ${r.ready
+        ? `ไล่ตั้งให้ <b>${r.people}</b> บัญชีที่ระบบรู้จัก ตามสถานะของแต่ละคน —
+           ลงทะเบียนแล้วได้เมนูใช้งาน · ยังไม่ลงทะเบียนได้เมนูที่มีปุ่มลงทะเบียน ·
+           ลาออกหรือถูกระงับสิทธิ์ถูกถอดเมนูออก`
+        : "ตั้งค่าให้ครบก่อนถึงจะกดได้"}
+    </p>
     <div id="menu-progress"></div>
-    ${one}`;
+
+    <button class="send" id="menu-unlink" style="margin-top:14px">ถอด rich menu เฉพาะบางคน</button>
+    <p class="hintnote">คนที่ถูกถอดจะไม่เห็นเมนูเลย จนกว่าจะกดปุ่มด้านบนหรือลงทะเบียนใหม่</p>
+    ${list}`;
 }
 
 async function goMenuCheck() {
@@ -1083,53 +1059,61 @@ async function clearDefaultMenu() {
   }
 }
 
-/**
- * ตั้งเมนูใบเดียวให้ทุกคนเดี๋ยวนี้ ไม่สนสถานะของแต่ละคน
- *
- * ต่างจากปุ่มด้านบนที่แจกตามสถานะ ตัวนี้ใช้ตอนเพิ่งเปลี่ยนเมนูหลัก แล้วอยากให้ทุกคนเห็น
- * ใบใหม่ทันทีโดยไม่ต้องรอให้ใครลงทะเบียนหรือแอดเพื่อนใหม่
- */
-async function applySameMenuToAll() {
-  const sel = $("#menu-pick");
-  const id = sel.value;
-  if (!id) return toast("เลือกเมนูก่อน");
-  const name = sel.options[sel.selectedIndex].textContent;
+/* ---------- ถอดเมนูเฉพาะบางคน ---------- */
 
+function openMenuUnlinkFinder() {
+  $("#menu-find-emp").style.display = "";
+  $("#menu-emp-q").value = "";
+  $("#menu-emp-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
+  $("#menu-find-emp").scrollIntoView({ block: "center", behavior: "smooth" });
+  setTimeout(() => $("#menu-emp-q").focus(), 50);
+}
+
+async function searchMenuUnlinkTarget(q) {
+  if (q.trim().length < 2) {
+    $("#menu-emp-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
+    return;
+  }
+  try {
+    // ไม่กรองเฉพาะคนที่ยังทำงานอยู่ เพราะเหตุผลที่ต้องถอดเมนูมักเป็นคนที่ลาออกไปแล้ว
+    const r = await api("/api/admin/employees?q=" + encodeURIComponent(q.trim()));
+    const list = (r.employees || []).slice(0, 12);
+    $("#menu-emp-hits").innerHTML = list.length
+      ? `<div class="plist">${list
+          .map(
+            (e) => `<div class="prow" data-unlink-emp="${esc(e.id)}" data-name="${esc(e.full_name)}">
+              <div class="pw">
+                <div class="pnm">${esc(e.full_name)}</div>
+                <div class="psub"><b>${esc(e.employee_code)}</b>${
+                  e.department_name ? " · " + esc(e.department_name) : ""
+                }</div>
+              </div>
+              ${e.linked ? "" : '<span class="rtag nolink">ยังไม่ผูก LINE</span>'}
+            </div>`,
+          )
+          .join("")}</div>`
+      : '<div class="empty">ไม่พบพนักงานที่ตรงกับที่ค้น</div>';
+  } catch (e) {
+    $("#menu-emp-hits").innerHTML = `<div class="empty">${esc(e.message || "ค้นหาไม่สำเร็จ")}</div>`;
+  }
+}
+
+async function unlinkMenuFor(employeeId, name) {
   const ok = await confirmDialog({
-    title: "ตั้งเมนูนี้ให้ทุกคน?",
+    title: `ถอดเมนูของ ${name}?`,
     message:
-      `${name}\n\n` +
-      "ทุกคนที่ระบบรู้จักตอนนี้จะได้เมนูใบนี้เหมือนกันหมด ไม่ว่าจะลงทะเบียนแล้วหรือยัง\n\n" +
-      "คนที่มาทีหลังยังเข้าตามระบบลงทะเบียนเหมือนเดิม เพราะไม่ได้ไปแตะเมนูตั้งต้นของ OA\n\n" +
-      "ข้อควรรู้: คนที่ลาออกหรือถูกระงับสิทธิ์จะเห็นเมนูนี้ด้วย จากเดิมที่ระบบถอดเมนูออกให้",
-    confirmLabel: "ตั้งให้ทุกคน",
+      "คนนี้จะไม่เห็นเมนูด้านล่างห้องแชทเลย จนกว่าจะกดปุ่ม “เปลี่ยน rich menu ให้ทุกคน” " +
+      "หรือลงทะเบียนใหม่ · เรื่องที่เคยแจ้งและคิวที่จองไว้ยังอยู่ครบ",
+    confirmLabel: "ถอดเมนู",
     cancelLabel: "ไม่ใช่",
   });
   if (!ok) return;
-
-  const btn = $("#menu-all");
-  const box = $("#menu-all-progress");
-  btn.disabled = true;
-  let after = "", total = 0, failed = 0, rounds = 0;
   try {
-    for (;;) {
-      const r = await api("/api/admin/richmenu", { method: "POST", body: { after, richMenuId: id } });
-      total += r.processed;
-      failed += r.failed;
-      rounds += 1;
-      box.innerHTML = `<p class="hintnote">ตั้งไปแล้ว <b>${total}</b> คน${failed ? ` · ไม่สำเร็จ ${failed} คน` : ""}</p>`;
-      if (r.done || !r.next || rounds > 100) break;
-      after = r.next;
-    }
-    box.innerHTML =
-      `<p class="hintnote">เสร็จแล้ว · ตั้งเมนูให้ ${total} คน` +
-      `${failed ? ` (ไม่สำเร็จ ${failed} คน มักเป็นคนที่บล็อกหรือลบ OA ไปแล้ว)` : ""}<br>` +
-      "ให้พนักงานปิดแล้วเปิดห้องแชทใหม่ถ้ายังเห็นของเดิม</p>";
-    toast("ตั้งเมนูให้ทุกคนแล้ว");
+    await api("/api/admin/richmenu", { method: "POST", body: { action: "unlink", employeeId } });
+    toast(`ถอดเมนูของ ${name} แล้ว`);
+    $("#menu-find-emp").style.display = "none";
   } catch (e) {
-    box.innerHTML = `<p class="hintnote">หยุดกลางคัน: ${esc(e.message || "")}</p>`;
-  } finally {
-    btn.disabled = false;
+    toast(e.message || "ถอดเมนูไม่สำเร็จ");
   }
 }
 
@@ -1879,7 +1863,7 @@ function bind() {
   $("#menu-back").onclick = () => { setTab("me"); show("s-manage"); };
   $("#menu-body").addEventListener("click", (e) => {
     if (e.target.closest("#menu-apply")) applyRichMenus();
-    if (e.target.closest("#menu-all")) applySameMenuToAll();
+    if (e.target.closest("#menu-unlink")) openMenuUnlinkFinder();
     if (e.target.closest("#menu-cleardef")) clearDefaultMenu();
   });
   $("#menu-body").addEventListener("input", (e) => {
@@ -1891,9 +1875,11 @@ function bind() {
   });
   // กล่องเลือกกว้างจำกัด รหัสยาว 42 ตัวจึงถูกตัดทิ้งเสมอไม่ว่าจะเขียนยังไง
   // โชว์รหัสเต็มของใบที่เลือกอยู่ไว้ใต้กล่อง เพื่อให้ตรวจได้ก่อนกดว่าเลือกถูกใบจริง
-  $("#menu-body").addEventListener("change", (e) => {
-    if (e.target.id !== "menu-pick") return;
-    $("#menu-pick-id").textContent = e.target.value || "—";
+  $("#menu-emp-cancel").onclick = () => { $("#menu-find-emp").style.display = "none"; };
+  $("#menu-emp-q").oninput = debounce(() => searchMenuUnlinkTarget($("#menu-emp-q").value), 300);
+  $("#menu-emp-hits").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-unlink-emp]");
+    if (row) unlinkMenuFor(row.dataset.unlinkEmp, row.dataset.name);
   });
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;

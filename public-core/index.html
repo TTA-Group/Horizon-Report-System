@@ -476,6 +476,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       เปลี่ยนรหัสเมนูแล้ว คนที่ผูกใบเก่าไว้จะยังเห็นใบเก่าจนกว่าจะกดตั้งใหม่ให้
     </p>
     <div id="menu-body"></div>
+    <!-- ค้นหาพนักงานสำหรับถอดเมนูรายคน — ซ่อนไว้จนกว่าจะกดปุ่ม หน้าจะได้ไม่รกด้วยช่องที่แทบไม่ได้ใช้ -->
+    <div id="menu-find-emp" style="display:none">
+      <div class="section">ถอดเมนูของใคร</div>
+      <input type="text" class="searchbox" id="menu-emp-q" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
+      <div id="menu-emp-hits"></div>
+      <button class="ghost" id="menu-emp-cancel">ยกเลิก</button>
+    </div>
     <button class="ghost" id="menu-back">กลับไปหน้าจัดการ</button>
   </section>
 
