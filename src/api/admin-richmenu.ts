@@ -14,7 +14,7 @@ import { getSession, requireAdmin } from "./_lib/auth";
 import { envVar } from "./_lib/env";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import { defaultRichMenuId, listRichMenus, richMenuOf } from "./_lib/line";
-import { applyRichMenus, configuredMenus, knownLineUserCount, knownLineUserIds } from "./_lib/richmenu";
+import { applyRichMenus, configuredMenus, knownLineUserCount, knownLineUserIds, planRichMenus } from "./_lib/richmenu";
 
 /**
  * ตั้งได้ครั้งละไม่เกินเท่านี้ต่อหนึ่งคำขอ
@@ -53,7 +53,26 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
       : null;
 
     // ขอดูเมนูของตัวเองด้วย เป็นคำตอบสุดท้ายว่าตอนนี้ LINE ผูกเมนูใบไหนไว้ให้จริง ๆ
-    const mine = s.lineUserId ? await richMenuOf(s.lineUserId) : null;
+    //
+    // แล้วเทียบกับ "ใบที่ควรได้" ตามกติกาเดียวกับที่ระบบใช้จริง — บอกแค่ว่าตอนนี้ได้ใบไหน
+    // ยังไม่พอ เพราะคนอ่านต้องจำเองว่าใบนั้นถูกหรือผิด ซึ่งเป็นจุดที่หลงได้ง่ายที่สุด
+    const mineNow = s.lineUserId ? await richMenuOf(s.lineUserId) : null;
+    const plans = s.lineUserId ? await planRichMenus([s.lineUserId]) : null;
+    const want = plans && plans.length > 0 ? plans[0].richMenuId : undefined;
+    const mine =
+      mineNow === null
+        ? null
+        : mineNow.ok
+          ? {
+              ok: true as const,
+              id: mineNow.data,
+              name: nameOf(mineNow.data),
+              // undefined = ยังตั้งค่าไม่ครบจนบอกไม่ได้ว่าควรได้ใบไหน จึงไม่ตัดสินว่าตรงหรือไม่ตรง
+              expectedId: want,
+              expectedName: want === undefined ? null : want === null ? null : nameOf(want),
+              matches: want === undefined ? null : mineNow.data === want,
+            }
+          : mineNow;
 
     return json({
       ok: true,
@@ -66,7 +85,7 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
       // ระบบนี้ตั้งใจไม่ตั้งเมนูตั้งต้น — ถ้ามี คนที่ลาออกแล้วจะตกกลับไปเห็นเมนูที่มีปุ่มลงทะเบียน
       defaultMenu: def.ok ? { ok: true, id: def.data, name: nameOf(def.data) } : { ok: false, error: def.error },
       people: await knownLineUserCount(),
-      mine: mine === null ? null : mine.ok ? { ok: true, id: mine.data, name: nameOf(mine.data) } : { ok: false, error: mine.error },
+      mine,
     });
   });
 
