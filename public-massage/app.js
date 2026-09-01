@@ -339,16 +339,17 @@ function route() {
 const hasFlashDay = () => (state.days || []).some((d) => d.flash && d.free > 0);
 
 function goBook() {
-  const left = Math.max(0, state.quota - state.used);
-
   const mine = activeBookings();
   $("#btn-mine").style.display = mine.length ? "" : "none";
   $("#btn-mine").textContent = `ดูคิวของฉัน (${mine.length})`;
 
-  // สิทธิ์หมดแล้วก็ยังเข้าหน้าจองได้ ถ้ามีคิวด่วนเปิดอยู่ — ไม่ยิงไลน์บอก
-  // คนจะรู้ว่ามีของเหลือก็ต่อเมื่อเปิดแอปเจอเอง ถ้าเด้งออกตั้งแต่แรกก็ไม่มีทางเจอเลย
-  if (left === 0 && !hasFlashDay()) return goMine({ justBooked: false });
-
+  // ใช้สิทธิ์ครบแล้วก็ยังเข้าหน้านี้ได้ ปิดแค่การจอง
+  //
+  // เดิมเด้งไปหน้า "คิวของฉัน" ทันที ทำให้ดูตารางของวันอื่นไม่ได้เลย ทั้งที่การดูตาราง
+  // เป็นเรื่องที่ต้องใช้จริง — เอาไว้ดูว่าวันไหนรอบไหนยังว่าง ก่อนตัดสินใจว่าจะยกเลิกคิวเดิม
+  // ไปจองวันที่สะดวกกว่าหรือเปล่า ปิดทางดูตั้งแต่แรกจึงตัดสินใจไม่ได้เลย
+  //
+  // ตัวหน้าจอรองรับโหมดดูอย่างเดียวอยู่แล้ว (renderDays กับ renderGrid ปิดปุ่มให้เอง)
   show("s-book");
   renderDays();
 }
@@ -432,7 +433,8 @@ function renderGrid() {
   $("#viewnote").style.display = viewOnly ? "" : "none";
   $("#viewnote").textContent = isMyDay(currentDay)
     ? "โปรดเลือกวันอื่น คุณสามารถจองคิวนวดผ่อนคลายได้เพียง 1 คิว/วัน"
-    : "เดือนนี้ใช้สิทธิ์ครบแล้ว วันนี้ดูได้อย่างเดียว — รอคิวด่วนเปิดตอนบ่ายสามของวันก่อนหน้า";
+    : "เดือนนี้ใช้สิทธิ์ครบแล้ว ดูตารางได้อย่างเดียว — ถ้าอยากเปลี่ยนวัน ให้ยกเลิกคิวเดิมก่อน " +
+      "แล้วสิทธิ์จะคืนให้ทันที · หรือรอคิวด่วนที่เปิดตอนบ่ายสามของวันก่อนวันให้บริการ";
   $("#flashnote").style.display = flash && !viewOnly ? "" : "none";
   $("#slots").classList.toggle("flash", flash && !viewOnly);
   $("#book-bar").classList.toggle("flash", flash && !viewOnly);
@@ -577,17 +579,21 @@ function goMine({ justBooked }) {
         .join("")
     : `<div class="empty">ยังไม่ได้จองคิวไหนไว้</div>`;
 
-  // สิทธิ์หมดแล้วแต่มีคิวด่วนเปิดอยู่ ต้องยังมีทางกลับไปหน้าจอง
-  // ไม่งั้นคนที่มีคิวอยู่แล้วจะถูกพามาหน้านี้แล้วตันอยู่ตรงนี้ ไม่มีทางไปเจอคิวด่วนเลย
+  // ต้องมีทางกลับไปหน้าตารางเสมอ แม้ใช้สิทธิ์ครบแล้ว
+  //
+  // เดิมซ่อนปุ่มนี้เมื่อสิทธิ์หมดและไม่มีคิวด่วน คนที่ใช้ครบแล้วจึงตันอยู่หน้านี้
+  // ดูไม่ได้เลยว่าวันอื่นเหลือรอบอะไรบ้าง ซึ่งเป็นข้อมูลที่ต้องใช้ก่อนตัดสินใจยกเลิกคิวเดิม
   const left = Math.max(0, state.quota - state.used);
   const flash = hasFlashDay();
   const more = $("#btn-book-more");
-  more.style.display = state.open && (left > 0 || flash) ? "" : "none";
+  more.style.display = state.open ? "" : "none";
   more.textContent = !list.length
     ? "ไปหน้าจองคิว"
     : left > 0
       ? `จองคิวเพิ่ม (เหลือสิทธิ์อีก ${left} ครั้ง)`
-      : "⚡ ดูคิวด่วนของวันนี้";
+      : flash
+        ? "⚡ ดูคิวด่วนของวันนี้"
+        : "ดูตารางคิวนวด";
 
   $("#btn-mine-close").style.display = canCloseWindow() ? "" : "none";
   show("s-mine");
