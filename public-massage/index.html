@@ -207,6 +207,28 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .finder .hit span{font-size:11.5px;color:var(--slate)}
 .finder .none{font-size:12.5px;color:var(--slate);padding:10px 2px}
 
+/* ── ปรับสิทธิ์รายคน ──
+   ตัวเลขอยู่กลาง ปุ่มบวกลบขนาบสองข้าง เพราะสิ่งที่ผู้ดูแลต้องอ่านคือ "ตอนนี้กี่ครั้ง"
+   ไม่ใช่ "กดอะไรไปแล้วบ้าง" — ปุ่มจึงเป็นตัวประกอบ ไม่ใช่พระเอกของกล่อง */
+.qbox{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px;
+  background:var(--surface);border:1px solid var(--hair);border-radius:16px;padding:16px 14px}
+.qbox button{flex:0 0 auto;width:52px;height:52px;border:1px solid var(--hair);background:var(--sunk);
+  border-radius:14px;font-family:inherit;font-size:26px;line-height:1;color:var(--ink);
+  cursor:pointer;transition:.12s}
+.qbox button:active{transform:scale(.94)}
+.qbox button:disabled{color:var(--dim);background:var(--sunk);cursor:not-allowed}
+.qnum{flex:1;text-align:center}
+.qnum b{display:block;font-family:'IBM Plex Mono',monospace;font-size:38px;font-weight:600;
+  line-height:1;color:var(--green-deep);font-variant-numeric:tabular-nums}
+.qnum span{display:block;font-size:12px;color:var(--slate);margin-top:6px}
+.qmeta{margin-top:10px;text-align:center;font-size:12.5px;color:var(--slate);line-height:1.7}
+.qmeta b{font-weight:600;color:var(--ink)}
+/* ป้ายบอกว่าคนนี้ถูกปรับสิทธิ์ไว้ ไม่ใช่สิทธิ์ปกติ — ผู้ดูแลคนอื่นที่มาเปิดทีหลังต้องเห็น */
+.qmeta .tag{display:inline-block;margin-top:8px;border-radius:999px;padding:4px 11px;
+  font-size:11.5px;font-weight:600}
+.qmeta .tag.up{background:var(--green-soft);color:var(--green-deep)}
+.qmeta .tag.down{background:var(--red-soft);color:var(--red-deep)}
+
 /* เงื่อนไขการจอง — ขึ้นในกล่องยืนยันตอนกดจอง ไม่ใช่ค้างอยู่บนหน้า
    เพราะจุดที่ต้องอ่านจริง ๆ คือวินาทีก่อนกดยืนยัน ไม่ใช่ตอนกำลังไล่หาช่องว่าง */
 .terms{list-style:none;margin:16px 0 0;background:#FFF6E7;border:1px solid #F2DCB4;border-radius:12px;
@@ -448,6 +470,7 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
         <button data-atab="sheet" aria-pressed="true">เช็คชื่อ</button>
         <button data-atab="book" aria-pressed="false">จองแทน</button>
         <button data-atab="days" aria-pressed="false">วันให้บริการ</button>
+        <button data-atab="quota" aria-pressed="false">สิทธิ์</button>
       </div>
       <div class="lab">ฟอร์มเช็คชื่อคิวนวด</div>
       <select class="form-select" id="sheet-day"></select>
@@ -467,6 +490,7 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
         <button data-atab="sheet" aria-pressed="false">เช็คชื่อ</button>
         <button data-atab="book" aria-pressed="true">จองแทน</button>
         <button data-atab="days" aria-pressed="false">วันให้บริการ</button>
+        <button data-atab="quota" aria-pressed="false">สิทธิ์</button>
       </div>
 
       <div class="lab">จองคิวแทนพนักงาน</div>
@@ -498,6 +522,7 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
         <button data-atab="sheet" aria-pressed="false">เช็คชื่อ</button>
         <button data-atab="book" aria-pressed="false">จองแทน</button>
         <button data-atab="days" aria-pressed="true">วันให้บริการ</button>
+        <button data-atab="quota" aria-pressed="false">สิทธิ์</button>
       </div>
 
       <div class="lab">วันให้บริการ</div>
@@ -516,6 +541,37 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
       <p class="tip">ใช้เมื่อต้องย้ายวันให้บริการ เช่น ศุกร์นั้นตรงวันหยุด แล้วเลื่อนมาให้บริการวันพฤหัสแทน</p>
 
       <button class="btn-ghost" id="adays-back">กลับไปหน้าจอง</button>
+    </section>
+
+    <!-- ผู้ดูแลเพิ่ม/ลดสิทธิ์รายคน -->
+    <section class="screen" id="s-aquota">
+      <div class="atabs" data-tabs>
+        <button data-atab="sheet" aria-pressed="false">เช็คชื่อ</button>
+        <button data-atab="book" aria-pressed="false">จองแทน</button>
+        <button data-atab="days" aria-pressed="false">วันให้บริการ</button>
+        <button data-atab="quota" aria-pressed="true">สิทธิ์</button>
+      </div>
+
+      <div class="lab">สิทธิ์จองคิวนวด <span id="aq-month">—</span></div>
+
+      <div id="aq-picked"></div>
+      <div class="finder" id="aq-finder" style="margin-top:0">
+        <input id="aq-find" type="text" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
+        <div class="hits" id="aq-hits"><div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div></div>
+      </div>
+
+      <div id="aq-panel" style="display:none">
+        <div class="qbox">
+          <button id="aq-minus" aria-label="ลดสิทธิ์ลงหนึ่งครั้ง">−</button>
+          <div class="qnum"><b id="aq-quota">—</b><span>ครั้งต่อเดือน</span></div>
+          <button id="aq-plus" aria-label="เพิ่มสิทธิ์อีกหนึ่งครั้ง">+</button>
+        </div>
+        <div class="qmeta" id="aq-meta"></div>
+      </div>
+
+      <p class="tip" id="aq-tip">สิทธิ์ที่ปรับใช้ได้เฉพาะเดือนนี้ เดือนหน้าทุกคนกลับไปเป็นสิทธิ์ปกติเอง</p>
+
+      <button class="btn-ghost" id="aquota-back">กลับไปหน้าจอง</button>
     </section>
 
     <!-- ยกเลิกคิว (เข้ามาจากปุ่มบนการ์ดในไลน์) -->

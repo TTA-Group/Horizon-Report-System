@@ -30,6 +30,7 @@ import {
   massageAdminDayGrid,
   massageAdminEmployees,
   massageAdminMove,
+  massageAdminQuota,
   massageAdminReassign,
 } from "./api/massage-admin-manage";
 import { massageAdminDays, massageAdminSetDay } from "./api/massage-admin-days";
@@ -72,6 +73,8 @@ function route(pathname: string, method: string): Handler | null {
       if (seg[3] === "move") return method === "POST" ? massageAdminMove : null;
       if (seg[3] === "reassign") return method === "POST" ? massageAdminReassign : null;
       if (seg[3] === "employees") return method === "GET" ? massageAdminEmployees : null;
+      // เพิ่ม/ลดสิทธิ์รายคนของเดือนนี้
+      if (seg[3] === "quota") return method === "POST" ? massageAdminQuota : null;
       // จองแทนพนักงาน — ตารางทั้งวันพร้อมชื่อ แล้วเลือกช่องกับคนเอง
       if (seg[3] === "day") return method === "GET" ? massageAdminDayGrid : null;
       if (seg[3] === "book") return method === "POST" ? massageAdminBook : null;

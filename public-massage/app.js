@@ -282,6 +282,7 @@ async function boot() {
     if (adm && state.canManage) {
       if (adm === "book") return goAbook();
       if (adm === "days") return goADays();
+      if (adm === "quota") return goAquota();
       return goAdmin();
     }
     route();
@@ -688,6 +689,12 @@ function closedMonthName(opensAtIso) {
   return TH_MONTH_FULL[(d.getUTCMonth() + 11) % 12];
 }
 
+/** "2026-09" -> "เดือนกันยายน 2569" */
+function thaiMonthName(month) {
+  const [y, m] = String(month).split("-").map(Number);
+  return `เดือน${TH_MONTH_FULL[m - 1]} ${y + 543}`;
+}
+
 /** "2026-09-01T02:00:00.000Z" -> "1 ก.ย. 2569 เวลา 09.00 น." */
 function thaiWhen(iso) {
   const M = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
@@ -1007,8 +1014,14 @@ function downloadSheet() {
 let aDayOptions = [];  // วันที่ยังเปิดและยังไม่ผ่าน สำหรับกล่องเลือกวัน
 let aGrid = null;      // ตารางทั้งวันของวันที่เลือกอยู่
 let aPick = null;      // { slot, label, therapistId, therapistName }
-let aWho = null;       // { id, name, code, dept, used }
+let aWho = null;       // { id, name, code, dept, used, quota }
 let aFindTimer;
+let aqWho = null;      // คนที่กำลังปรับสิทธิ์อยู่ { id, name, code, dept, used, quota, extra }
+let aqFindTimer;
+let aqBusy = false;    // กันกดรัวจนคำขอสวนกันเอง
+let aqBase = 2;        // สิทธิ์ปกติ — เซิร์ฟเวอร์ส่งค่าจริงมาพร้อมผลค้นหา
+let aqMonth = null;    // เดือนที่ตัวเลขบนหน้านี้อ้างถึง มาจากเซิร์ฟเวอร์เสมอ ไม่คิดเองจากนาฬิกาเครื่อง
+const QUOTA_MAX = 10;  // ต้องตรงกับ QUOTA_MAX ฝั่งเซิร์ฟเวอร์ ใช้แค่ปิดปุ่มให้รู้ตัวก่อนกด
 
 /** เดือนถัดไปในรูปแบบ YYYY-MM */
 function nextMonthOf(month) {
@@ -1065,7 +1078,7 @@ function renderAbook() {
   $("#abook-picked").innerHTML = aWho
     ? `<div class="picked">
          <div><b>${escapeHtml(aWho.name)}</b>
-           <span>${escapeHtml(aWho.code)}${aWho.dept ? " · " + escapeHtml(aWho.dept) : ""} · ใช้สิทธิ์เดือนนี้ ${aWho.used}/${state.quota}</span></div>
+           <span>${escapeHtml(aWho.code)}${aWho.dept ? " · " + escapeHtml(aWho.dept) : ""} · ใช้สิทธิ์เดือนนี้ ${aWho.used}/${aWho.quota}</span></div>
          <button id="abook-change">เปลี่ยนคน</button>
        </div>`
     : "";
@@ -1134,9 +1147,10 @@ async function searchAbookEmployee(q) {
           .map(
             (e) => `<button class="hit" data-aemp="${escapeHtml(e.id)}"
               data-name="${escapeHtml(e.full_name)}" data-code="${escapeHtml(e.employee_code)}"
-              data-dept="${escapeHtml(e.dept || "")}" data-used="${e.used ?? 0}" aria-pressed="false">
+              data-dept="${escapeHtml(e.dept || "")}" data-used="${e.used ?? 0}"
+              data-quota="${e.quota}" data-extra="${e.extra ?? 0}" aria-pressed="false">
               <b>${escapeHtml(e.full_name)}</b>
-              <span>${escapeHtml(e.employee_code)}${e.dept ? " · " + escapeHtml(e.dept) : ""} · ใช้สิทธิ์ ${e.used ?? 0}/${state.quota}</span>
+              <span>${escapeHtml(e.employee_code)}${e.dept ? " · " + escapeHtml(e.dept) : ""} · ใช้สิทธิ์ ${e.used ?? 0}/${e.quota}</span>
             </button>`,
           )
           .join("")
@@ -1148,14 +1162,16 @@ async function searchAbookEmployee(q) {
 
 async function doAdminBook() {
   if (!(aPick && aWho && aGrid)) return;
-  const over = aWho.used >= state.quota;
+  const over = aWho.used >= aWho.quota;
   const yes = await dialog({
     icon: over ? "flash" : "warn",
     title: over ? "จองแทน (เกินสิทธิ์)" : "จองแทนพนักงาน",
     body: `${aWho.name}\n${aGrid.label}\n${aPick.label} (${aPick.therapistName})\n\n` +
       (over
-        ? `ใช้สิทธิ์ครบ ${state.quota} ครั้งแล้ว คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้`
-        : `จะหักสิทธิ์เป็นครั้งที่ ${aWho.used + 1} จาก ${state.quota} และระบบจะแจ้งเจ้าตัวทางไลน์`),
+        ? (aWho.quota === 0
+            ? "เดือนนี้ไม่มีสิทธิ์เหลือ คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้"
+            : `ใช้สิทธิ์ครบ ${aWho.quota} ครั้งแล้ว คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้`)
+        : `จะหักสิทธิ์เป็นครั้งที่ ${aWho.used + 1} จาก ${aWho.quota} และระบบจะแจ้งเจ้าตัวทางไลน์`),
     confirm: "ยืนยันจองให้",
     cancel: "ไม่ใช่ตอนนี้",
   });
@@ -1167,7 +1183,7 @@ async function doAdminBook() {
       body: { employeeId: aWho.id, day: aGrid.day, slot: aPick.slot, therapistId: aPick.therapistId },
     });
     toast(`จองให้ ${r.name} แล้ว${r.flash ? " (คิวด่วน)" : ""}`);
-    aWho = { ...aWho, used: r.used };
+    aWho = { ...aWho, used: r.used, quota: r.quota ?? aWho.quota };
     await goAbook(aGrid.day);
   } catch (e) {
     if (e && e.handled) return;
@@ -1339,10 +1355,128 @@ async function addServiceDay() {
   await saveServiceDay({ day, status: "open" });
 }
 
-/** สลับสามหน้าของผู้ดูแล */
+// ───────── ผู้ดูแล: เพิ่ม/ลดสิทธิ์รายคน ─────────
+//
+// สิทธิ์ผูกกับเดือน หน้านี้จึงทำได้เฉพาะเดือนปัจจุบัน ไม่มีปุ่มเลื่อนเดือน —
+// การให้สิทธิ์ย้อนหลังไม่มีประโยชน์ (วันผ่านไปแล้ว) และการให้ล่วงหน้าจะกลายเป็น
+// สิทธิ์ค้างที่ไม่มีใครจำได้ว่าตั้งไว้เมื่อไหร่ ตอนถึงเดือนนั้นจริง
+
+function goAquota() {
+  aqWho = null;
+  $("#aq-find").value = "";
+  $("#aq-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
+  renderAquota();
+  show("s-aquota");
+  // ถามเดือนกับสิทธิ์ปกติจากเซิร์ฟเวอร์ทันที เพื่อให้หัวข้อขึ้นชื่อเดือนตั้งแต่เปิดหน้า
+  // ไม่ใช่ค้างเป็น "เดือนนี้" จนกว่าจะค้นเจอคนแรก — ถามไม่ได้ก็ไม่เป็นไร หน้ายังใช้ได้
+  api("/api/massage/admin/employees?q=")
+    .then((r) => {
+      if (r.month) aqMonth = r.month;
+      if (r.base) aqBase = r.base;
+      renderAquota();
+    })
+    .catch(() => {});
+}
+
+function renderAquota() {
+  // ชื่อเดือนมาจากเซิร์ฟเวอร์ ไม่คิดเองจากนาฬิกาเครื่อง ด้วยเหตุผลเดียวกับ closedMonthName
+  $("#aq-month").textContent = aqMonth ? thaiMonthName(aqMonth) : "เดือนนี้";
+
+  $("#aq-picked").innerHTML = aqWho
+    ? `<div class="picked">
+         <div><b>${escapeHtml(aqWho.name)}</b>
+           <span>${escapeHtml(aqWho.code)}${aqWho.dept ? " · " + escapeHtml(aqWho.dept) : ""}</span></div>
+         <button id="aq-change">เปลี่ยนคน</button>
+       </div>`
+    : "";
+  $("#aq-finder").style.display = aqWho ? "none" : "";
+  $("#aq-panel").style.display = aqWho ? "" : "none";
+  if (!aqWho) {
+    $("#aq-tip").textContent = "เลือกพนักงานก่อน แล้วจะมีปุ่มเพิ่ม/ลดสิทธิ์ขึ้นมา";
+    return;
+  }
+
+  $("#aq-quota").textContent = aqWho.quota;
+  // ปิดปุ่มที่กดไปก็ไม่มีอะไรเปลี่ยน แทนที่จะปล่อยให้กดแล้วเลขค้างอยู่ที่เดิมเงียบ ๆ
+  $("#aq-minus").disabled = aqBusy || aqWho.quota <= 0;
+  $("#aq-plus").disabled = aqBusy || aqWho.quota >= QUOTA_MAX;
+
+  const tag =
+    aqWho.extra > 0 ? `<span class="tag up">เพิ่มให้ ${aqWho.extra} ครั้ง</span>`
+    : aqWho.extra < 0 ? `<span class="tag down">ลดไป ${-aqWho.extra} ครั้ง</span>`
+    : "";
+  $("#aq-meta").innerHTML =
+    `เดือนนี้จองไปแล้ว <b>${aqWho.used}</b> ครั้ง` +
+    (aqWho.used >= aqWho.quota ? " · ใช้สิทธิ์ครบแล้ว" : ` · เหลืออีก <b>${aqWho.quota - aqWho.used}</b> ครั้ง`) +
+    (tag ? `<br>${tag}` : "");
+
+  $("#aq-tip").textContent =
+    aqWho.extra === 0
+      ? `สิทธิ์ปกติของทุกคนคือ ${aqBase} ครั้งต่อเดือน กดปุ่มเพื่อปรับเฉพาะคนนี้`
+      : "สิทธิ์ที่ปรับใช้ได้เฉพาะเดือนนี้ เดือนหน้ากลับไปเป็นสิทธิ์ปกติเอง";
+}
+
+async function searchAquotaEmployee(q) {
+  if (q.trim().length < 2) {
+    $("#aq-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
+    return;
+  }
+  try {
+    const r = await api(`/api/massage/admin/employees?q=${encodeURIComponent(q.trim())}`);
+    if (r.base) aqBase = r.base;
+    if (r.month) aqMonth = r.month;
+    const list = r.employees || [];
+    $("#aq-hits").innerHTML = list.length
+      ? list
+          .map(
+            (e) => `<button class="hit" data-qemp="${escapeHtml(e.id)}"
+              data-name="${escapeHtml(e.full_name)}" data-code="${escapeHtml(e.employee_code)}"
+              data-dept="${escapeHtml(e.dept || "")}" data-used="${e.used ?? 0}"
+              data-quota="${e.quota}" data-extra="${e.extra ?? 0}" aria-pressed="false">
+              <b>${escapeHtml(e.full_name)}</b>
+              <span>${escapeHtml(e.employee_code)}${e.dept ? " · " + escapeHtml(e.dept) : ""} · สิทธิ์ ${e.quota} ครั้ง ใช้ไป ${e.used ?? 0}</span>
+            </button>`,
+          )
+          .join("")
+      : `<div class="none">ไม่พบพนักงานที่ตรงกับที่ค้น</div>`;
+  } catch {
+    $("#aq-hits").innerHTML = `<div class="none">ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง</div>`;
+  }
+}
+
+/**
+ * กดเพิ่มหรือลดหนึ่งครั้ง
+ *
+ * ส่งไป "ทิศทาง" ไม่ใช่ตัวเลขที่ต้องการ เพราะฝั่งเซิร์ฟเวอร์บวกจากค่าจริงในฐานข้อมูล
+ * ผู้ดูแลสองคนที่เปิดหน้าเดียวกันจึงไม่เขียนทับกัน และตัวเลขที่ตอบกลับมาคือของจริงเสมอ
+ */
+async function bumpQuota(step) {
+  if (!aqWho || aqBusy) return;
+  aqBusy = true;
+  renderAquota();
+  try {
+    const r = await api("/api/massage/admin/quota", {
+      method: "POST",
+      body: { employeeId: aqWho.id, step },
+    });
+    aqWho = { ...aqWho, quota: r.quota, extra: r.extra, used: r.used };
+    if (r.month) aqMonth = r.month;
+    toast(`สิทธิ์ของ ${aqWho.name} เป็น ${r.quota} ครั้งแล้ว`);
+  } catch (e) {
+    if (!(e && e.handled)) {
+      await dialog({ icon: "err", title: "ปรับสิทธิ์ไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
+    }
+  } finally {
+    aqBusy = false;
+    renderAquota();
+  }
+}
+
+/** สลับสี่หน้าของผู้ดูแล */
 function goAdminTab(tab) {
   if (tab === "book") return goAbook();
   if (tab === "days") return goADays(aMonth);
+  if (tab === "quota") return goAquota();
   return goAdmin(sheet ? sheet.day : undefined);
 }
 
@@ -1408,7 +1542,8 @@ function bind() {
     const ae = e.target.closest("[data-aemp]");
     if (ae) {
       aWho = { id: ae.dataset.aemp, name: ae.dataset.name, code: ae.dataset.code,
-        dept: ae.dataset.dept, used: Number(ae.dataset.used) || 0 };
+        dept: ae.dataset.dept, used: Number(ae.dataset.used) || 0,
+        quota: Number(ae.dataset.quota) || 0 };
       $("#abook-find").value = "";
       $("#abook-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
       renderAbook();
@@ -1417,6 +1552,22 @@ function bind() {
       aWho = null;
       renderAbook();
       setTimeout(() => $("#abook-find").focus(), 50);
+    }
+
+    // เลือกพนักงานที่จะปรับสิทธิ์ให้
+    const qe = e.target.closest("[data-qemp]");
+    if (qe) {
+      aqWho = { id: qe.dataset.qemp, name: qe.dataset.name, code: qe.dataset.code,
+        dept: qe.dataset.dept, used: Number(qe.dataset.used) || 0,
+        quota: Number(qe.dataset.quota) || 0, extra: Number(qe.dataset.extra) || 0 };
+      $("#aq-find").value = "";
+      $("#aq-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
+      renderAquota();
+    }
+    if (e.target.closest("#aq-change")) {
+      aqWho = null;
+      renderAquota();
+      setTimeout(() => $("#aq-find").focus(), 50);
     }
 
     // เปิดหรือปิดวันให้บริการ
@@ -1448,6 +1599,16 @@ function bind() {
     clearTimeout(aFindTimer);
     const q = e.target.value;
     aFindTimer = setTimeout(() => searchAbookEmployee(q), 250);
+  };
+
+  // ── ผู้ดูแล: เพิ่ม/ลดสิทธิ์ ──
+  $("#aquota-back").onclick = () => route();
+  $("#aq-minus").onclick = () => bumpQuota(-1);
+  $("#aq-plus").onclick = () => bumpQuota(1);
+  $("#aq-find").oninput = (e) => {
+    clearTimeout(aqFindTimer);
+    const q = e.target.value;
+    aqFindTimer = setTimeout(() => searchAquotaEmployee(q), 250);
   };
 
   // ── ผู้ดูแล: วันให้บริการ ──

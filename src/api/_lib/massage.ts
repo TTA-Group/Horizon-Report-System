@@ -27,6 +27,14 @@ export const SLOT_MINUTES = 30;
 export const MONTHLY_QUOTA = 2;
 
 /**
+ * เพดานสิทธิ์ที่ผู้ดูแลปรับให้ได้ต่อคนต่อเดือน
+ *
+ * มีไว้กันนิ้วพลาด ไม่ใช่กันเจตนา — ปุ่มเพิ่มสิทธิ์กดรัวได้ ถ้าไม่มีเพดาน กดค้างไว้
+ * แล้วเผลอ จะได้คนที่จองได้ทั้งเดือนโดยไม่มีใครสังเกต
+ */
+export const QUOTA_MAX = 10;
+
+/**
  * เส้นตัด 15 นาทีก่อนรอบเริ่ม ใช้ทั้งสองทาง
  *
  * ฝั่งยกเลิก: กันคนไปนวดเสร็จแล้วย้อนกลับมากดยกเลิกเพื่อเอาสิทธิ์คืน
@@ -260,7 +268,7 @@ export async function massageState(employeeId: string, now = new Date()): Promis
   const sql = db();
   const cfg = await settings();
   const today = bangkokDate(now);
-  const quota = { used: await monthlyUsage(employeeId, today), quota: MONTHLY_QUOTA };
+  const quota = { used: await monthlyUsage(employeeId, today), quota: await quotaOf(employeeId, today) };
 
   if (cfg.get("massage.enabled") === "false") {
     return { open: false, reason: "manual", days: [], ...quota };
@@ -303,7 +311,7 @@ export async function massageState(employeeId: string, now = new Date()): Promis
       chip: thaiDayChip(r.day),
       free: Math.max(0, total - r.taken),
       total,
-      flash: isFlashFor(r.day, quota.used, now),
+      flash: isFlashFor(r.day, quota.used, quota.quota, now),
     };
   });
 
@@ -337,8 +345,8 @@ export function isFlashDay(day: string, now = new Date()): boolean {
  * คนที่สิทธิ์ยังเหลือกดจองในวันที่เข้าโหมดคิวด่วนได้ตามปกติ แต่นับเป็นคิวสิทธิ์
  * และยกเลิกได้ตามเดิม เท่ากับวันนั้นเป็นวันธรรมดาวันหนึ่งสำหรับเขา
  */
-export function isFlashFor(day: string, used: number, now = new Date()): boolean {
-  return used >= MONTHLY_QUOTA && isFlashDay(day, now);
+export function isFlashFor(day: string, used: number, quota: number, now = new Date()): boolean {
+  return used >= quota && isFlashDay(day, now);
 }
 
 /** รอบนี้ยังจองได้ไหมเมื่อเทียบกับเวลาปัจจุบัน (ต้องเหลือมากกว่า 15 นาที) */
@@ -424,7 +432,7 @@ export async function dayAvailability(
   return {
     day,
     label: thaiDayLabel(day),
-    flash: isFlashFor(day, await monthlyUsage(employeeId, day), now),
+    flash: isFlashFor(day, await monthlyUsage(employeeId, day), await quotaOf(employeeId, day), now),
     therapists,
     rows: MASSAGE_SLOTS.map((slot) => ({
       slot,
@@ -449,6 +457,108 @@ export async function monthlyUsage(employeeId: string, day: string): Promise<num
       AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
   `;
   return rows[0]?.n ?? 0;
+}
+
+/** แปลงส่วนต่างที่ผู้ดูแลปรับไว้ ให้เป็นจำนวนสิทธิ์จริง — ไม่ติดลบ และไม่เกินเพดาน */
+export function quotaFromExtra(extra: number): number {
+  return Math.max(0, Math.min(QUOTA_MAX, MONTHLY_QUOTA + extra));
+}
+
+/**
+ * สิทธิ์ของคนคนนี้ในเดือนของ day
+ *
+ * ทุกที่ที่ตัดสินว่า "จองได้อีกไหม" ต้องเรียกอันนี้ ห้ามอ่าน MONTHLY_QUOTA ตรง ๆ
+ * ไม่งั้นคนที่ผู้ดูแลเพิ่มสิทธิ์ให้จะเห็นเลขหนึ่งบนหน้าจอ แต่ถูกปฏิเสธด้วยอีกเลขตอนกดจอง
+ */
+export async function quotaOf(employeeId: string, day: string): Promise<number> {
+  const rows = await db()<{ extra: number }[]>`
+    SELECT extra FROM massage_quota_extra
+    WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
+  `;
+  return quotaFromExtra(rows[0]?.extra ?? 0);
+}
+
+export interface QuotaLine {
+  month: string;
+  /** สิทธิ์ปกติของทุกคน ก่อนถูกปรับ */
+  base: number;
+  /** ส่วนต่างที่ผู้ดูแลปรับไว้ (บวก/ลบ/ศูนย์) */
+  extra: number;
+  /** สิทธิ์จริงหลังปรับแล้ว */
+  quota: number;
+  used: number;
+}
+
+/** สิทธิ์กับการใช้งานของคนคนหนึ่งในเดือนหนึ่ง — ตัวเลขชุดที่หน้าจอผู้ดูแลต้องใช้ทั้งหมด */
+export async function quotaLine(employeeId: string, day: string): Promise<QuotaLine> {
+  const sql = db();
+  const [row] = await sql<{ extra: number }[]>`
+    SELECT extra FROM massage_quota_extra
+    WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
+  `;
+  const extra = row?.extra ?? 0;
+  return {
+    month: day.slice(0, 7),
+    base: MONTHLY_QUOTA,
+    extra,
+    quota: quotaFromExtra(extra),
+    used: await monthlyUsage(employeeId, day),
+  };
+}
+
+/**
+ * ผู้ดูแลกดเพิ่มหรือลดสิทธิ์ให้พนักงานหนึ่งครั้ง
+ *
+ * ตัดสินจากค่าในฐานข้อมูล ณ ตอนกด ไม่ใช่จากตัวเลขที่หน้าจอส่งมา เพราะผู้ดูแลสองคน
+ * อาจเปิดหน้าเดียวกันอยู่ ถ้าเชื่อตัวเลขจากหน้าจอ คนที่กดทีหลังจะเขียนทับของคนแรก
+ *
+ * ลดสิทธิ์ลงต่ำกว่าจำนวนที่จองไปแล้วได้ — คิวเดิมไม่ถูกยกเลิก แต่จองเพิ่มไม่ได้อีก
+ * เพราะการยกเลิกคิวคนอื่นอัตโนมัติเป็นผลข้างเคียงที่ผู้ดูแลไม่ได้สั่ง
+ */
+export async function adjustQuota(
+  employeeId: string,
+  month: string,
+  step: number,
+  byEmployeeId: string,
+): Promise<QuotaLine> {
+  const sql = db();
+  return await sql.begin(async (tx) => {
+    const emp = await tx<{ id: string }[]>`
+      SELECT id FROM employees WHERE id = ${employeeId} FOR UPDATE
+    `;
+    if (emp.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้", "no_employee");
+
+    const [cur] = await tx<{ extra: number }[]>`
+      SELECT extra FROM massage_quota_extra
+      WHERE employee_id = ${employeeId} AND month = ${month}
+    `;
+    const now = cur?.extra ?? 0;
+
+    // หนีบที่ "สิทธิ์จริง" ไม่ใช่ที่ส่วนต่าง เพื่อไม่ให้เก็บส่วนต่างที่กดค้างไว้เกินเพดาน
+    // แล้วต้องกดลบซ้ำหลายครั้งกว่าตัวเลขบนหน้าจอจะขยับ
+    const extra = quotaFromExtra(now + step) - MONTHLY_QUOTA;
+
+    await tx`
+      INSERT INTO massage_quota_extra (employee_id, month, extra, updated_by)
+      VALUES (${employeeId}, ${month}, ${extra}, ${byEmployeeId})
+      ON CONFLICT (employee_id, month) DO UPDATE
+        SET extra = EXCLUDED.extra, updated_by = EXCLUDED.updated_by, updated_at = now()
+    `;
+
+    const used = await tx<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM massage_bookings
+      WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
+        AND day >= ${month + "-01"}::date
+        AND day <  (${month + "-01"}::date + INTERVAL '1 month')
+    `;
+    return {
+      month,
+      base: MONTHLY_QUOTA,
+      extra,
+      quota: quotaFromExtra(extra),
+      used: used[0]?.n ?? 0,
+    };
+  });
 }
 
 // ───────────────────────── จองคิว ─────────────────────────
@@ -534,9 +644,22 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
         WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
           AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
       `;
-      const flash = isFlashFor(day, used[0]?.n ?? 0, now);
-      if (!flash && (used[0]?.n ?? 0) >= MONTHLY_QUOTA) {
-        throw new HttpError(409, `เดือนนี้ใช้สิทธิ์ครบ ${MONTHLY_QUOTA} ครั้งแล้ว`, "quota_used");
+      // อ่านสิทธิ์ที่ผู้ดูแลปรับไว้ในธุรกรรมเดียวกัน — แถวพนักงานถูกล็อกไปแล้วข้างบน
+      // ผู้ดูแลที่กำลังกดลดสิทธิ์คนเดียวกันอยู่จึงต้องรอ ไม่ใช่แทรกกลางคัน
+      const extraRow = await sql<{ extra: number }[]>`
+        SELECT extra FROM massage_quota_extra
+        WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
+      `;
+      const quota = quotaFromExtra(extraRow[0]?.extra ?? 0);
+      const flash = isFlashFor(day, used[0]?.n ?? 0, quota, now);
+      if (!flash && (used[0]?.n ?? 0) >= quota) {
+        throw new HttpError(
+          409,
+          quota === 0
+            ? "เดือนนี้คุณไม่มีสิทธิ์จองคิวนวด"
+            : `เดือนนี้ใช้สิทธิ์ครบ ${quota} ครั้งแล้ว`,
+          "quota_used",
+        );
       }
 
       // วันละคิวเดียว — เช็คตรงนี้เพื่อให้ได้ข้อความที่บอกสาเหตุชัด ๆ ส่วนการกันจริง
@@ -842,7 +965,7 @@ export async function myBookings(
  */
 export async function adminBook(
   input: BookInput,
-): Promise<AdminBookingRow & { flash: boolean; used: number }> {
+): Promise<AdminBookingRow & { flash: boolean; used: number; quota: number }> {
   const { employeeId, day, slot, therapistId } = input;
 
   if (!MASSAGE_SLOTS.includes(slot as (typeof MASSAGE_SLOTS)[number])) {
@@ -874,7 +997,12 @@ export async function adminBook(
           AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
       `;
       const used = usedRows[0]?.n ?? 0;
-      const flash = used >= MONTHLY_QUOTA;
+      const extraRow = await sql<{ extra: number }[]>`
+        SELECT extra FROM massage_quota_extra
+        WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
+      `;
+      const quota = quotaFromExtra(extraRow[0]?.extra ?? 0);
+      const flash = used >= quota;
 
       const ins = await sql<{ id: string }[]>`
         INSERT INTO massage_bookings (day, slot_start, therapist_id, employee_id, kind)
@@ -886,7 +1014,7 @@ export async function adminBook(
         id: ins[0].id, day, slot,
         therapistId, therapistName: th[0].name,
         employeeId, name: emp[0].full_name,
-        flash, used: flash ? used : used + 1,
+        flash, used: flash ? used : used + 1, quota,
       };
     });
   } catch (e) {
