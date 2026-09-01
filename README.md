@@ -102,7 +102,7 @@ wrangler.massage.toml  การตั้งค่า Worker "massage"
 | Worker | cron | ทำอะไร |
 | --- | --- | --- |
 | `report` | `*/15 * * * *` | เตือนซ้ำเรื่องที่เกิน SLA |
-| `report` | `0 3 * * *` | `daily-jobs` — db-keepalive ทุกวัน · backup วันอาทิตย์ · cleanup-files + usage-report วันที่ 1 |
+| `report` | `0 3 * * *` | `daily-jobs` — db-keepalive ทุกวัน · backup วันอาทิตย์ · cleanup-files วันที่ 1 |
 | `massage` | `*/15 * * * *` | `massage-cron` — สร้างวันของเดือน · เตือนล่วงหน้า 1 วัน (ตั้งแต่ 17:00 น.) · เตือนก่อนถึงคิว |
 
 งานที่เคยแยก cron ถูกยุบมาอยู่ในตัวจัดการเดียวที่ดูปฏิทิน/นาฬิกาเอง แต่ละงานถูกครอบแยกกัน

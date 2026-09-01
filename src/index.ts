@@ -102,7 +102,7 @@ function route(pathname: string, method: string): Handler | null {
 // มาอยู่ใน cron ตัวเดียว แล้วให้ daily-jobs.ts ดูปฏิทินเองว่าวันนี้ต้องทำงานไหนบ้าง
 const CRON_JOBS: Record<string, Handler> = {
   "*/15 * * * *": reminders,
-  "0 3 * * *": dailyJobs, // db-keepalive ทุกวัน · backup วันอาทิตย์ · cleanup-files + usage-report วันที่ 1
+  "0 3 * * *": dailyJobs, // db-keepalive ทุกวัน · backup วันอาทิตย์ · cleanup-files วันที่ 1
 };
 
 /** ปรับรูปแบบ cron ให้เทียบกันได้ เผื่อช่องว่าง/ตัวพิมพ์ต่างกันเล็กน้อย */
