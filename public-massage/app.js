@@ -451,7 +451,9 @@ function renderGrid() {
           // รอบที่เลยเวลาแล้วยังโชว์ไว้ให้เห็นภาพทั้งวัน แต่กดไม่ได้
           const label = c.mine ? "ของคุณ" : c.taken ? "จอง" : r.bookable ? "ว่าง" : "ปิด";
           const dis = viewOnly || c.taken || !r.bookable ? " disabled" : "";
-          return `<td><button class="cell${c.mine ? " mine" : ""}" aria-pressed="false"${dis}
+          // แยกสีช่องที่มีคนจองแล้วออกจากช่องว่าง ทั้งคู่กดไม่ได้เหมือนกันแต่คนละความหมาย
+          const tone = c.mine ? " mine" : c.taken ? " taken" : "";
+          return `<td><button class="cell${tone}" aria-pressed="false"${dis}
             data-slot="${escapeHtml(r.slot)}" data-th="${escapeHtml(c.therapistId)}" data-label="${label}"
             aria-label="${escapeHtml(r.label)} ${escapeHtml(
               th.find((t) => t.id === c.therapistId)?.name ?? "",

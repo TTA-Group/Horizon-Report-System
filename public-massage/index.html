@@ -121,6 +121,12 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .panel.flash .cell[aria-pressed="true"]{background:var(--flash);border-color:var(--flash);color:#fff;
   box-shadow:0 4px 14px -4px rgba(242,106,27,.6)}
 .legend em.f{color:var(--flash-deep)}
+/* ช่องที่มีคนจองแล้ว — แดง เพื่อให้กวาดตาเห็นว่าวันนั้นแน่นแค่ไหนโดยไม่ต้องอ่านทีละช่อง
+   ต้องอยู่หลังกฎ :disabled และหลังกฎของโหมดคิวด่วน ไม่งั้นจะถูกเขียนทับด้วยสีเทา/สีส้ม
+   (น้ำหนักของตัวเลือกเท่ากัน ตัวที่มาทีหลังจึงชนะ) */
+.cell.taken,.cell.taken:disabled,.panel.flash .cell.taken{background:var(--red-soft);
+  border-color:#F2C9C0;color:var(--red-deep);font-weight:600}
+.legend em.t{color:var(--red-deep)}
 .bar.flash .btn-submit{background:var(--flash)}
 .bar.flash .btn-submit:disabled{background:#CFD7DD}
 .mytag.flash{background:var(--flash-soft);color:var(--flash-deep)}
@@ -409,7 +415,7 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
       </div>
       <div class="panel" id="slots"></div>
       <div class="legend" id="legend" style="display:none">
-        <span><em>ว่าง</em> = กดจองได้</span><span>จอง = มีคนจองแล้ว</span>
+        <span><em>ว่าง</em> = กดจองได้</span><span><em class="t">จอง</em> = มีคนจองแล้ว</span>
       </div>
 
       <div class="bar" id="book-bar">
