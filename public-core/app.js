@@ -625,12 +625,22 @@ function renderAdminList() {
       const label = i === 0 && g.key === TEAM_GROUP ? '<div class="section">ทีมงานระบบ</div>' : "";
       const deptLabel = g.dept && !groups.slice(0, i).some((x) => x.dept) ? '<div class="section">ตามฝ่าย</div>' : "";
       const body = open ? `<div class="grp-body">${g.rows.map(personRow).join("")}</div>` : "";
+      // ตัวเลขข้างกลุ่มบอก "ผูกบัญชีไลน์แล้วกี่คน จากทั้งหมดกี่คน" ไม่ใช่จำนวนคนเฉย ๆ
+      //
+      // งานหลักของหน้านี้ช่วงเริ่มใช้ระบบคือไล่ให้ทุกคนผูกบัญชีให้ครบ ตัวเลขรวมอย่างเดียว
+      // จึงไม่ได้บอกว่ายังเหลืออีกกี่คน ต้องกางกลุ่มออกมานับเองทีละคน
+      // กลุ่มที่ครบแล้วเปลี่ยนเป็นป้ายเขียวไปเลย จะได้กวาดตาหาเฉพาะกลุ่มที่ยังไม่ครบ
+      const done = g.rows.filter((e) => e.linked).length;
+      const count =
+        done === g.rows.length && g.rows.length > 0
+          ? '<span class="gct full">ผูกครบแล้ว</span>'
+          : `<span class="gct">${done}/${g.rows.length}</span>`;
       return `${label}${deptLabel}
         <button class="grp" data-grp="${esc(g.key)}" aria-expanded="${open}">
           <svg class="gcv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
           <span class="gnm">${esc(g.name)}</span>
-          <span class="gct">${g.rows.length}</span>
+          ${count}
         </button>${body}`;
     })
     .join("");
