@@ -16,7 +16,6 @@ import { json, run, safeErrorText } from "./_lib/http";
 import dbKeepalive from "./db-keepalive";
 import backup from "./backup";
 import cleanupFiles from "./cleanup-files";
-import usageReport from "./usage-report";
 
 type Handler = (req: Request) => Promise<Response>;
 
@@ -24,7 +23,6 @@ const JOBS: Record<string, Handler> = {
   "db-keepalive": dbKeepalive,
   backup,
   "cleanup-files": cleanupFiles,
-  "usage-report": usageReport,
 };
 
 /**
@@ -36,7 +34,7 @@ export function plannedJobs(now = new Date()): string[] {
   const th = new Date(now.getTime() + 7 * 60 * 60 * 1000);
   const plan = ["db-keepalive"]; // ทุกวัน — กันฐานข้อมูลระดับฟรีถูกพักการทำงาน
   if (th.getUTCDay() === 0) plan.push("backup"); // วันอาทิตย์
-  if (th.getUTCDate() === 1) plan.push("cleanup-files", "usage-report"); // วันที่ 1 ของเดือน
+  if (th.getUTCDate() === 1) plan.push("cleanup-files"); // วันที่ 1 ของเดือน
   return plan;
 }
 
