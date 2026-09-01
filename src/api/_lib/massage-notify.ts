@@ -7,15 +7,24 @@
 
 import { db } from "./db";
 import { pushTo, textMessage } from "./line";
+import type { LineMessage } from "./line";
 
-export async function notifyEmployee(employeeId: string, text: string): Promise<void> {
+/** ส่งอะไรก็ได้ที่ไลน์รับ — ข้อความเปล่าหรือการ์ด แล้วแต่ว่าเรื่องนั้นต้องมีปุ่มให้กดต่อไหม */
+export async function notifyEmployeeWith(
+  employeeId: string,
+  messages: LineMessage[],
+): Promise<void> {
   try {
     const rows = await db()<{ line_user_id: string }[]>`
       SELECT line_user_id FROM line_accounts
       WHERE employee_id = ${employeeId} AND channel_key = 'core'
     `;
-    if (rows.length > 0) await pushTo(rows[0].line_user_id, [textMessage(text)]);
+    if (rows.length > 0) await pushTo(rows[0].line_user_id, messages);
   } catch (e) {
     console.error("[massage] แจ้งเจ้าของคิวไม่สำเร็จ", e);
   }
+}
+
+export async function notifyEmployee(employeeId: string, text: string): Promise<void> {
+  await notifyEmployeeWith(employeeId, [textMessage(text)]);
 }

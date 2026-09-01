@@ -51,6 +51,15 @@ export interface ConfirmInput {
   employeeName: string;
   /** true = คิวด่วน ยกเลิกเองไม่ได้ (เกิดเฉพาะกับคนที่ใช้สิทธิ์ครบแล้ว) */
   flash: boolean;
+  /**
+   * true = ผู้ดูแลเป็นคนกดจองให้ ไม่ใช่เจ้าตัวกดเอง
+   *
+   * เปลี่ยนแค่คำพูดบนการ์ด ส่วนปุ่มยกเลิกยังเหมือนกันทุกอย่าง — คนที่ถูกจองให้
+   * ต้องยกเลิกเองได้เหมือนคนที่กดจองเอง ไม่งั้นต้องเดินไปหาเจ้าหน้าที่ทุกครั้ง
+   *
+   * ถ้าใช้คำว่า "จองคิวสำเร็จ" เหมือนกัน คนที่ไม่ได้กดอะไรเลยจะงงว่าตัวเองเผลอกดตอนไหน
+   */
+  byStaff?: boolean;
 }
 
 /**
@@ -70,10 +79,18 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
   const accent = b.flash ? FLASH : GREEN;
 
   const body: object[] = [
-    { type: "text", text: "จองคิวสำเร็จ", weight: "bold", size: "xl", color: "#333333", align: "center" },
     {
       type: "text",
-      text: b.flash ? "คิวด่วน — ยกเลิกในระบบไม่ได้" : "บันทึกการนัดหมายของคุณเรียบร้อยแล้ว",
+      text: b.byStaff ? "เจ้าหน้าที่จองให้คุณ" : "จองคิวสำเร็จ",
+      weight: "bold", size: "xl", color: "#333333", align: "center",
+    },
+    {
+      type: "text",
+      text: b.flash
+        ? "คิวด่วน — ยกเลิกในระบบไม่ได้"
+        : b.byStaff
+          ? "เจ้าหน้าที่จองคิวนวดนี้ให้คุณแล้ว"
+          : "บันทึกการนัดหมายของคุณเรียบร้อยแล้ว",
       size: "sm",
       color: "#AAAAAA",
       align: "center",
@@ -128,7 +145,9 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
           type: "text",
           text: b.flash
             ? "คิวด่วนยกเลิกในระบบไม่ได้ หากมาไม่ได้ ต้องหาคนมาแทนแล้วแจ้งฝ่ายบุคคล"
-            : "หากมาไม่ได้ กรุณากดยกเลิกก่อนถึงคิว 15 นาที",
+            : b.byStaff
+              ? "หากไม่สะดวก กดปุ่มยกเลิกด้านล่างได้เอง ก่อนถึงคิว 15 นาที"
+              : "หากมาไม่ได้ กรุณากดยกเลิกก่อนถึงคิว 15 นาที",
           size: "xxs",
           color: "#B0331B",
           align: "center",
@@ -153,7 +172,7 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
 
   return {
     type: "flex",
-    altText: `จองคิวนวดสำเร็จ · ${thaiDayLabel(b.day)} ${slotLabel(b.slot)}`,
+    altText: `${b.byStaff ? "เจ้าหน้าที่จองคิวนวดให้คุณ" : "จองคิวนวดสำเร็จ"} · ${thaiDayLabel(b.day)} ${slotLabel(b.slot)}`,
     contents: {
       type: "bubble",
       size: "mega",
@@ -165,7 +184,7 @@ export function bookingConfirmCard(b: ConfirmInput): LineMessage {
         contents: [
           {
             type: "text",
-            text: b.flash ? "FLASH QUEUE BOOKED" : "BOOKING CONFIRMED",
+            text: b.flash ? "FLASH QUEUE BOOKED" : b.byStaff ? "BOOKED BY STAFF" : "BOOKING CONFIRMED",
             color: "#FFFFFF", size: "md", weight: "bold", gravity: "center",
           },
         ],

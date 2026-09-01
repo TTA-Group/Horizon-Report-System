@@ -13,8 +13,8 @@ import {
   MONTHLY_QUOTA, adjustQuota, adminBook, adminCancel, adminDayGrid, adminMove, adminReassign,
   assertMassageStaff, bangkokDate, quotaFromExtra,
 } from "./_lib/massage";
-import { massageNotice } from "./_lib/massage-flex";
-import { notifyEmployee as notify } from "./_lib/massage-notify";
+import { bookingConfirmCard, massageNotice } from "./_lib/massage-flex";
+import { notifyEmployee as notify, notifyEmployeeWith } from "./_lib/massage-notify";
 import { db } from "./_lib/db";
 
 export const massageAdminCancel = async (req: Request): Promise<Response> =>
@@ -188,6 +188,10 @@ export const massageAdminDayGrid = async (req: Request): Promise<Response> =>
  * POST /api/massage/admin/book — ผู้ดูแลจองคิวให้พนักงานคนอื่น
  *
  * แจ้งเจ้าตัวเสมอ เพราะพนักงานไม่ได้เป็นคนกดเอง ถ้าไม่แจ้งก็ไม่มีทางรู้ว่ามีคิวรออยู่
+ *
+ * ส่งเป็น "การ์ด" ใบเดียวกับตอนพนักงานกดจองเอง ไม่ใช่ข้อความเปล่า เพราะปุ่มยกเลิก
+ * อยู่บนการ์ด — ถ้าส่งเป็นข้อความ คนที่ถูกจองให้จะยกเลิกเองไม่ได้ ต้องเดินไปหา
+ * เจ้าหน้าที่ทุกครั้ง ทั้งที่กติกาให้ยกเลิกเองได้อยู่แล้ว
  */
 export const massageAdminBook = async (req: Request): Promise<Response> =>
   run(async () => {
@@ -204,16 +208,17 @@ export const massageAdminBook = async (req: Request): Promise<Response> =>
     console.log("[massage] จองแทน", b.name, b.day, b.slot, b.flash ? "(คิวด่วน)" : "(คิวสิทธิ์)",
       "โดย", s.employee!.employee_code);
 
-    await notify(
-      b.employeeId,
-      massageNotice(
-        "เจ้าหน้าที่จองคิวนวดให้คุณแล้ว",
-        b.day, b.slot, b.therapistName,
-        b.flash
-          ? "คิวนี้เป็นคิวด่วน ยกเลิกในระบบไม่ได้ หากมาไม่ได้ กรุณาแจ้งฝ่ายบุคคล"
-          : "หากไม่สะดวก กรุณายกเลิกในแอปล่วงหน้าอย่างน้อย 15 นาที",
-      ),
-    );
+    await notifyEmployeeWith(b.employeeId, [
+      bookingConfirmCard({
+        bookingId: b.id,
+        day: b.day,
+        slot: b.slot,
+        therapistName: b.therapistName,
+        employeeName: b.name,
+        flash: b.flash,
+        byStaff: true,
+      }),
+    ]);
     return json({
       ok: true, id: b.id, name: b.name, day: b.day, slot: b.slot,
       therapistName: b.therapistName, flash: b.flash, used: b.used,
