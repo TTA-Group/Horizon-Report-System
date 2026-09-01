@@ -188,6 +188,35 @@ export async function syncRichMenuForEmployee(employeeId: string): Promise<void>
 }
 
 /**
+ * ให้ทุกคนในชุดนี้ได้ "เมนูหลัก" เหมือนกันหมด ไม่ว่าจะลงทะเบียนแล้วหรือยัง
+ *
+ * ใช้ตอนสั่งเปลี่ยนเมนูให้ทุกคนพร้อมกัน ต่างจาก applyRichMenus ที่แจกตามสถานะ
+ * (ซึ่งเป็นกติกาที่ใช้ตอนมีเหตุรายคน เช่น แอดเพื่อน ลงทะเบียนเสร็จ ถูกระงับสิทธิ์)
+ *
+ * คนที่ยังไม่ลงทะเบียนยังลงทะเบียนได้อยู่ เพราะเข้าทางแอปแจ้งปัญหาหรือแอปจองคิวได้
+ * ทั้งสองแอปพาคนที่ยังไม่ผูกรหัสไปหน้าลงทะเบียนให้เอง ไม่ได้พึ่งปุ่มบนเมนูอย่างเดียว
+ *
+ * ยกเว้นคนที่ถูกระงับสิทธิ์ ยังถอดเมนูรายคนออกเหมือนเดิมตามที่ตกลงกันไว้
+ */
+export async function applyMainMenu(lineUserIds: string[]): Promise<ApplyOutcome[]> {
+  const m = menus();
+  if (!m) return [];
+  const found = await statusOf(lineUserIds);
+  const out: ApplyOutcome[] = [];
+  for (const id of lineUserIds) {
+    const suspended = found.get(id) === "suspended";
+    let ok = false;
+    try {
+      ok = suspended ? await unlinkRichMenu(id) : await linkRichMenu(id, m.member);
+    } catch (e) {
+      console.error("[richmenu] ตั้งเมนูหลักไม่สำเร็จ", id, e);
+    }
+    out.push({ userId: id, action: suspended ? "unlink" : "link", richMenuId: suspended ? null : m.member, ok });
+  }
+  return out;
+}
+
+/**
  * ถอดเมนูของพนักงานคนหนึ่งออก — ใช้ตอนผู้ดูแลสั่งเองเป็นรายคน
  *
  * คืนจำนวนบัญชีไลน์ที่ถอดสำเร็จ ไม่กลืน error เงียบเหมือน syncRichMenu เพราะคนกดปุ่ม
