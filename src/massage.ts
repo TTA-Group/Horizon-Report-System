@@ -134,7 +134,7 @@ export default {
     }
 
     if (!url.pathname.startsWith("/api/")) {
-      return serveAsset(await env.ASSETS.fetch(request), url.pathname);
+      return await serveAsset(await env.ASSETS.fetch(request), url.pathname);
     }
 
     return jsonResponse({ error: "not found" }, 404);

@@ -162,7 +162,7 @@ export default {
 
     // ไม่ใช่ /api/* -> ส่งให้ไฟล์หน้าเว็บใน public/
     if (!url.pathname.startsWith("/api/")) {
-      return serveAsset(absolutizeMeta(await env.ASSETS.fetch(request), url.origin), url.pathname);
+      return await serveAsset(absolutizeMeta(await env.ASSETS.fetch(request), url.origin), url.pathname);
     }
 
     return jsonResponse({ error: "not found" }, 404);
