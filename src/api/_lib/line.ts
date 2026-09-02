@@ -237,6 +237,24 @@ export async function richMenuOf(userId: string): Promise<LineQuery<string | nul
   return r.ok ? { ok: true, data: r.data.richMenuId ?? null } : r;
 }
 
+export interface LineUserProfile {
+  displayName: string;
+  pictureUrl?: string;
+}
+
+/**
+ * ชื่อกับรูปที่เจ้าตัวตั้งไว้ในไลน์ — ถามทีละคนด้วย userId
+ *
+ * ต่างจาก followers/ids ตรงที่เส้นทางนี้ไม่ได้จำกัดเฉพาะบัญชีที่ผ่านการยืนยัน แลกกับการที่
+ * ต้องรู้ userId มาก่อน ซึ่งพอดีกับสิ่งที่ระบบมีอยู่แล้ว (เก็บ userId ของคนที่ทักเข้ามา)
+ *
+ * คืน null เมื่อ LINE ตอบ 404 — คนนี้บล็อก OA หรือเลิกเป็นเพื่อนไปแล้ว ต่างจาก ok:false
+ * ซึ่งแปลว่าถาม LINE ไม่ได้ ต้องแยกให้ออกเพราะสิ่งที่ต้องทำต่อไม่เหมือนกัน
+ */
+export async function lineProfile(userId: string): Promise<LineQuery<LineUserProfile | null>> {
+  return getFromLine<LineUserProfile | null>(`profile/${encodeURIComponent(userId)}`, () => null);
+}
+
 /**
  * รายชื่อ "ทุกคนที่เป็นเพื่อนกับ OA" จาก LINE โดยตรง — ทีละหน้า หน้าละไม่เกิน 1000 คน
  *

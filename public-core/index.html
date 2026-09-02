@@ -331,6 +331,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .frow .fnm{font-size:13.5px;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frow .fid{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--slate);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* แถวที่ยังไม่มีชื่อไลน์ — เขียนเป็นตัวเอียงสีจาง ให้ต่างจากชื่อจริงตั้งแต่ชายตามอง
+   ไม่งั้น "ไม่มีชื่อในไลน์" จะดูเหมือนเป็นชื่อของคนคนหนึ่งจริง ๆ */
+.frow .fnm.nameless{font-weight:500;font-style:italic;color:var(--slate)}
+.frow.gone{opacity:.55}
 
 /* ── วางข้อมูลทีละหลายคน ── */
 /* บรรทัดผลตรวจของหน้า rich menu — ป้ายหน้าบรรทัดบอกผ่าน/ไม่ผ่านโดยไม่ต้องอ่านข้อความทั้งบรรทัด */
@@ -540,6 +544,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <div class="rfall" id="link-tally">—</div>
 
     <!-- วางข้อมูลทีละหลายคน — ฝ่ายบุคคลรวบรวมมาเองในไฟล์ตาราง ก๊อปมาวางได้เลย -->
+    <!-- คนที่ทักเข้ามาเอง ระบบเก็บได้แค่ userId ปุ่มนี้ไปถามชื่อกับรูปจาก LINE มาเติมให้ -->
+    <div id="fill-box" style="display:none;margin-bottom:14px">
+      <button class="send" id="fill-go">ดึงชื่อไลน์ที่ยังไม่มี</button>
+      <p class="hintnote" id="fill-note" style="margin-top:8px"></p>
+    </div>
+
     <button class="send" id="imp-open" style="margin-bottom:18px">+ วางข้อมูลทีละหลายคน</button>
     <div id="imp-box" style="display:none;margin-bottom:22px">
       <div class="section">วางข้อมูลจากไฟล์ตาราง</div>

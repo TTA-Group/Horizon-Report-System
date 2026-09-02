@@ -29,7 +29,9 @@ import {
 } from "./_lib/flex";
 import { HttpError, json, methodGuard, run } from "./_lib/http";
 import { syncRichMenu } from "./_lib/richmenu";
-import { pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage } from "./_lib/line";
+import {
+  lineProfile, pushTo, replyTo, textMessage, verifyLineSignature, type LineMessage,
+} from "./_lib/line";
 import { tellGroupMoved } from "./_lib/ticket-card";
 import { dueFromOption, dueFromPickedDate, shortName, thaiDateShort, thaiDateTimeShort } from "./_lib/tickets";
 import { envVar } from "./_lib/env";
@@ -100,16 +102,34 @@ export default async (req: Request): Promise<Response> =>
  * ผู้ติดตามทั้งหมดจาก LINE ต้องเป็นบัญชีที่ผ่านการยืนยันแล้วเท่านั้น บัญชีทั่วไปขอไม่ได้
  * ทางเดียวที่เหลือคือเก็บสะสมเองจากคนที่เข้ามาคุย ซึ่งครอบคลุมขึ้นเรื่อย ๆ เองโดยไม่ต้องทำอะไร
  *
- * เก็บแค่รหัสผู้ใช้ ไม่ถามชื่อเพิ่ม เพราะการถามโปรไฟล์ทีละคนกินโควตาคำขอย่อยของ Worker
- * และชื่อไม่ได้จำเป็นกับการตั้งเมนู · ถ้ามีอยู่แล้วก็ไม่เขียนทับชื่อที่ฝ่ายบุคคลเคยนำเข้าไว้
+ * ถามชื่อกับรูปจาก LINE ด้วย เฉพาะครั้งแรกที่เจอคนนี้ — หน้าผูกบัญชีของฝ่ายบุคคลใช้ชื่อ
+ * เป็นตัวจับคู่ ถ้าเก็บแต่ userId แถวจะขึ้นว่า "ไม่มีชื่อในไลน์" ซึ่งจับคู่กับใครไม่ได้เลย
+ *
+ * ครั้งแรกครั้งเดียวจริง ๆ ไม่ใช่ทุกข้อความ เพราะคนหนึ่งทักมาได้ไม่จำกัด ถ้าถามทุกครั้ง
+ * จะเปลืองโควตาคำขอย่อยของ Worker ฟรีโดยไม่ได้อะไรเพิ่ม (ชื่อคนเดิมก็ได้ค่าเดิม)
+ * และไม่เขียนทับชื่อที่มีอยู่แล้ว เพราะอาจเป็นชื่อที่ฝ่ายบุคคลนำเข้าไว้เอง
+ *
+ * ถาม LINE ไม่สำเร็จก็ปล่อยผ่าน — แถวถูกบันทึกไปแล้ว ชื่อค่อยไปเติมทีหลังด้วยปุ่ม
+ * "ดึงชื่อไลน์ที่ยังไม่มี" ที่หน้าผูกบัญชี งานหลักของ webhook ต้องไม่ล้มเพราะเรื่องนี้
  */
 async function rememberFollower(ev: LineEvent): Promise<void> {
   const userId = ev.source?.userId;
   if (!userId || ev.source?.type !== "user") return;
   try {
-    await db()`
+    const rows = await db()<{ display_name: string | null }[]>`
       INSERT INTO line_followers (line_user_id) VALUES (${userId})
       ON CONFLICT (line_user_id) DO UPDATE SET fetched_at = now()
+      RETURNING display_name
+    `;
+    if (rows[0]?.display_name) return;
+
+    const p = await lineProfile(userId);
+    if (!p.ok || !p.data) return;
+    await db()`
+      UPDATE line_followers
+         SET display_name = ${p.data.displayName.slice(0, 150)},
+             picture_url  = ${p.data.pictureUrl ? p.data.pictureUrl.slice(0, 500) : null}
+       WHERE line_user_id = ${userId} AND display_name IS NULL
     `;
   } catch (e) {
     console.error("[followers] จำบัญชีไลน์ไม่สำเร็จ", e);

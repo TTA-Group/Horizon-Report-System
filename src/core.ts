@@ -24,7 +24,9 @@ import authVerifyEmployee from "./api/auth-verify-employee";
 import authLink from "./api/auth-link";
 import adminAdmins from "./api/admin-admins";
 import adminEmployees from "./api/admin-employees";
-import { followersImport, followersIngest, followersLink, followersList } from "./api/admin-followers";
+import {
+  followersFillNames, followersImport, followersIngest, followersLink, followersList,
+} from "./api/admin-followers";
 import adminRichMenuPlan from "./api/admin-richmenu-plan";
 import { richMenuApply, richMenuStatus } from "./api/admin-richmenu";
 import adminEmployeeCreate from "./api/admin-employee-create";
@@ -63,6 +65,8 @@ function route(pathname: string, method: string): Handler | null {
     if (seg.length === 3) return method === "POST" ? followersIngest : followersList;
     if (seg.length === 4 && seg[3] === "link") return method === "POST" ? followersLink : null;
     if (seg.length === 4 && seg[3] === "import") return method === "POST" ? followersImport : null;
+    // เติมชื่อไลน์ให้แถวที่เก็บมาจาก webhook ซึ่งมีแต่ userId
+    if (seg.length === 4 && seg[3] === "names") return method === "POST" ? followersFillNames : null;
     return null;
   }
 

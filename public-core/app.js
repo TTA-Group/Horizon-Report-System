@@ -1549,6 +1549,7 @@ async function editRole(employeeId) {
  */
 
 let linkWaiting = [];
+let fillLeft = 0;      // เหลือกี่คนที่ยังไม่รู้ชื่อ — ปุ่มดึงชื่อขึ้นเมื่อมีมากกว่าศูนย์
 
 async function goLinkAccounts() {
   show("s-link");
@@ -1562,10 +1563,74 @@ async function goLinkAccounts() {
     linkWaiting = r.waiting || [];
     $("#link-tally").innerHTML =
       `เป็นเพื่อนกับ LINE OA ทั้งหมด <b>${r.total}</b> คน · ผูกรหัสพนักงานแล้ว <b>${r.linked}</b> คน`;
+    renderFillBox(r.nameless || 0);
     renderLinkList();
   } catch (e) {
     $("#linkList").innerHTML = `<div class="empty">${esc(e.message || "โหลดข้อมูลไม่สำเร็จ")}</div>`;
   }
+}
+
+/**
+ * ปุ่มดึงชื่อ — ขึ้นเฉพาะตอนมีคนที่ยังไม่มีชื่อจริง ๆ
+ *
+ * คนกลุ่มนี้คือคนที่ทักเข้ามาเอง ระบบเก็บได้แค่ userId เพราะตอนนั้นยังไม่ได้ถามชื่อ
+ * ปุ่มนี้ไปถาม LINE ทีหลังให้ ไม่ต้องรอให้ฝ่ายบุคคลไปหาชื่อมาวางเอง
+ */
+function renderFillBox(nameless) {
+  fillLeft = nameless;
+  $("#fill-box").style.display = nameless > 0 ? "" : "none";
+  if (nameless <= 0) return;
+  $("#fill-go").disabled = false;
+  $("#fill-go").textContent = `ดึงชื่อไลน์ที่ยังไม่มี (${nameless} คน)`;
+  $("#fill-note").innerHTML =
+    `มี <b>${nameless}</b> คนที่ระบบรู้จักแต่ยังไม่รู้ชื่อ — เป็นคนที่เคยทักเข้ามาในไลน์<br>` +
+    "กดปุ่มแล้วระบบจะไปถามชื่อกับรูปจาก LINE มาให้เอง ทำได้ครั้งละ 25 คน กดซ้ำจนหมดได้";
+}
+
+/**
+ * กดแล้ววนดึงจนหมด ไม่ใช่กดครั้งเดียวได้ 25 คน
+ *
+ * ทำเป็นชุดเพราะ Worker แผนฟรียิงคำขอย่อยได้จำกัดต่อหนึ่งคำขอ หน้าจอจึงเป็นคนวนเรียกซ้ำ
+ * และรายงานความคืบหน้าระหว่างทาง ไม่ใช่ค้างเป็นปุ่มกดไม่ได้เฉย ๆ จนกว่าจะจบ
+ */
+async function fillFollowerNames() {
+  const btn = $("#fill-go");
+  if (btn.disabled) return;
+  btn.disabled = true;
+
+  let filled = 0;
+  let gone = 0;
+  try {
+    for (let round = 0; round < 40; round++) {
+      btn.textContent = `กำลังดึงชื่อ… (ได้แล้ว ${filled} คน)`;
+      const r = await api("/api/admin/followers/names", { method: "POST" });
+      filled += r.filled || 0;
+      gone += r.gone || 0;
+      fillLeft = r.remaining || 0;
+      if (r.error) {
+        await confirmDialog({
+          title: "ถาม LINE ไม่สำเร็จ",
+          message: `ดึงชื่อได้ ${filled} คนก่อนจะติดปัญหา — ${r.error}`,
+          confirmLabel: "เข้าใจแล้ว",
+          cancelLabel: "ปิด",
+        });
+        break;
+      }
+      if (fillLeft === 0) break;
+    }
+  } catch (e) {
+    await confirmDialog({
+      title: "ดึงชื่อไม่สำเร็จ",
+      message: e.message || "",
+      confirmLabel: "เข้าใจแล้ว",
+      cancelLabel: "ปิด",
+    });
+  }
+
+  const parts = [`ดึงชื่อมาได้ ${filled} คน`];
+  if (gone > 0) parts.push(`อีก ${gone} คนไม่ได้เป็นเพื่อนกับ OA แล้ว จึงไม่มีชื่อให้ดึง`);
+  if (filled > 0 || gone > 0) toast(parts.join(" · "));
+  await goLinkAccounts();
 }
 
 function renderLinkList() {
@@ -1577,14 +1642,16 @@ function renderLinkList() {
   $("#linkList").innerHTML = `<div class="section">รอผูกรหัสพนักงาน ${linkWaiting.length} คน</div>
     <div class="plist">${linkWaiting
       .map(
-        (f) => `<div class="frow" data-follower="${esc(f.line_user_id)}">
+        (f) => `<div class="frow${f.gone ? " gone" : ""}" data-follower="${esc(f.line_user_id)}">
           ${
             f.picture_url
               ? `<img class="fav" src="${esc(f.picture_url)}" alt="" referrerpolicy="no-referrer" />`
               : `<div class="fav none">?</div>`
           }
           <div class="fw">
-            <div class="fnm">${esc(f.display_name || "ไม่มีชื่อในไลน์")}</div>
+            <div class="fnm${f.display_name ? "" : " nameless"}">${esc(
+              f.display_name || (f.gone ? "ไม่ได้เป็นเพื่อนกับ OA แล้ว" : "ยังไม่ได้ดึงชื่อ"),
+            )}</div>
             <div class="fid">${esc(f.line_user_id)}</div>
           </div>
         </div>`,
@@ -1604,7 +1671,7 @@ async function linkFollower(lineUserId) {
   const ok = await confirmDialog({
     title: "ผูกบัญชีนี้ใช่หรือไม่",
     message:
-      `บัญชีไลน์: ${f.display_name || "ไม่มีชื่อในไลน์"}\n` +
+      `บัญชีไลน์: ${f.display_name || "(ยังไม่รู้ชื่อ — " + f.line_user_id + ")"}\n` +
       `พนักงาน: ${picked.name} · ${picked.code}${picked.dept ? " · " + picked.dept : ""}\n\n` +
       "หลังจากนี้เจ้าตัวเปิดแอปใช้งานได้ทันทีโดยไม่ต้องลงทะเบียนเอง " +
       "ถ้าผูกผิด ปลดได้ที่ทะเบียนพนักงาน",
@@ -1633,7 +1700,7 @@ function pickEmployeeFor(follower) {
 
     $("#sheet-title").textContent = "จับคู่กับพนักงานคนไหน";
     $("#sheet-meta").innerHTML =
-      `<div class="sub">บัญชีไลน์: ${esc(follower.display_name || "ไม่มีชื่อในไลน์")}</div>
+      `<div class="sub">บัญชีไลน์: ${esc(follower.display_name || "ยังไม่รู้ชื่อ · " + follower.line_user_id)}</div>
        <div class="finder">
          <input id="lk-find" type="text" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
          <div class="hits" id="lk-hits"><div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div></div>
@@ -1840,6 +1907,7 @@ function bind() {
   $("#mg-role").onclick = () => goRoles({ add: true });
   $("#mg-link").onclick = goLinkAccounts;
   $("#link-back").onclick = goMe;
+  $("#fill-go").onclick = fillFollowerNames;
   $("#imp-open").onclick = () => {
     $("#imp-open").style.display = "none";
     $("#imp-box").style.display = "";

@@ -2,6 +2,7 @@
 //
 //   POST /api/admin/followers        รับรายชื่อที่ดึงมาจาก LINE เข้ามาเก็บ (เครื่องต่อเครื่อง)
 //   GET  /api/admin/followers        คนที่เป็นเพื่อนแต่ยังไม่ได้ผูกรหัสพนักงาน (ฝ่ายบุคคล)
+//   POST /api/admin/followers/names  เติมชื่อไลน์ให้แถวที่ยังไม่มีชื่อ (ฝ่ายบุคคล)
 //   POST /api/admin/followers/link   ฝ่ายบุคคลจับคู่แล้วผูกให้เลย (ฝ่ายบุคคล)
 //
 // มีเพื่อไม่ต้องให้พนักงานทุกคนมานั่งลงทะเบียนเอง — LINE ไม่บอกว่า userId ไหนเป็นของใคร
@@ -14,6 +15,7 @@ import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { requireCron } from "./_lib/cron";
 import { db } from "./_lib/db";
 import { HttpError, describeBody, json, listFrom, methodGuard, readJson, run } from "./_lib/http";
+import { lineProfile } from "./_lib/line";
 import { syncRichMenu } from "./_lib/richmenu";
 
 /** จำกัดต่อหนึ่งคำขอ ให้ฝั่งที่ส่งแบ่งเป็นชุด แทนการยัดมาทีเดียวทั้งบริษัท */
@@ -79,27 +81,112 @@ export const followersList = async (req: Request): Promise<Response> =>
     const s = await getSession(req);
     requireAdmin(s);
 
+    // ชื่อว่างเปล่า (ไม่ใช่ NULL) = เคยถามแล้วแต่ LINE บอกว่าไม่ใช่เพื่อนกันแล้ว
+    // แยกออกจาก NULL ที่แปลว่า "ยังไม่เคยถาม" เพราะสิ่งที่ฝ่ายบุคคลต้องทำต่อไม่เหมือนกัน
+    // และดันสองกลุ่มนี้ลงท้ายรายการ คนที่มีชื่อจับคู่ได้จริงต้องอยู่บนสุด
     const rows = await db()<
-      { line_user_id: string; display_name: string | null; picture_url: string | null; fetched_at: string }[]
+      {
+        line_user_id: string; display_name: string | null;
+        picture_url: string | null; fetched_at: string; gone: boolean;
+      }[]
     >`
-      SELECT f.line_user_id, f.display_name, f.picture_url,
-             to_char(f.fetched_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI') AS fetched_at
+      SELECT f.line_user_id, NULLIF(f.display_name, '') AS display_name, f.picture_url,
+             to_char(f.fetched_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI') AS fetched_at,
+             COALESCE(f.display_name = '', false) AS gone
       FROM line_followers f
       WHERE NOT EXISTS (
         SELECT 1 FROM line_accounts la
         WHERE la.line_user_id = f.line_user_id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
       )
-      ORDER BY f.display_name NULLS LAST, f.line_user_id
+      ORDER BY CASE WHEN f.display_name = '' THEN 2 WHEN f.display_name IS NULL THEN 1 ELSE 0 END,
+               f.display_name, f.line_user_id
     `;
-    const [tally] = await db()<{ total: number; linked: number }[]>`
+    const [tally] = await db()<{ total: number; linked: number; nameless: number }[]>`
       SELECT count(*)::int AS total,
              count(*) FILTER (WHERE EXISTS (
                SELECT 1 FROM line_accounts la
                WHERE la.line_user_id = f.line_user_id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
-             ))::int AS linked
+             ))::int AS linked,
+             count(*) FILTER (WHERE f.display_name IS NULL)::int AS nameless
       FROM line_followers f
     `;
-    return json({ waiting: [...rows], total: tally?.total ?? 0, linked: tally?.linked ?? 0 });
+    return json({
+      waiting: [...rows],
+      total: tally?.total ?? 0,
+      linked: tally?.linked ?? 0,
+      nameless: tally?.nameless ?? 0,
+    });
+  });
+
+/**
+ * POST /api/admin/followers/names — เติมชื่อไลน์ให้แถวที่ยังไม่มีชื่อ
+ *
+ * แถวที่ไม่มีชื่อคือคนที่ระบบรู้จักจากการที่เขาทักเข้ามา (webhook เก็บไว้แค่ userId)
+ * ไม่ใช่คนที่ถูกนำเข้าพร้อมชื่อ หน้าผูกบัญชีจึงขึ้นว่า "ไม่มีชื่อในไลน์" ซึ่งจับคู่กับใครไม่ได้
+ *
+ * ทำทีละชุด ไม่ใช่ทีเดียวทั้งหมด เพราะ Worker แผนฟรียิงคำขอย่อยได้ 50 ครั้งต่อหนึ่งคำขอ
+ * และหนึ่งโปรไฟล์คือหนึ่งคำขอ หน้าจอเป็นคนกดซ้ำจนกว่าจะหมด เหมือนปุ่มเปลี่ยน rich menu
+ *
+ * คนที่บล็อก OA ไปแล้ว LINE ตอบ 404 — จดไว้ด้วยค่าว่างเปล่า (ไม่ใช่ NULL) เพื่อไม่ให้
+ * ชุดถัดไปวนกลับมาถามคนเดิมซ้ำไปเรื่อย ๆ จนไม่มีวันจบ
+ */
+const NAME_BATCH = 25;
+
+export const followersFillNames = async (req: Request): Promise<Response> =>
+  run(async () => {
+    methodGuard(req, "POST");
+    const s = await getSession(req);
+    requireAdmin(s);
+
+    const sql = db();
+    const todo = await sql<{ line_user_id: string }[]>`
+      SELECT line_user_id FROM line_followers
+      WHERE display_name IS NULL
+      ORDER BY fetched_at DESC
+      LIMIT ${NAME_BATCH}
+    `;
+    if (todo.length === 0) {
+      return json({ ok: true, filled: 0, gone: 0, remaining: 0 });
+    }
+
+    let filled = 0;
+    let gone = 0;
+    let failure: string | null = null;
+
+    for (const row of todo) {
+      const p = await lineProfile(row.line_user_id);
+      if (!p.ok) {
+        // ถาม LINE ไม่ได้เลย — หยุดทั้งชุด ไม่ต้องไล่ยิงที่เหลือให้พังเหมือนกันหมด
+        failure = p.error;
+        break;
+      }
+      if (p.data) {
+        await sql`
+          UPDATE line_followers
+             SET display_name = ${p.data.displayName.slice(0, 150)},
+                 picture_url  = ${p.data.pictureUrl ? p.data.pictureUrl.slice(0, 500) : null}
+           WHERE line_user_id = ${row.line_user_id}
+        `;
+        filled++;
+      } else {
+        await sql`
+          UPDATE line_followers SET display_name = '' WHERE line_user_id = ${row.line_user_id}
+        `;
+        gone++;
+      }
+    }
+
+    const [left] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM line_followers WHERE display_name IS NULL
+    `;
+    console.log("[followers] เติมชื่อ", filled, "คน · หลุดไปแล้ว", gone, "คน · เหลือ", left?.n ?? 0);
+    return json({
+      ok: failure === null,
+      filled,
+      gone,
+      remaining: left?.n ?? 0,
+      ...(failure ? { error: failure } : {}),
+    });
   });
 
 /** POST /api/admin/followers/link — ฝ่ายบุคคลผูกบัญชีไลน์นี้ให้พนักงานคนนี้ */
@@ -131,7 +218,8 @@ export const followersLink = async (req: Request): Promise<Response> =>
     }
 
     const name = await sql<{ display_name: string | null }[]>`
-      SELECT display_name FROM line_followers WHERE line_user_id = ${lineUserId} LIMIT 1
+      SELECT NULLIF(display_name, '') AS display_name FROM line_followers
+      WHERE line_user_id = ${lineUserId} LIMIT 1
     `;
     try {
       await sql`
