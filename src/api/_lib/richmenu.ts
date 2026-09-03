@@ -94,10 +94,101 @@ export async function knownLineUserIds(after: string, limit: number): Promise<st
       SELECT line_user_id FROM line_followers
     ) AS everyone
     WHERE line_user_id > ${after}
+      -- ข้ามคนที่ผู้ดูแลสั่งถอดเมนูไว้ ไม่งั้นปุ่มถอดจะไม่มีผลอะไรเลย
+      -- เพราะรอบถัดไปที่กดเปลี่ยนเมนูให้ทุกคน คนกลุ่มนี้จะได้เมนูกลับมาทันที
+      AND NOT EXISTS (SELECT 1 FROM richmenu_excluded x WHERE x.line_user_id = everyone.line_user_id)
     ORDER BY line_user_id
     LIMIT ${limit}
   `;
   return rows.map((r) => r.line_user_id);
+}
+
+/** คนที่ถูกถอดเมนูไว้ตอนนี้ พร้อมชื่อสำหรับโชว์บนหน้าจอ */
+export interface ExcludedRow {
+  lineUserId: string;
+  employeeId: string | null;
+  name: string | null;
+  code: string | null;
+  at: string;
+}
+
+export async function excludedList(): Promise<ExcludedRow[]> {
+  try {
+    const rows = await db()<
+      { line_user_id: string; employee_id: string | null; name: string | null;
+        code: string | null; at: string }[]
+    >`
+      SELECT x.line_user_id, x.employee_id, e.full_name AS name, e.employee_code AS code,
+             to_char(x.excluded_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI') AS at
+      FROM richmenu_excluded x
+      LEFT JOIN employees e ON e.id = x.employee_id
+      ORDER BY x.excluded_at DESC
+    `;
+    return rows.map((r) => ({
+      lineUserId: r.line_user_id, employeeId: r.employee_id,
+      name: r.name, code: r.code, at: r.at,
+    }));
+  } catch {
+    return []; // ยังไม่ได้รันไฟล์สร้างตาราง — ไม่ใช่เรื่องที่ต้องทำให้หน้าตรวจพัง
+  }
+}
+
+/** จดว่าบัญชีเหล่านี้ถูกถอดเมนูไว้ — ปุ่มเปลี่ยนให้ทุกคนจะข้ามไป */
+async function rememberExcluded(
+  lineUserIds: string[], employeeId: string | null, byEmployeeId: string,
+): Promise<void> {
+  if (lineUserIds.length === 0) return;
+  try {
+    for (const id of lineUserIds) {
+      await db()`
+        INSERT INTO richmenu_excluded (line_user_id, employee_id, excluded_by)
+        VALUES (${id}, ${employeeId}, ${byEmployeeId})
+        ON CONFLICT (line_user_id) DO UPDATE
+          SET employee_id = EXCLUDED.employee_id, excluded_by = EXCLUDED.excluded_by,
+              excluded_at = now()
+      `;
+    }
+  } catch (e) {
+    console.error("[richmenu] จดรายชื่อที่ถอดเมนูไม่สำเร็จ", e);
+  }
+}
+
+/** เอาออกจากรายชื่อที่ถูกถอด — ใช้ตอนสั่งตั้งเมนูให้คนคนนั้นใหม่ */
+async function forgetExcluded(lineUserIds: string[]): Promise<void> {
+  if (lineUserIds.length === 0) return;
+  try {
+    await db()`DELETE FROM richmenu_excluded WHERE line_user_id = ANY(${lineUserIds})`;
+  } catch (e) {
+    console.error("[richmenu] เอาออกจากรายชื่อที่ถอดเมนูไม่สำเร็จ", e);
+  }
+}
+
+/**
+ * ตั้งเมนูหลักให้พนักงานคนเดียว — ปุ่ม "เปลี่ยนเฉพาะบุคคล"
+ *
+ * เอาชื่อออกจากรายชื่อที่ถูกถอดด้วย เพราะการสั่งตั้งเมนูให้คนคนนี้โดยตรง
+ * คือการบอกว่า "ให้เขากลับมามีเมนู" ถ้าไม่เอาออก ปุ่มเปลี่ยนให้ทุกคนรอบหน้าจะข้ามเขาอีก
+ * แล้วผู้ดูแลจะงงว่าทำไมคนนี้หายไปจากรอบต่อ ๆ ไปทั้งที่เพิ่งตั้งให้เอง
+ */
+export async function applyMenuForEmployee(
+  employeeId: string,
+): Promise<{ done: number; accounts: number }> {
+  const m = menus();
+  if (!m) return { done: 0, accounts: 0 };
+  const rows = await db()<{ line_user_id: string }[]>`
+    SELECT line_user_id FROM line_accounts
+    WHERE employee_id = ${employeeId} AND channel_key = ANY(${CHANNEL_KEYS_READ})
+  `;
+  let done = 0;
+  for (const r of rows) {
+    try {
+      if (await linkRichMenu(r.line_user_id, m.member)) done += 1;
+    } catch (e) {
+      console.error("[richmenu] ตั้งเมนูรายคนไม่สำเร็จ", r.line_user_id, e);
+    }
+  }
+  if (done > 0) await forgetExcluded(rows.map((r) => r.line_user_id));
+  return { done, accounts: rows.length };
 }
 
 /** จำนวนบัญชีไลน์ทั้งหมดที่ระบบรู้จัก — ใช้บอกความคืบหน้าตอนไล่ตั้งเมนู */
@@ -108,6 +199,7 @@ export async function knownLineUserCount(): Promise<number> {
       UNION
       SELECT line_user_id FROM line_followers
     ) AS everyone
+    WHERE NOT EXISTS (SELECT 1 FROM richmenu_excluded x WHERE x.line_user_id = everyone.line_user_id)
   `;
   return row?.n ?? 0;
 }
@@ -222,20 +314,25 @@ export async function applyMainMenu(lineUserIds: string[]): Promise<ApplyOutcome
  * คืนจำนวนบัญชีไลน์ที่ถอดสำเร็จ ไม่กลืน error เงียบเหมือน syncRichMenu เพราะคนกดปุ่ม
  * ต้องรู้ว่าได้ผลหรือไม่ ต่างจากการสลับเมนูอัตโนมัติที่เป็นงานเสริมท้ายงานหลัก
  */
-export async function unlinkRichMenuForEmployee(employeeId: string): Promise<number> {
+export async function unlinkRichMenuForEmployee(
+  employeeId: string,
+  byEmployeeId: string,
+): Promise<number> {
   const rows = await db()<{ line_user_id: string }[]>`
     SELECT line_user_id FROM line_accounts
     WHERE employee_id = ${employeeId} AND channel_key = ANY(${CHANNEL_KEYS_READ})
   `;
-  let done = 0;
+  const gone: string[] = [];
   for (const r of rows) {
     try {
-      if (await unlinkRichMenu(r.line_user_id)) done += 1;
+      if (await unlinkRichMenu(r.line_user_id)) gone.push(r.line_user_id);
     } catch (e) {
       console.error("[richmenu] ถอดเมนูไม่สำเร็จ", r.line_user_id, e);
     }
   }
-  return done;
+  // จดไว้ ไม่งั้นปุ่ม "เปลี่ยนเมนูให้ทุกคน" รอบหน้าจะคืนเมนูให้คนกลุ่มนี้ทันที
+  await rememberExcluded(gone, employeeId, byEmployeeId);
+  return gone.length;
 }
 
 /**

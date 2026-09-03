@@ -104,6 +104,41 @@ function show(id) {
   window.scrollTo(0, 0);
 }
 
+/**
+ * คัดลอกข้อความลงคลิปบอร์ด แล้วบอกบนปุ่มว่าสำเร็จ
+ *
+ * navigator.clipboard ใช้ไม่ได้ทุกที่ (ต้อง https และบางเบราว์เซอร์ในแอปไม่ให้สิทธิ์)
+ * จึงมีทางสำรองด้วย textarea + execCommand ซึ่งเก่าแต่ยังทำงานในเบราว์เซอร์ของแอปไลน์
+ */
+async function copyText(text, btn) {
+  let ok = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch { /* ตกไปใช้ทางสำรอง */ }
+  if (!ok) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:-9999px;opacity:0";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch { ok = false; }
+  }
+  if (btn) {
+    const was = btn.textContent;
+    btn.textContent = ok ? "คัดลอกแล้ว" : "คัดลอกไม่ได้";
+    btn.classList.toggle("done", ok);
+    setTimeout(() => { btn.textContent = was; btn.classList.remove("done"); }, 1600);
+  }
+  if (!ok) toast("คัดลอกไม่สำเร็จ กดค้างที่รหัสเพื่อคัดลอกเองได้");
+}
+
 let toastTimer;
 /**
  * ข้อความแจ้งเตือนมุมจอ — ปกติใส่เป็นข้อความล้วน เพราะหลายข้อความมีชื่อคนหรือค่าที่ผู้ใช้กรอกปนมา
@@ -306,6 +341,20 @@ function openMassageAdmin(which) {
   const id = CFG.massageLiffId;
   if (!id || id.includes("ตั้งค่า")) return toast("ยังไม่ได้ตั้งค่าแอปจองคิวนวด");
   const url = `https://liff.line.me/${id}?admin=${encodeURIComponent(which)}`;
+  if (window.liff && liff.openWindow) liff.openWindow({ url, external: false });
+  else window.location.href = url;
+}
+
+/**
+ * เปิดคิวงานของระบบแจ้งปัญหา — ให้เข้าถึงทุกระบบได้จากหน้าจัดการที่เดียว
+ *
+ * ส่ง tab=queue ไปด้วย เพื่อลงที่คิวงานเลย ไม่ต้องเข้าไปแล้วกดแท็บล่างเอง
+ * ฝั่งนั้นเช็คสิทธิ์เองอยู่แล้ว คนที่ไม่ได้เป็นเจ้าหน้าที่ฝ่ายไหนจะตกไปหน้าแจ้งเรื่องตามปกติ
+ */
+function openReportAdmin() {
+  const id = CFG.reportLiffId;
+  if (!id || id.includes("ตั้งค่า")) return toast("ยังไม่ได้ตั้งค่าแอปแจ้งปัญหา");
+  const url = `https://liff.line.me/${id}?tab=queue`;
   if (window.liff && liff.openWindow) liff.openWindow({ url, external: false });
   else window.location.href = url;
 }
@@ -874,11 +923,31 @@ function checkRow(mark, text, sub) {
   </div>`;
 }
 
+/**
+ * สรุปผลตรวจเป็นบรรทัดเดียว แล้วซ่อนรายละเอียดไว้ในกล่องพับ
+ *
+ * หน้านี้เคยกางทุกอย่างออกมาหมดจนต้องเลื่อนยาวกว่าจะเจอปุ่ม สิ่งที่ต้องเห็นทันทีคือ
+ * "ตอนนี้ปกติหรือมีปัญหา" ส่วนรายละเอียดว่าทำไม เก็บไว้ให้กดอ่านตอนต้องไล่หาสาเหตุจริง ๆ
+ */
+function fold(tone, title, summary, body) {
+  return `<details class="fold">
+    <summary><span class="fdot ${tone}"></span><span>${title}</span>
+      <span class="fsum">${summary}</span></summary>
+    <div class="fbody">${body}</div>
+  </details>`;
+}
+
 function renderMenuStatus(r) {
   const rows = [];
+  let worst = "good";
+  const note = (tone) => {
+    if (tone === "bad") worst = "bad";
+    else if (tone === "warn" && worst !== "bad") worst = "warn";
+  };
 
   // 1. ค่าตั้งค่าครบไหม — ขาดตัวไหนก็เงียบเหมือนกันหมด ต้องแยกให้เห็นทีละตัว
   const miss = Object.entries(r.config).filter(([, v]) => !v).map(([k]) => k);
+  note(miss.length === 0 ? "good" : "bad");
   rows.push(
     miss.length === 0
       ? checkRow("good", "ตั้งค่าครบทั้งสามตัวแล้ว")
@@ -888,16 +957,16 @@ function renderMenuStatus(r) {
   );
 
   // 2. ถาม LINE ได้ไหม — ถามไม่ได้แปลว่าโทเคนผิดหรือหมดอายุ คนละเรื่องกับยังไม่ได้ตั้ง
-  if (!r.line.ok) {
-    rows.push(checkRow("bad", "ถาม LINE ไม่ได้", esc(r.line.error || "")));
-  } else {
-    rows.push(checkRow("good", `ต่อกับ LINE ได้ · มีเมนูอยู่ทั้งหมด ${r.line.count} ใบ`));
-  }
+  note(r.line.ok ? "good" : "bad");
+  rows.push(r.line.ok
+    ? checkRow("good", `ต่อกับ LINE ได้ · มีเมนูอยู่ทั้งหมด ${r.line.count} ใบ`)
+    : checkRow("bad", "ถาม LINE ไม่ได้", esc(r.line.error || "")));
 
   // 3. รหัสที่ตั้งไว้ มีเมนูใบนั้นอยู่จริงไหม — ก๊อปรหัสผิดตัวคือสาเหตุที่ LINE ปฏิเสธเงียบ ๆ
   if (r.menus && r.line.ok) {
     for (const [key, label] of [["fresh", "เมนูของคนที่ยังไม่ลงทะเบียน"], ["member", "เมนูของคนที่ลงทะเบียนแล้ว"]]) {
       const m = r.menus[key];
+      note(m.exists ? "good" : "bad");
       rows.push(
         m.exists
           ? checkRow("good", `${label} — <b>${esc(m.name || "ไม่มีชื่อ")}</b>`, `<span class="mono">${esc(m.id)}</span>`)
@@ -908,108 +977,146 @@ function renderMenuStatus(r) {
     }
   }
 
-  // 4. เมนูตั้งต้น — ระบบนี้ตั้งใจไม่ใช้ ถ้ามีจะทำให้คนที่ลาออกกลับไปเห็นปุ่มลงทะเบียน
-  // เมนูตั้งต้นคือคำสั่งเดียวที่ถึง "ทุกคนใน OA" พร้อมกันได้ โดยไม่ต้องรู้รายชื่อ
-  // ที่ถูกต้องคือเมนูของคนที่ยังไม่ลงทะเบียน เพราะคนที่ระบบมองไม่เห็น = คนที่ยังไม่ลงทะเบียนเสมอ
+  // 4. เมนูตั้งต้นของ OA — ใช้กับทุกคนที่ไม่มีเมนูผูกไว้เป็นรายคน ซึ่งรวมคนที่ถูกถอดด้วย
+  //    จึงอยู่ร่วมกับปุ่มถอดไม่ได้ ต้องบอกให้ชัดว่าตอนนี้เลือกทางไหนอยู่
+  const excluded = r.excluded || [];
   if (r.defaultMenu && r.defaultMenu.ok) {
-    rows.push(
-      r.defaultMenu.correct
-        ? checkRow("good", `ทุกคนใน OA ได้เมนูหลักแล้ว — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
-            "ตั้งเป็นเมนูตั้งต้นของ OA ไว้ ทุกคนจึงได้เมนูนี้ แม้คนที่ระบบไม่รู้จัก")
-        : r.defaultMenu.id
-          ? checkRow("bad", `เมนูที่ทุกคนได้ ยังเป็นใบอื่นอยู่ — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
-              `<span class="mono">${esc(r.defaultMenu.id)}</span><br>` +
-              "ควรเป็นเมนูหลัก · กดปุ่มด้านล่างแล้วระบบจะตั้งให้เอง")
-          : checkRow("warn", "ยังไม่ได้ตั้งเมนูให้ทุกคน",
-              "คนที่ระบบไม่รู้จักจะไม่มีเมนูเลย · กดปุ่มด้านล่างแล้วระบบจะตั้งให้เอง"),
-    );
+    if (excluded.length > 0 && r.defaultMenu.id) {
+      note("bad");
+      rows.push(checkRow("bad", `มีเมนูตั้งต้นของ OA อยู่ ทั้งที่ถอดเมนูไว้ ${excluded.length} คน`,
+        "เมนูตั้งต้นใช้กับทุกคนที่ไม่มีเมนูรายคน คนที่ถูกถอดจึงกลับมาเห็นเมนูนี้แทน " +
+        "เท่ากับปุ่มถอดไม่มีผล · กดปุ่ม “ถอดเมนูตั้งต้นของ OA” ด้านล่างถ้าต้องการให้การถอดมีผลจริง"));
+    } else if (r.defaultMenu.correct) {
+      note("good");
+      rows.push(checkRow("good", `ทุกคนใน OA ได้เมนูหลักแล้ว — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
+        "ตั้งเป็นเมนูตั้งต้นของ OA ไว้ ทุกคนจึงได้เมนูนี้ แม้คนที่ระบบไม่รู้จัก"));
+    } else if (r.defaultMenu.id) {
+      note("bad");
+      rows.push(checkRow("bad", `เมนูที่ทุกคนได้ ยังเป็นใบอื่นอยู่ — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
+        `<span class="mono">${esc(r.defaultMenu.id)}</span><br>` +
+        "ควรเป็นเมนูหลัก · กดปุ่มเปลี่ยนให้ทุกคนแล้วระบบจะตั้งให้เอง"));
+    } else {
+      note(excluded.length > 0 ? "good" : "warn");
+      rows.push(excluded.length > 0
+        ? checkRow("good", "ไม่ได้ตั้งเมนูตั้งต้นของ OA ไว้",
+            `ถูกต้องแล้วเมื่อมีคนถูกถอดเมนู (ตอนนี้ ${excluded.length} คน) ` +
+            "แลกกับการที่คนซึ่งระบบยังไม่รู้จักจะไม่มีเมนูจนกว่าจะทักเข้ามา")
+        : checkRow("warn", "ยังไม่ได้ตั้งเมนูให้ทุกคน",
+            "คนที่ระบบไม่รู้จักจะไม่มีเมนูเลย · กดปุ่มเปลี่ยนให้ทุกคนแล้วระบบจะตั้งให้เอง"));
+    }
   }
 
   // 5. เมนูของคนที่กำลังดูอยู่ — คำตอบสุดท้ายว่าตอนนี้ LINE ผูกใบไหนไว้ให้จริง
-  //
-  // ต้องบอกด้วยว่า "ตรงกับที่ควรได้ไหม" ไม่ใช่บอกแค่ชื่อใบที่ได้ ไม่งั้นคนอ่านต้องจำเองว่า
-  // ใบไหนถูกใบไหนผิด ซึ่งเป็นจุดที่หลงได้ง่ายที่สุดตอนไล่หาว่าทำไมเมนูไม่เปลี่ยน
+  let mineLine = "";
   if (r.mine && r.mine.ok) {
     const now = r.mine.name || (r.mine.id ? "ไม่ทราบชื่อ" : "ไม่มีเมนูผูกอยู่");
     const want = r.mine.expectedId === null ? "ไม่มีเมนู (ถูกระงับสิทธิ์)" : r.mine.expectedName || "ไม่ทราบชื่อ";
+    mineLine = now;
     if (r.mine.matches === true) {
+      note("good");
       rows.push(checkRow("good", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`, "ตรงกับที่ควรได้แล้ว"));
     } else if (r.mine.matches === false) {
-      // ชื่อเมนูตั้งซ้ำกันได้ และเกิดขึ้นจริงเมื่อสร้างใบใหม่ทับของเดิมโดยใช้ชื่อเดิม
-      // ถ้าโชว์แต่ชื่อ ข้อความจะกลายเป็น "ได้ ก แต่ควรได้ ก" ซึ่งอ่านแล้วไม่ได้อะไรเลย
-      // ต้องโชว์รหัสคู่กันเสมอ เพราะรหัสคือสิ่งเดียวที่แยกสองใบนี้ออกจากกัน
+      // ชื่อเมนูตั้งซ้ำกันได้ ถ้าโชว์แต่ชื่อจะกลายเป็น "ได้ ก แต่ควรได้ ก" ซึ่งไม่ได้อะไรเลย
+      note("bad");
       const sameName = Boolean(r.mine.id) && now === want;
       rows.push(checkRow("bad", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`,
         (r.mine.id ? `<span class="mono">${esc(r.mine.id)}</span><br>` : "") +
         `แต่ที่ควรได้คือ <b>${esc(want)}</b>` +
         (r.mine.expectedId ? `<br><span class="mono">${esc(r.mine.expectedId)}</span>` : "") +
         (sameName ? "<br>สองใบนี้<b>ชื่อเหมือนกันแต่คนละใบ</b> ให้ดูที่รหัสเป็นหลัก" : "") +
-        "<br>กดปุ่ม “ตั้งเมนูใหม่ให้ทุกคน” ด้านล่างเพื่อแก้ให้ตรง"));
+        "<br>กดปุ่ม “เปลี่ยนให้ทุกคน” ด้านล่างเพื่อแก้ให้ตรง"));
     } else {
+      note("warn");
       rows.push(checkRow("warn", `เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(now)}</b>`,
         "ยังบอกไม่ได้ว่าตรงหรือไม่ตรง เพราะตั้งค่ารหัสเมนูยังไม่ครบ"));
     }
   }
 
-  // บัญชีที่ใช้งานมานานมีเมนูสะสมหลายสิบใบและชื่อซ้ำกันได้ กางทั้งหมดแล้วหาด้วยตาไม่ไหว
-  // จึงพับไว้ก่อนแล้วมีช่องค้นหา — ค้นได้ทั้งชื่อและรหัส
-  // 6. ขอรายชื่อเพื่อนทั้งหมดจาก LINE ได้ไหม — ชี้ขาดว่าปุ่ม "เปลี่ยนให้ทุกคน" ไปถึงทุกคนจริงหรือไม่
+  // 6. ขอรายชื่อเพื่อนทั้งหมดจาก LINE ได้ไหม — ชี้ขาดว่าปุ่มไปถึงทุกคนจริงหรือไม่
   if (r.followers) {
-    rows.push(
-      r.followers.ok
-        ? checkRow("good", "ขอรายชื่อเพื่อนทั้งหมดจาก LINE ได้",
-            "กดปุ่มด้านล่างแล้วจะดึงรายชื่อมาใหม่ก่อนเสมอ เมนูจึงเปลี่ยนให้ทุกคนที่เป็นเพื่อนจริง ๆ")
-        : checkRow("bad", "ขอรายชื่อเพื่อนทั้งหมดจาก LINE ไม่ได้",
-            `${esc(r.followers.error || "")}<br>` +
-            "LINE เปิดให้ขอรายชื่อเพื่อนเฉพาะบัญชีที่ผ่านการยืนยัน (Verified) หรือ Premium เท่านั้น " +
-            "ระหว่างนี้ปุ่มด้านล่างจะไปถึงเฉพาะคนที่ระบบรู้จัก คือคนที่ลงทะเบียนแล้ว " +
-            "คนที่ฝ่ายบุคคลนำเข้ามา และคนที่เคยทักแชทมา"),
-    );
+    note(r.followers.ok ? "good" : "warn");
+    rows.push(r.followers.ok
+      ? checkRow("good", "ขอรายชื่อเพื่อนทั้งหมดจาก LINE ได้",
+          "กดปุ่มแล้วจะดึงรายชื่อมาใหม่ก่อนเสมอ เมนูจึงเปลี่ยนให้ทุกคนที่เป็นเพื่อนจริง ๆ")
+      : checkRow("bad", "ขอรายชื่อเพื่อนทั้งหมดจาก LINE ไม่ได้",
+          `${esc(r.followers.error || "")}<br>` +
+          "LINE เปิดให้ขอรายชื่อเพื่อนเฉพาะบัญชีที่ผ่านการยืนยัน (Verified) หรือ Premium เท่านั้น " +
+          "ระหว่างนี้ปุ่มจะไปถึงเฉพาะคนที่ระบบรู้จัก คือคนที่ลงทะเบียนแล้ว " +
+          "คนที่ฝ่ายบุคคลนำเข้ามา และคนที่เคยทักแชทมา"));
   }
 
-  // 7. เคยกดไล่ตั้งเมนูไปหรือยัง — คำถามแรกเสมอเวลาเมนูไม่เปลี่ยน และเดิมตอบไม่ได้เลย
-  rows.push(
-    r.lastApply
-      ? checkRow("good", "เคยไล่ตั้งเมนูให้ทุกคนแล้ว",
-          `ครั้งล่าสุด ${esc(r.lastApply.at)} น. โดย ${esc(r.lastApply.by)}`)
-      : checkRow("warn", "ยังไม่เคยกดไล่ตั้งเมนูให้ทุกคนเลย",
-          "การเปลี่ยนรหัสเมนูหรือแก้ flow ไม่ทำให้เมนูของคนที่ผูกไว้แล้วเปลี่ยนตาม " +
-          "ต้องกดปุ่มด้านล่างหนึ่งครั้ง"),
-  );
+  // 7. เคยกดไล่ตั้งเมนูไปหรือยัง — คำถามแรกเสมอเวลาเมนูไม่เปลี่ยน
+  rows.push(r.lastApply
+    ? checkRow("good", "เคยไล่ตั้งเมนูให้ทุกคนแล้ว",
+        `ครั้งล่าสุด ${esc(r.lastApply.at)} น. โดย ${esc(r.lastApply.by)}`)
+    : checkRow("warn", "ยังไม่เคยกดไล่ตั้งเมนูให้ทุกคนเลย",
+        "การเปลี่ยนรหัสเมนูหรือแก้ flow ไม่ทำให้เมนูของคนที่ผูกไว้แล้วเปลี่ยนตาม ต้องกดปุ่มหนึ่งครั้ง"));
 
+  const bad = rows.filter((x) => x.includes('cmark bad')).length;
+  const warn = rows.filter((x) => x.includes('cmark warn')).length;
+  const sum = bad ? `${bad} จุดที่ต้องแก้` : warn ? `${warn} จุดที่ควรดู` : "ปกติทุกอย่าง";
+
+  // รายการเมนูบนบัญชีมาจาก LINE โดยตรง (ถาม /v2/bot/richmenu/list) จึงรวมทุกใบที่เคยสร้างไว้
+  // ทั้งที่ใช้อยู่และที่เลิกใช้แล้ว — ปกติจึงมีหลายสิบใบ กางทั้งหมดแล้วหาด้วยตาไม่ไหว
+  const inUse = r.menus && r.line.ok
+    ? [r.menus.member, r.menus.fresh].filter((m) => m && m.exists)
+    : [];
   const list = r.line.ok && r.line.richmenus.length
-    ? `<div class="section" style="margin-top:20px">เมนูที่มีอยู่จริงบน LINE (${r.line.count} ใบ)</div>
-       <p class="hintnote">รหัสพวกนี้เอาไปวางใน RICHMENU_NEW_ID / RICHMENU_MEMBER_ID ได้เลย ·
-         <b>ชื่อซ้ำกันได้</b> ให้ยึดรหัสเป็นหลัก</p>
-       <input type="text" class="searchbox" id="menu-find" placeholder="ค้นชื่อเมนูหรือรหัส" />
-       <div class="plist" id="menu-list">${r.line.richmenus.map((m) => `<div class="irow"
-         data-find="${esc(((m.name || "") + " " + m.id).toLowerCase())}">
-         <div class="iw"><div class="inm">${esc(m.name || "ไม่มีชื่อ")}</div>
-         <div class="isub mono">${esc(m.id)}</div></div></div>`).join("")}</div>`
+    ? fold(inUse.length ? "good" : "warn", "เมนูที่มีอยู่บนบัญชี LINE",
+        `ใช้อยู่ ${inUse.length} ใบ จากทั้งหมด ${r.line.count} ใบ`,
+        `<p class="hintnote">รายการนี้มาจาก LINE โดยตรง จึงรวม<b>ทุกใบที่เคยสร้างไว้</b>
+           ทั้งที่ใช้อยู่และที่เลิกใช้แล้ว ลบทิ้งได้ที่ LINE Official Account Manager<br>
+           รหัสพวกนี้เอาไปวางใน RICHMENU_NEW_ID / RICHMENU_MEMBER_ID ได้เลย ·
+           <b>ชื่อซ้ำกันได้</b> ให้ยึดรหัสเป็นหลัก</p>
+         <input type="text" class="searchbox" id="menu-find" placeholder="ค้นชื่อเมนูหรือรหัส" />
+         <div class="plist" id="menu-list">${r.line.richmenus.map((m) => {
+           const used = inUse.find((u) => u.id === m.id);
+           return `<div class="irow" data-find="${esc(((m.name || "") + " " + m.id).toLowerCase())}">
+             <div class="iw"><div class="inm">${esc(m.name || "ไม่มีชื่อ")}</div>
+             <div class="isub mono">${esc(m.id)}</div></div>
+             ${used ? '<span class="itag ok">ใช้อยู่</span>' : ""}
+             <button class="copybtn" data-copy="${esc(m.id)}">คัดลอก</button></div>`;
+         }).join("")}</div>`)
+    : "";
+
+  // คนที่ถูกถอดเมนูไว้ — ปุ่มเปลี่ยนให้ทุกคนข้ามคนกลุ่มนี้ ต้องมีที่ให้ดูว่ามีใครบ้าง
+  const exList = excluded.length
+    ? fold("warn", "คนที่ถอดเมนูไว้", `${excluded.length} คน — ปุ่มเปลี่ยนให้ทุกคนจะข้ามไป`,
+        `<p class="hintnote">กดปุ่ม “เปลี่ยนเฉพาะบุคคล” แล้วเลือกคนนี้ เพื่อคืนเมนูให้และเอาออกจากรายการนี้</p>
+         <div class="plist">${excluded.map((x) => `<div class="irow">
+           <div class="iw"><div class="inm">${esc(x.name || "ไม่ทราบชื่อ")}</div>
+           <div class="isub">${esc(x.code || "")}${x.code ? " · " : ""}ถอดเมื่อ ${esc(x.at)}</div></div>
+           <button class="copybtn" data-copy="${esc(x.lineUserId)}">คัดลอก</button></div>`).join("")}</div>`)
     : "";
 
   $("#menu-body").innerHTML = `
-    <div class="section">ผลตรวจ</div>
-    <div class="plist" style="padding:2px 14px">${rows.join("")}</div>
+    ${fold(worst, "ผลตรวจ", sum, `<div class="plist" style="padding:2px 14px;border:0;background:transparent">${rows.join("")}</div>`)}
+    ${mineLine ? `<p class="hintnote">เมนูที่คุณได้อยู่ตอนนี้ — <b>${esc(mineLine)}</b></p>` : ""}
+    ${exList}
+    ${list}
 
     <div class="section" style="margin-top:22px">สั่งงาน</div>
-    <p class="hintnote">
-      เมนูถูกผูกไว้<b>ทีละคน</b> การเปลี่ยนรหัสเมนูในค่าตั้งค่าจึงไม่ทำให้เมนูของคนที่ผูกไว้แล้ว
-      เปลี่ยนตาม ต้องกดปุ่มนี้หนึ่งครั้ง
-    </p>
-    <button class="send" id="menu-apply"${r.ready ? "" : " disabled"}>เปลี่ยน rich menu ให้ทุกคน</button>
+
+    <button class="send" id="menu-apply"${r.ready ? "" : " disabled"}>1 · เปลี่ยน rich menu ให้ทุกคน</button>
     <p class="hintnote">
       ${r.ready
-        ? `<b>ทุกคนใน OA จะได้เมนูหลักเหมือนกันหมด</b> ไม่ว่าจะลงทะเบียนแล้วหรือยัง
-           (ยกเว้นคนที่ถูกระงับสิทธิ์ ซึ่งถูกถอดเมนูออก)<br>
-           คนที่มาแอดเพื่อนทีหลังยังเข้าตามระบบลงทะเบียนเหมือนเดิม`
+        ? `ทุกคนได้<b>เมนูหลักเหมือนกันหมด</b> ไม่ว่าจะลงทะเบียนแล้วหรือยัง` +
+          (excluded.length ? `<br><b>ข้าม ${excluded.length} คน</b>ที่ถอดเมนูไว้` : "") +
+          `<br>คนที่ถูกระงับสิทธิ์ยังถูกถอดเมนูตามเดิม`
         : "ตั้งค่าให้ครบก่อนถึงจะกดได้"}
     </p>
     <div id="menu-progress"></div>
 
-    <button class="send" id="menu-unlink" style="margin-top:14px">ถอด rich menu เฉพาะบางคน</button>
-    <p class="hintnote">คนที่ถูกถอดจะไม่เห็นเมนูเลย จนกว่าจะกดปุ่มด้านบนหรือลงทะเบียนใหม่</p>
-    ${list}`;
+    <button class="send" id="menu-apply-one" style="margin-top:14px"${r.ready ? "" : " disabled"}>2 · เปลี่ยนเฉพาะบุคคล</button>
+    <p class="hintnote">ตั้งเมนูหลักให้คนเดียว · ถ้าคนนั้นเคยถูกถอดไว้ จะถูกเอาออกจากรายการที่ถอดด้วย</p>
+
+    <button class="send" id="menu-unlink" style="margin-top:14px">3 · ถอด rich menu เฉพาะบางคน</button>
+    <p class="hintnote">คนที่ถูกถอดจะไม่เห็นเมนูเลย และปุ่มข้อ 1 จะข้ามคนนี้ไปตลอดจนกว่าจะกดข้อ 2 คืนให้</p>
+
+    ${r.defaultMenu && r.defaultMenu.ok && r.defaultMenu.id
+      ? `<button class="ghost" id="menu-cleardef" style="margin-top:14px">ถอดเมนูตั้งต้นของ OA</button>
+         <p class="hintnote">ใช้เมื่อต้องการให้การถอดเมนูรายคนมีผลจริง ๆ · แลกกับการที่คนซึ่งระบบยังไม่รู้จักจะไม่มีเมนู</p>`
+      : ""}`;
 }
 
 async function goMenuCheck() {
@@ -1113,7 +1220,17 @@ async function clearDefaultMenu() {
 
 /* ---------- ถอดเมนูเฉพาะบางคน ---------- */
 
-function openMenuUnlinkFinder() {
+/**
+ * ช่องค้นหาคนสำหรับสั่งงานรายคน — ใช้ร่วมกันทั้งปุ่มตั้งเมนูและปุ่มถอด
+ *
+ * ทำเป็นช่องเดียวเพราะขั้นตอนเหมือนกันเป๊ะ (ค้นชื่อ → เลือกคน → ยืนยัน) ต่างกันแค่
+ * สิ่งที่เกิดขึ้นตอนกด ถ้าแยกเป็นสองช่องคนละที่ หน้าจะยาวขึ้นโดยไม่ได้อะไรเพิ่ม
+ */
+let menuEmpMode = "unlink";   // "unlink" = ถอดเมนู · "apply" = ตั้งเมนูให้
+
+function openMenuEmpFinder(mode) {
+  menuEmpMode = mode;
+  $("#menu-emp-title").textContent = mode === "apply" ? "ตั้งเมนูให้ใคร" : "ถอดเมนูของใคร";
   $("#menu-find-emp").style.display = "";
   $("#menu-emp-q").value = "";
   $("#menu-emp-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
@@ -1150,22 +1267,31 @@ async function searchMenuUnlinkTarget(q) {
   }
 }
 
-async function unlinkMenuFor(employeeId, name) {
+async function menuActFor(employeeId, name) {
+  const apply = menuEmpMode === "apply";
   const ok = await confirmDialog({
-    title: `ถอดเมนูของ ${name}?`,
-    message:
-      "คนนี้จะไม่เห็นเมนูด้านล่างห้องแชทเลย จนกว่าจะกดปุ่ม “เปลี่ยน rich menu ให้ทุกคน” " +
-      "หรือลงทะเบียนใหม่ · เรื่องที่เคยแจ้งและคิวที่จองไว้ยังอยู่ครบ",
-    confirmLabel: "ถอดเมนู",
+    title: apply ? `ตั้งเมนูหลักให้ ${name}?` : `ถอดเมนูของ ${name}?`,
+    message: apply
+      ? "คนนี้จะได้เมนูหลักทันที และถ้าเคยถูกถอดไว้ จะถูกเอาออกจากรายการที่ถอดด้วย " +
+        "ปุ่มเปลี่ยนให้ทุกคนจะนับคนนี้ตามปกติอีกครั้ง"
+      : "คนนี้จะไม่เห็นเมนูด้านล่างห้องแชทเลย และปุ่ม “เปลี่ยน rich menu ให้ทุกคน” " +
+        "จะข้ามคนนี้ไปตลอด จนกว่าจะกดปุ่ม “เปลี่ยนเฉพาะบุคคล” คืนให้ · " +
+        "เรื่องที่เคยแจ้งและคิวที่จองไว้ยังอยู่ครบ",
+    confirmLabel: apply ? "ตั้งเมนูให้" : "ถอดเมนู",
     cancelLabel: "ไม่ใช่",
   });
   if (!ok) return;
   try {
-    await api("/api/admin/richmenu", { method: "POST", body: { action: "unlink", employeeId } });
-    toast(`ถอดเมนูของ ${name} แล้ว`);
+    await api("/api/admin/richmenu", {
+      method: "POST",
+      body: { action: apply ? "apply_one" : "unlink", employeeId },
+    });
+    toast(apply ? `ตั้งเมนูให้ ${name} แล้ว` : `ถอดเมนูของ ${name} แล้ว`);
     $("#menu-find-emp").style.display = "none";
+    // โหลดผลตรวจใหม่ ไม่งั้นรายชื่อคนที่ถูกถอดกับตัวเลขบนปุ่มจะเป็นของเก่า
+    goMenuCheck();
   } catch (e) {
-    toast(e.message || "ถอดเมนูไม่สำเร็จ");
+    toast(e.message || (apply ? "ตั้งเมนูไม่สำเร็จ" : "ถอดเมนูไม่สำเร็จ"));
   }
 }
 
@@ -1654,6 +1780,7 @@ function renderLinkList() {
             )}</div>
             <div class="fid">${esc(f.line_user_id)}</div>
           </div>
+          <button class="copybtn" data-copy="${esc(f.line_user_id)}">คัดลอก</button>
         </div>`,
       )
       .join("")}</div>`;
@@ -1923,6 +2050,13 @@ function bind() {
     if (e.target.closest("#imp-apply")) applyImport();
   });
   $("#linkList").addEventListener("click", (e) => {
+    // ปุ่มคัดลอกอยู่ในแถวเดียวกับพื้นที่กดจับคู่ ต้องหยุดไว้ก่อน ไม่งั้นกดคัดลอกแล้วกล่องจับคู่เด้งตาม
+    const cp = e.target.closest("[data-copy]");
+    if (cp) {
+      e.stopPropagation();
+      copyText(cp.dataset.copy, cp);
+      return;
+    }
     const row = e.target.closest("[data-follower]");
     if (row) linkFollower(row.dataset.follower);
   });
@@ -1978,12 +2112,16 @@ function bind() {
   };
   $("#mg-close").onclick = closeWindow;
   $("#mg-massage").onclick = () => openMassageAdmin("1");
+  $("#mg-report").onclick = openReportAdmin;
   $("#mg-menu").onclick = goMenuCheck;
   $("#al-close").onclick = closeWindow;
   $("#menu-back").onclick = () => { setTab("me"); show("s-manage"); };
   $("#menu-body").addEventListener("click", (e) => {
+    const cp = e.target.closest("[data-copy]");
+    if (cp) return copyText(cp.dataset.copy, cp);
     if (e.target.closest("#menu-apply")) applyRichMenus();
-    if (e.target.closest("#menu-unlink")) openMenuUnlinkFinder();
+    if (e.target.closest("#menu-apply-one")) openMenuEmpFinder("apply");
+    if (e.target.closest("#menu-unlink")) openMenuEmpFinder("unlink");
     if (e.target.closest("#menu-cleardef")) clearDefaultMenu();
   });
   $("#menu-body").addEventListener("input", (e) => {
@@ -1999,7 +2137,7 @@ function bind() {
   $("#menu-emp-q").oninput = debounce(() => searchMenuUnlinkTarget($("#menu-emp-q").value), 300);
   $("#menu-emp-hits").addEventListener("click", (e) => {
     const row = e.target.closest("[data-unlink-emp]");
-    if (row) unlinkMenuFor(row.dataset.unlinkEmp, row.dataset.name);
+    if (row) menuActFor(row.dataset.unlinkEmp, row.dataset.name);
   });
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;

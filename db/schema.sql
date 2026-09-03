@@ -154,3 +154,14 @@ CREATE TABLE message_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_msglog_month ON message_logs(created_at);
+
+-- ───────────────────── คนที่ถูกถอด rich menu ไว้ ─────────────────────
+--
+-- ปุ่ม "เปลี่ยน rich menu ให้ทุกคน" ต้องข้ามคนกลุ่มนี้ ไม่งั้นการถอดเมนูรายคนจะไม่มีผลอะไรเลย
+-- เพราะรอบถัดไปที่กดปุ่ม คนที่เพิ่งถอดไปจะได้เมนูกลับมาทันที
+CREATE TABLE IF NOT EXISTS richmenu_excluded (
+  line_user_id VARCHAR(64)  PRIMARY KEY,
+  employee_id  UUID         REFERENCES employees(id) ON DELETE SET NULL,
+  excluded_by  UUID         REFERENCES employees(id),
+  excluded_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);

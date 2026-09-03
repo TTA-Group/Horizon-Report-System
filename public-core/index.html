@@ -361,6 +361,32 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
 .irow .inm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .irow .isub{font-size:11px;color:var(--slate);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .irow .isub b{font-family:'IBM Plex Mono',monospace;font-weight:400}
+/* ── กล่องที่พับเก็บได้ ──
+   หน้าตรวจเมนูมีข้อมูลเยอะจนเลื่อนหาไม่เจอ สิ่งที่ต้องเห็นทันทีคือ "ตอนนี้เป็นยังไง"
+   ส่วนรายละเอียดว่าทำไม เก็บไว้ให้กดเปิดเอาตอนต้องไล่หาสาเหตุจริง ๆ */
+.fold{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;
+  overflow:hidden}
+.fold>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:600}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::after{content:"›";margin-left:auto;font-size:17px;color:var(--slate);
+  transform:rotate(90deg);transition:.15s}
+.fold[open]>summary::after{transform:rotate(-90deg)}
+.fold>summary .fsum{flex:1;min-width:0;font-weight:400;font-size:11.5px;color:var(--slate);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fold .fbody{padding:0 14px 12px}
+/* ป้ายสรุปหน้าหัวข้อ — บอกผลรวมโดยไม่ต้องกางกล่อง */
+.fdot{flex:none;width:9px;height:9px;border-radius:50%}
+.fdot.good{background:#2AA85A}
+.fdot.bad{background:#D9503A}
+.fdot.warn{background:#E0A21B}
+
+/* ปุ่มคัดลอกเล็ก ๆ ท้ายแถว */
+.copybtn{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:9px;
+  padding:6px 10px;font-family:inherit;font-size:11px;color:var(--slate);cursor:pointer}
+.copybtn:active{background:var(--canvas)}
+.copybtn.done{border-color:var(--green);color:var(--green-deep);background:var(--green-soft)}
+
 .itag{flex:none;font-size:10.5px;font-weight:600;border-radius:999px;padding:3px 9px}
 .itag.ok{background:var(--green-soft);color:var(--green-deep)}
 .itag.skip{background:var(--canvas);color:var(--slate)}
@@ -471,6 +497,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
     <button class="send" id="mg-link">ผูกบัญชีไลน์ให้พนักงาน</button>
     <!-- ทางลัดไปหน้าผู้ดูแลของแอปจองคิว ปุ่มเดียวพอ เพราะสามหน้านั้นสลับกันได้ในตัวอยู่แล้ว -->
     <button class="send" id="mg-massage">หน้าจัดการคิวนวด</button>
+    <!-- ทางลัดไปคิวงานของระบบแจ้งปัญหา ปุ่มเดียวเช่นกัน เพราะสลับไปหน้าสรุปงานได้ที่แถบล่าง -->
+    <button class="send" id="mg-report">หน้าจัดการเรื่องแจ้ง</button>
     <!-- เมนูของไลน์สลับให้เองเบื้องหลัง เวลาไม่ทำงานจึงเงียบสนิท ต้องมีที่ให้กดดูว่าติดตรงไหน -->
     <button class="send" id="mg-menu">ตรวจเมนูไลน์ (rich menu)</button>
     <button class="ghost" id="mg-close">ปิดหน้านี้</button>
@@ -483,9 +511,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       เปลี่ยนรหัสเมนูแล้ว คนที่ผูกใบเก่าไว้จะยังเห็นใบเก่าจนกว่าจะกดตั้งใหม่ให้
     </p>
     <div id="menu-body"></div>
-    <!-- ค้นหาพนักงานสำหรับถอดเมนูรายคน — ซ่อนไว้จนกว่าจะกดปุ่ม หน้าจะได้ไม่รกด้วยช่องที่แทบไม่ได้ใช้ -->
+    <!-- ค้นหาพนักงานสำหรับสั่งงานรายคน — ซ่อนไว้จนกว่าจะกดปุ่ม หน้าจะได้ไม่รกด้วยช่องที่แทบไม่ได้ใช้
+         ใช้ช่องเดียวกันทั้งปุ่มตั้งเมนูและปุ่มถอด ต่างกันแค่หัวข้อกับสิ่งที่เกิดขึ้นตอนกดเลือกคน -->
     <div id="menu-find-emp" style="display:none">
-      <div class="section">ถอดเมนูของใคร</div>
+      <div class="section" id="menu-emp-title">ถอดเมนูของใคร</div>
       <input type="text" class="searchbox" id="menu-emp-q" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
       <div id="menu-emp-hits"></div>
       <button class="ghost" id="menu-emp-cancel">ยกเลิก</button>

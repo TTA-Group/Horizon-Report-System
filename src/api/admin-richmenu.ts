@@ -1,5 +1,5 @@
 // GET /api/admin/richmenu   ตรวจว่าทำไมเมนูไม่เปลี่ยน
-// POST /api/admin/richmenu  ไล่ตั้งเมนูใหม่ให้ทุกคนทีละชุด
+// POST /api/admin/richmenu  ไล่ตั้งเมนูให้ทุกคน · ตั้งให้คนเดียว · ถอดของคนเดียว
 //
 // มีเพราะการสลับ rich menu ล้มแบบเงียบสนิทได้สามทาง และทั้งสามทางหน้าจอเหมือนกันหมด
 // คือ "เมนูไม่เปลี่ยน" โดยไม่มีข้อความผิดพลาดโผล่ที่ไหนเลย
@@ -24,7 +24,9 @@ import {
 } from "./_lib/line";
 import {
   applyMainMenu,
+  applyMenuForEmployee,
   configuredMenus,
+  excludedList,
   knownLineUserCount,
   knownLineUserIds,
   planRichMenus,
@@ -144,6 +146,7 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
         return r.ok ? { ok: true as const, firstPage: r.data.ids.length, more: r.data.next !== null } : r;
       })(),
       lastApply: await lastApplied(),
+      excluded: await excludedList(),
       mine,
     });
   });
@@ -185,10 +188,23 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
     if (body.action === "unlink") {
       const id = (body.employeeId ?? "").trim();
       if (!id) throw new HttpError(400, "ไม่ได้ระบุพนักงาน");
-      const done = await unlinkRichMenuForEmployee(id);
+      const done = await unlinkRichMenuForEmployee(id, s.employee!.id);
       console.log("[richmenu] ถอดเมนูรายคน", id, done, "บัญชี โดย", s.employee!.employee_code);
       if (done === 0) throw new HttpError(409, "คนนี้ยังไม่ได้ผูกบัญชีไลน์ จึงไม่มีเมนูให้ถอด", "no_line");
-      return json({ ok: true, unlinked: done });
+      return json({ ok: true, unlinked: done, excluded: true });
+    }
+
+    // ตั้งเมนูหลักให้คนเดียว — และเอาชื่อออกจากรายชื่อที่ถูกถอด ถ้าเคยถูกถอดไว้
+    if (body.action === "apply_one") {
+      const id = (body.employeeId ?? "").trim();
+      if (!id) throw new HttpError(400, "ไม่ได้ระบุพนักงาน");
+      const r = await applyMenuForEmployee(id);
+      console.log("[richmenu] ตั้งเมนูรายคน", id, r.done, "จาก", r.accounts, "บัญชี โดย", s.employee!.employee_code);
+      if (r.accounts === 0) {
+        throw new HttpError(409, "คนนี้ยังไม่ได้ผูกบัญชีไลน์ จึงตั้งเมนูให้ไม่ได้", "no_line");
+      }
+      if (r.done === 0) throw new HttpError(502, "สั่ง LINE ตั้งเมนูไม่สำเร็จ", "line_down");
+      return json({ ok: true, applied: r.done });
     }
 
     // ชุดแรก: ตั้ง "เมนูหลัก" เป็นเมนูตั้งต้นของ OA
@@ -202,7 +218,15 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
     //
     // ส่วนคนที่มาแอดเพื่อนทีหลัง ตัวรับ webhook จะผูกเมนูลงทะเบียนให้เป็นรายคน
     // ซึ่งชนะเมนูตั้งต้นเสมอ ระบบลงทะเบียนจึงยังทำงานตามเดิมสำหรับคนใหม่
-    const asDefault = after === "" ? await setDefaultRichMenu(configuredMenus()!.member) : null;
+    // เมนูตั้งต้นของ OA ใช้กับทุกคนที่ "ไม่มีเมนูผูกไว้เป็นรายคน" ซึ่งรวมคนที่เพิ่งถูกถอดด้วย
+    // ตั้งเมนูตั้งต้นเมื่อไหร่ คนที่ถูกถอดจะกลับมาเห็นเมนูทันที = ปุ่มถอดไม่มีผล
+    // สองอย่างนี้อยู่ด้วยกันไม่ได้ จึงตั้งเมนูตั้งต้นเฉพาะตอนไม่มีใครถูกถอดไว้เลย
+    // (หน้าจอบอกเรื่องนี้ไว้ในผลตรวจ พร้อมปุ่มถอดเมนูตั้งต้นให้กดเองถ้าจำเป็น)
+    const anyExcluded = (await excludedList()).length;
+    const asDefault =
+      after === "" && anyExcluded === 0
+        ? await setDefaultRichMenu(configuredMenus()!.member)
+        : null;
 
     const ids = await knownLineUserIds(after, BATCH);
     if (ids.length === 0) {

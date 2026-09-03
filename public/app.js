@@ -222,8 +222,10 @@ function readDeepLink() {
   const state = direct.get("liff.state");
   const p = state ? new URLSearchParams(state.startsWith("?") ? state.slice(1) : state) : direct;
   const ticket = (p.get("ticket") || "").trim();
-  if (!ticket) return null;
-  return { ticket, todo: (p.get("do") || "").trim() };
+  const tab = (p.get("tab") || "").trim();
+  // tab= มาจากปุ่มในหน้าจัดการของระบบกลาง — เปิดคิวงานให้เลย ไม่ต้องเข้ามาแล้วกดแท็บล่างเอง
+  if (!ticket) return tab ? { ticket: "", todo: "", tab } : null;
+  return { ticket, todo: (p.get("do") || "").trim(), tab };
 }
 
 /**
@@ -324,6 +326,13 @@ async function enterApp() {
   // กดปุ่มมาจากการ์ดในไลน์ — ไปที่เรื่องนั้นเลย ไม่ต้องให้เลื่อนหาเองในรายการ
   const link = deepLink;
   deepLink = null;
+  // มาจากปุ่มในหน้าจัดการของระบบกลาง — ลงที่แท็บที่ขอมาเลย ถ้าไม่มีสิทธิ์ก็ตกไปหน้าแจ้งเรื่องตามปกติ
+  if (link && !link.ticket && link.tab) {
+    const allowed = { queue: myDepts.length > 0, report: session.is_admin ||
+      (session.dept_roles || []).some((r) => r.role === "head") };
+    if (allowed[link.tab]) return routeTab(link.tab);
+    return goForm();
+  }
   if (link) return openDeepLink(link);
   goForm();
 }
