@@ -1061,21 +1061,33 @@ function renderMenuStatus(r) {
   const inUse = r.menus && r.line.ok
     ? [r.menus.member, r.menus.fresh].filter((m) => m && m.exists)
     : [];
+  // ใบที่เป็นเมนูตั้งต้นของ OA ก็ห้ามลบเช่นกัน ลบไปแล้วคนที่ไม่มีเมนูรายคนจะไม่เหลืออะไรเลย
+  const defId = r.defaultMenu && r.defaultMenu.ok ? r.defaultMenu.id : null;
+  const unused = r.line.ok
+    ? r.line.richmenus.filter((m) => !inUse.some((u) => u.id === m.id) && m.id !== defId).length
+    : 0;
   const list = r.line.ok && r.line.richmenus.length
     ? fold(inUse.length ? "good" : "warn", "เมนูที่มีอยู่บนบัญชี LINE",
-        `ใช้อยู่ ${inUse.length} ใบ จากทั้งหมด ${r.line.count} ใบ`,
+        `ใช้อยู่ ${inUse.length} ใบ · ไม่ได้ใช้ ${unused} ใบ · ทั้งหมด ${r.line.count} ใบ`,
         `<p class="hintnote">รายการนี้มาจาก LINE โดยตรง จึงรวม<b>ทุกใบที่เคยสร้างไว้</b>
-           ทั้งที่ใช้อยู่และที่เลิกใช้แล้ว ลบทิ้งได้ที่ LINE Official Account Manager<br>
+           ทั้งที่ใช้อยู่และที่เลิกใช้แล้ว · ใบที่สร้างผ่าน API จะไม่โผล่ใน LINE OA Manager
+           จึงลบที่นั่นไม่ได้ ต้องลบจากที่นี่<br>
+           <b>ใบที่มีป้าย “ใช้อยู่” ลบไม่ได้</b> เพราะระบบกำลังใช้สั่งเมนูอยู่ ·<br>
            รหัสพวกนี้เอาไปวางใน RICHMENU_NEW_ID / RICHMENU_MEMBER_ID ได้เลย ·
            <b>ชื่อซ้ำกันได้</b> ให้ยึดรหัสเป็นหลัก</p>
          <input type="text" class="searchbox" id="menu-find" placeholder="ค้นชื่อเมนูหรือรหัส" />
+         ${unused > 0
+           ? `<button class="ghost" id="menu-purge" style="margin-bottom:10px">ลบใบที่ไม่ได้ใช้ทั้งหมด (${unused} ใบ)</button>`
+           : ""}
          <div class="plist" id="menu-list">${r.line.richmenus.map((m) => {
-           const used = inUse.find((u) => u.id === m.id);
+           const used = inUse.find((u) => u.id === m.id) || m.id === defId;
            return `<div class="irow" data-find="${esc(((m.name || "") + " " + m.id).toLowerCase())}">
              <div class="iw"><div class="inm">${esc(m.name || "ไม่มีชื่อ")}</div>
              <div class="isub mono">${esc(m.id)}</div></div>
              ${used ? '<span class="itag ok">ใช้อยู่</span>' : ""}
-             <button class="copybtn" data-copy="${esc(m.id)}">คัดลอก</button></div>`;
+             <button class="copybtn" data-copy="${esc(m.id)}">คัดลอก</button>
+             ${used ? "" : `<button class="copybtn kill" data-killmenu="${esc(m.id)}"
+               data-name="${esc(m.name || "ไม่มีชื่อ")}">ลบ</button>`}</div>`;
          }).join("")}</div>`)
     : "";
 
@@ -1117,6 +1129,64 @@ function renderMenuStatus(r) {
       ? `<button class="ghost" id="menu-cleardef" style="margin-top:14px">ถอดเมนูตั้งต้นของ OA</button>
          <p class="hintnote">ใช้เมื่อต้องการให้การถอดเมนูรายคนมีผลจริง ๆ · แลกกับการที่คนซึ่งระบบยังไม่รู้จักจะไม่มีเมนู</p>`
       : ""}`;
+}
+
+/**
+ * ลบเมนูใบเดียวทิ้งจากบัญชี LINE
+ *
+ * ลบแล้วกู้คืนไม่ได้ ต้องสร้างใหม่เอง จึงถามยืนยันพร้อมโชว์ทั้งชื่อและรหัส —
+ * ชื่อเมนูซ้ำกันได้ ถ้าโชว์แต่ชื่อ คนกดจะแยกไม่ออกว่ากำลังลบใบไหนอยู่
+ */
+async function deleteOneMenu(richMenuId, name) {
+  const ok = await confirmDialog({
+    title: `ลบเมนู “${name}” ?`,
+    message:
+      `${richMenuId}\n\n` +
+      "ลบแล้วเอากลับมาไม่ได้ ต้องไปสร้างใหม่เอง · ถ้ามีคนยังผูกใบนี้อยู่ คนกลุ่มนั้นจะไม่มีเมนูทันที",
+    confirmLabel: "ลบเมนูนี้",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+  try {
+    await api("/api/admin/richmenu", { method: "POST", body: { action: "delete_menu", richMenuId } });
+    toast(`ลบเมนู ${name} แล้ว`);
+    goMenuCheck();
+  } catch (e) {
+    toast(e.message || "ลบเมนูไม่สำเร็จ");
+  }
+}
+
+/**
+ * ลบใบที่ไม่ได้ใช้ทั้งหมด — วนลบทีละชุดจนหมด
+ *
+ * เซิร์ฟเวอร์ลบได้ครั้งละ 25 ใบตามเพดานคำขอย่อยของ Worker หน้าจอจึงวนเรียกซ้ำเอง
+ * และรายงานความคืบหน้าระหว่างทาง ไม่ใช่ค้างเป็นปุ่มกดไม่ได้จนกว่าจะจบ
+ */
+async function purgeUnusedMenus() {
+  const btn = $("#menu-purge");
+  const ok = await confirmDialog({
+    title: "ลบเมนูที่ไม่ได้ใช้ทั้งหมด?",
+    message:
+      "ใบที่มีป้าย “ใช้อยู่” จะไม่ถูกลบ ที่เหลือถูกลบทิ้งทั้งหมด\n\n" +
+      "ลบแล้วเอากลับมาไม่ได้ ถ้ายังมีคนผูกใบเก่าอยู่ คนกลุ่มนั้นจะไม่มีเมนูจนกว่าจะกดปุ่มข้อ 1",
+    confirmLabel: "ลบทั้งหมด",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+  if (btn) btn.disabled = true;
+  let total = 0;
+  try {
+    for (let round = 0; round < 40; round++) {
+      if (btn) btn.textContent = `กำลังลบ… (ลบไปแล้ว ${total} ใบ)`;
+      const r = await api("/api/admin/richmenu", { method: "POST", body: { action: "delete_unused" } });
+      total += r.deleted || 0;
+      if (!r.deleted || !r.remaining) break;
+    }
+    toast(`ลบเมนูที่ไม่ได้ใช้ไป ${total} ใบ`);
+  } catch (e) {
+    toast(e.message || "ลบเมนูไม่สำเร็จ");
+  }
+  goMenuCheck();
 }
 
 async function goMenuCheck() {
@@ -2123,6 +2193,9 @@ function bind() {
     if (e.target.closest("#menu-apply-one")) openMenuEmpFinder("apply");
     if (e.target.closest("#menu-unlink")) openMenuEmpFinder("unlink");
     if (e.target.closest("#menu-cleardef")) clearDefaultMenu();
+    const kill = e.target.closest("[data-killmenu]");
+    if (kill) deleteOneMenu(kill.dataset.killmenu, kill.dataset.name);
+    if (e.target.closest("#menu-purge")) purgeUnusedMenus();
   });
   $("#menu-body").addEventListener("input", (e) => {
     if (e.target.id !== "menu-find") return;

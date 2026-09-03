@@ -237,6 +237,18 @@ export async function richMenuOf(userId: string): Promise<LineQuery<string | nul
   return r.ok ? { ok: true, data: r.data.richMenuId ?? null } : r;
 }
 
+/**
+ * ลบเมนูทิ้งจากบัญชี LINE — ใบที่สร้างผ่าน API ลบใน OA Manager ไม่ได้ ต้องลบทางนี้เท่านั้น
+ *
+ * ใบที่ยังมีคนผูกอยู่ก็ลบได้ คนกลุ่มนั้นจะกลายเป็นไม่มีเมนูทันที ฝั่งที่เรียกจึงต้องกันเอง
+ * ว่าอย่าลบใบที่ระบบตั้งใช้อยู่ (ดู admin-richmenu.ts)
+ *
+ * 404 = ใบนั้นไม่มีอยู่แล้ว ซึ่งคือผลลัพธ์ที่ต้องการพอดี นับว่าสำเร็จ (callRichMenu จัดการให้แล้ว)
+ */
+export function deleteRichMenu(richMenuId: string): Promise<boolean> {
+  return callRichMenu(`richmenu/${encodeURIComponent(richMenuId)}`, "DELETE");
+}
+
 export interface LineUserProfile {
   displayName: string;
   pictureUrl?: string;

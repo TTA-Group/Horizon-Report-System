@@ -17,6 +17,7 @@ import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import {
   clearDefaultRichMenu,
   defaultRichMenuId,
+  deleteRichMenu,
   followerIds,
   listRichMenus,
   richMenuOf,
@@ -164,8 +165,51 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       throw new HttpError(409, "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ที่ระบบนี้", "no_token");
     }
 
-    const body = await readJson<{ after?: string; action?: string; employeeId?: string; start?: string }>(req);
+    const body = await readJson<{
+      after?: string; action?: string; employeeId?: string; start?: string; richMenuId?: string;
+    }>(req);
     const after = typeof body.after === "string" ? body.after : "";
+
+    /**
+     * ลบเมนูทิ้งจากบัญชี LINE
+     *
+     * เมนูที่สร้างผ่าน API ไม่โผล่ใน LINE OA Manager จึงลบที่นั่นไม่ได้เลย ต้องสั่งผ่าน API
+     * เท่านั้น หน้านี้เป็นทางเดียวที่ผู้ดูแลใช้ได้โดยไม่ต้องรู้จักโทเคนหรือคำสั่ง curl
+     *
+     * กันไว้สองใบเสมอ: ใบที่ตั้งเป็น RICHMENU_NEW_ID / RICHMENU_MEMBER_ID และใบที่เป็น
+     * เมนูตั้งต้นของ OA — ลบไปแล้วระบบจะสั่งเมนูไม่ได้ทั้งระบบ และไม่มีทางกู้คืน
+     * ต้องไปสร้างใหม่แล้วเอารหัสมาตั้งใหม่ทั้งหมด
+     */
+    if (body.action === "delete_menu" || body.action === "delete_unused") {
+      const set = configuredMenus();
+      const def = await defaultRichMenuId();
+      const keep = new Set<string>([set!.fresh, set!.member]);
+      if (def.ok && def.data) keep.add(def.data);
+
+      if (body.action === "delete_menu") {
+        const id = (body.richMenuId ?? "").trim();
+        if (!id) throw new HttpError(400, "ไม่ได้ระบุเมนู");
+        if (keep.has(id)) {
+          throw new HttpError(409, "ใบนี้กำลังถูกใช้อยู่ ลบไม่ได้ ถ้าจะลบต้องเปลี่ยนไปใช้ใบอื่นก่อน", "in_use");
+        }
+        const okDel = await deleteRichMenu(id);
+        console.log("[richmenu] ลบเมนู", id, okDel ? "สำเร็จ" : "ไม่สำเร็จ", "โดย", s.employee!.employee_code);
+        if (!okDel) throw new HttpError(502, "สั่ง LINE ลบเมนูไม่สำเร็จ", "line_down");
+        return json({ ok: true, deleted: 1 });
+      }
+
+      // ลบใบที่ไม่ได้ใช้ทั้งหมด — ทีละชุดตามเพดานคำขอย่อยของ Worker หน้าจอวนกดซ้ำเอง
+      const listed = await listRichMenus();
+      if (!listed.ok) throw new HttpError(502, listed.error, "line_down");
+      const doomed = listed.data.map((m) => m.richMenuId).filter((id) => !keep.has(id)).slice(0, BATCH);
+      let deleted = 0;
+      for (const id of doomed) {
+        if (await deleteRichMenu(id)) deleted += 1;
+      }
+      const left = listed.data.filter((m) => !keep.has(m.richMenuId)).length - deleted;
+      console.log("[richmenu] ลบเมนูที่ไม่ได้ใช้", deleted, "ใบ เหลือ", left, "โดย", s.employee!.employee_code);
+      return json({ ok: true, deleted, remaining: Math.max(0, left), kept: keep.size });
+    }
 
     // ถอดเมนูตั้งต้นของ OA ออก — ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น
     if (body.action === "clear_default") {
