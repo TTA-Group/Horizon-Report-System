@@ -87,6 +87,21 @@ export function configuredMenus(): { fresh: string; member: string } | null {
  * คนที่ยังไม่ลงทะเบียนจะไม่มีทางได้เมนูเลย ซึ่งคือกลุ่มที่ต้องการเมนูมากที่สุด
  */
 export async function knownLineUserIds(after: string, limit: number): Promise<string[]> {
+  // ยังไม่ได้สร้างตาราง = ยังไม่มีใครถูกถอด ไล่ตั้งเมนูให้ทุกคนตามปกติไปก่อน
+  // ดีกว่าปล่อยให้ทั้งปุ่มพังเพราะยังไม่ได้รัน SQL
+  if (!(await excludedReady())) {
+    const all = await db()<{ line_user_id: string }[]>`
+      SELECT line_user_id FROM (
+        SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
+        UNION
+        SELECT line_user_id FROM line_followers
+      ) AS everyone
+      WHERE line_user_id > ${after}
+      ORDER BY line_user_id
+      LIMIT ${limit}
+    `;
+    return all.map((r) => r.line_user_id);
+  }
   const rows = await db()<{ line_user_id: string }[]>`
     SELECT line_user_id FROM (
       SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
@@ -101,6 +116,25 @@ export async function knownLineUserIds(after: string, limit: number): Promise<st
     LIMIT ${limit}
   `;
   return rows.map((r) => r.line_user_id);
+}
+
+/**
+ * ตาราง richmenu_excluded ถูกสร้างแล้วหรือยัง
+ *
+ * เจ้าของงานรัน SQL เองที่ Supabase ระบบจึงเจอสภาพ "โค้ดใหม่ ตารางเก่า" ได้เสมอ
+ * ถ้าปล่อยให้คำสั่งที่อ้างถึงตารางนี้พังดิบ ๆ หน้าตรวจเมนูจะขึ้นข้อผิดพลาดยาวเหยียด
+ * ที่อ่านไม่รู้เรื่อง แทนที่จะบอกตรง ๆ ว่า "ยังไม่ได้รันไฟล์ไหน"
+ */
+export async function excludedReady(): Promise<boolean> {
+  try {
+    const rows = await db()<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM information_schema.tables
+      WHERE table_name = 'richmenu_excluded'
+    `;
+    return (rows[0]?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 /** คนที่ถูกถอดเมนูไว้ตอนนี้ พร้อมชื่อสำหรับโชว์บนหน้าจอ */
@@ -193,6 +227,16 @@ export async function applyMenuForEmployee(
 
 /** จำนวนบัญชีไลน์ทั้งหมดที่ระบบรู้จัก — ใช้บอกความคืบหน้าตอนไล่ตั้งเมนู */
 export async function knownLineUserCount(): Promise<number> {
+  if (!(await excludedReady())) {
+    const [n] = await db()<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM (
+        SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
+        UNION
+        SELECT line_user_id FROM line_followers
+      ) AS everyone
+    `;
+    return n?.n ?? 0;
+  }
   const [row] = await db()<{ n: number }[]>`
     SELECT count(*)::int AS n FROM (
       SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
@@ -317,7 +361,7 @@ export async function applyMainMenu(lineUserIds: string[]): Promise<ApplyOutcome
 export async function unlinkRichMenuForEmployee(
   employeeId: string,
   byEmployeeId: string,
-): Promise<number> {
+): Promise<{ unlinked: number; remembered: boolean }> {
   const rows = await db()<{ line_user_id: string }[]>`
     SELECT line_user_id FROM line_accounts
     WHERE employee_id = ${employeeId} AND channel_key = ANY(${CHANNEL_KEYS_READ})
@@ -331,8 +375,10 @@ export async function unlinkRichMenuForEmployee(
     }
   }
   // จดไว้ ไม่งั้นปุ่ม "เปลี่ยนเมนูให้ทุกคน" รอบหน้าจะคืนเมนูให้คนกลุ่มนี้ทันที
-  await rememberExcluded(gone, employeeId, byEmployeeId);
-  return gone.length;
+  // ถ้ายังไม่ได้สร้างตาราง ต้องบอกกลับไปตามจริง ไม่ใช่ตอบว่าจดแล้วทั้งที่ไม่ได้จด
+  const remembered = gone.length > 0 && (await excludedReady());
+  if (remembered) await rememberExcluded(gone, employeeId, byEmployeeId);
+  return { unlinked: gone.length, remembered };
 }
 
 /**

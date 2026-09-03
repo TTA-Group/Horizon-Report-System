@@ -977,6 +977,13 @@ function renderMenuStatus(r) {
     }
   }
 
+  // 3.5 ยังไม่ได้รันไฟล์สร้างตาราง = ปุ่มถอดจะถอดได้ แต่ปุ่มข้อ 1 จะคืนเมนูให้รอบหน้า
+  if (r.excludedReady === false) {
+    note("bad");
+    rows.push(checkRow("bad", "ยังไม่ได้รันไฟล์ <b>db/richmenu-excluded.sql</b> ที่ Supabase",
+      "ถอดเมนูรายคนได้ แต่ระบบยังจดไม่ได้ว่าใครถูกถอด · พอกดปุ่มข้อ 1 รอบหน้า คนที่ถอดไปจะได้เมนูกลับมา"));
+  }
+
   // 4. เมนูตั้งต้นของ OA — ใช้กับทุกคนที่ไม่มีเมนูผูกไว้เป็นรายคน ซึ่งรวมคนที่ถูกถอดด้วย
   //    จึงอยู่ร่วมกับปุ่มถอดไม่ได้ ต้องบอกให้ชัดว่าตอนนี้เลือกทางไหนอยู่
   const excluded = r.excluded || [];
@@ -1352,12 +1359,35 @@ async function menuActFor(employeeId, name) {
   });
   if (!ok) return;
   try {
-    await api("/api/admin/richmenu", {
+    const r = await api("/api/admin/richmenu", {
       method: "POST",
       body: { action: apply ? "apply_one" : "unlink", employeeId },
     });
-    toast(apply ? `ตั้งเมนูให้ ${name} แล้ว` : `ถอดเมนูของ ${name} แล้ว`);
     $("#menu-find-emp").style.display = "none";
+    if (!apply && r && r.defaultMenu) {
+      // ถอดสำเร็จแล้วจริง แต่ LINE จะเอา "เมนูตั้งต้นของ OA" มาแสดงแทนให้ทันที
+      // ถ้าไม่บอกตรงนี้ คนกดจะสรุปว่าปุ่มเสีย ทั้งที่คำสั่งถึง LINE เรียบร้อยแล้ว
+      await confirmDialog({
+        title: "ถอดแล้ว แต่เขาจะยังเห็นเมนูอยู่",
+        message:
+          `ถอดเมนูของ ${name} สำเร็จแล้ว แต่ตอนนี้ OA ตั้ง “เมนูตั้งต้น” ไว้\n\n` +
+          "LINE ใช้เมนูตั้งต้นกับทุกคนที่ไม่มีเมนูรายคน คนที่เพิ่งถอดจึงเห็นเมนูตั้งต้นแทน\n\n" +
+          "ถ้าต้องการให้เขาไม่มีเมนูจริง ๆ ให้กดปุ่ม “ถอดเมนูตั้งต้นของ OA” ท้ายหน้านี้",
+        confirmLabel: "เข้าใจแล้ว",
+        cancelLabel: "ปิด",
+      });
+    } else if (!apply && r && r.excluded === false) {
+      await confirmDialog({
+        title: "ถอดแล้ว แต่ยังไม่ได้จดชื่อไว้",
+        message:
+          "ยังไม่ได้รันไฟล์ db/richmenu-excluded.sql ที่ Supabase\n\n" +
+          "ตอนนี้ถอดเมนูได้ แต่พอกดปุ่มข้อ 1 รอบหน้า คนนี้จะได้เมนูกลับมา",
+        confirmLabel: "เข้าใจแล้ว",
+        cancelLabel: "ปิด",
+      });
+    } else {
+      toast(apply ? `ตั้งเมนูให้ ${name} แล้ว` : `ถอดเมนูของ ${name} แล้ว`);
+    }
     // โหลดผลตรวจใหม่ ไม่งั้นรายชื่อคนที่ถูกถอดกับตัวเลขบนปุ่มจะเป็นของเก่า
     goMenuCheck();
   } catch (e) {

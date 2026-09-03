@@ -28,6 +28,7 @@ import {
   applyMenuForEmployee,
   configuredMenus,
   excludedList,
+  excludedReady,
   knownLineUserCount,
   knownLineUserIds,
   planRichMenus,
@@ -147,6 +148,7 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
         return r.ok ? { ok: true as const, firstPage: r.data.ids.length, more: r.data.next !== null } : r;
       })(),
       lastApply: await lastApplied(),
+      excludedReady: await excludedReady(),
       excluded: await excludedList(),
       mine,
     });
@@ -233,9 +235,19 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       const id = (body.employeeId ?? "").trim();
       if (!id) throw new HttpError(400, "ไม่ได้ระบุพนักงาน");
       const done = await unlinkRichMenuForEmployee(id, s.employee!.id);
-      console.log("[richmenu] ถอดเมนูรายคน", id, done, "บัญชี โดย", s.employee!.employee_code);
-      if (done === 0) throw new HttpError(409, "คนนี้ยังไม่ได้ผูกบัญชีไลน์ จึงไม่มีเมนูให้ถอด", "no_line");
-      return json({ ok: true, unlinked: done, excluded: true });
+      console.log("[richmenu] ถอดเมนูรายคน", id, done.unlinked, "บัญชี โดย", s.employee!.employee_code);
+      if (done.unlinked === 0) {
+        throw new HttpError(409, "คนนี้ยังไม่ได้ผูกบัญชีไลน์ จึงไม่มีเมนูให้ถอด", "no_line");
+      }
+      // เมนูตั้งต้นของ OA ใช้กับทุกคนที่ไม่มีเมนูรายคน = คนที่เพิ่งถอดจะเห็นใบนั้นแทนทันที
+      // ต้องบอกกลับไปให้หน้าจอเตือน ไม่งั้นคนกดจะคิดว่าปุ่มเสีย ทั้งที่ถอดสำเร็จแล้วจริง ๆ
+      const defNow = await defaultRichMenuId();
+      return json({
+        ok: true,
+        unlinked: done.unlinked,
+        excluded: done.remembered,
+        defaultMenu: defNow.ok ? defNow.data : null,
+      });
     }
 
     // ตั้งเมนูหลักให้คนเดียว — และเอาชื่อออกจากรายชื่อที่ถูกถอด ถ้าเคยถูกถอดไว้
