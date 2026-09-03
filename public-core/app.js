@@ -1141,6 +1141,10 @@ function renderMenuStatus(r) {
     <p class="hintnote">คนที่ถูกถอดจะถูกผูก<b>เมนูว่างเปล่า</b> กางออกมาแล้วไม่มีอะไรเลย
       และปุ่มข้อ 1 จะข้ามคนนี้ไปตลอดจนกว่าจะกดข้อ 2 คืนให้</p>
 
+    <button class="send" id="menu-table" style="margin-top:14px"${r.ready ? "" : " disabled"}>4 · ดูตารางเมนูรายคน</button>
+    <p class="hintnote">รายชื่อทุกบัญชีที่ระบบรู้จัก พร้อมบอกว่า<b>ตอนนี้ผูกเมนูใบไหนอยู่จริง</b>
+      และกดเปลี่ยนหรือถอดได้ทีละคนจากในตารางเลย</p>
+
     ${blank.exists
       ? ""
       : `<button class="send" id="menu-blank" style="margin-top:14px">สร้างเมนูว่างเปล่า</button>
@@ -1151,6 +1155,198 @@ function renderMenuStatus(r) {
       ? `<button class="ghost" id="menu-cleardef" style="margin-top:14px">ถอดเมนูตั้งต้นของ OA</button>
          <p class="hintnote">ใช้เมื่อต้องการให้การถอดเมนูรายคนมีผลจริง ๆ · แลกกับการที่คนซึ่งระบบยังไม่รู้จักจะไม่มีเมนู</p>`
       : ""}`;
+}
+
+/* ───────── ตารางเมนูรายคน ─────────
+ *
+ * คำถามที่ถามบ่อยกว่าภาพรวมคือรายคน — "คนนี้ตอนนี้เห็นเมนูอะไรอยู่" ซึ่งเดิมตอบไม่ได้เลย
+ * นอกจากไปเปิดไลน์ของคนนั้นดูเอง หน้านี้จึงถาม LINE ทีละคนแล้ววางเทียบกับใบที่ควรได้
+ *
+ * โหลดทีละหน้าเพราะ Worker ยิงคำขอย่อยได้จำกัด และวาดทันทีที่แต่ละหน้ามาถึง
+ * ไม่ต้องรอครบทั้งองค์กรก่อนค่อยเห็นอะไร
+ */
+let mtRows = [];
+let mtNames = {};
+let mtFilter = "all";
+let mtLoading = false;
+let mtToken = 0;
+let mtTotal = 0;
+let mtLineError = null;
+
+async function goMenuTable() {
+  setTab("me");
+  show("s-mtable");
+  mtRows = [];
+  mtNames = {};
+  mtFilter = "all";
+  mtTotal = 0;
+  mtLineError = null;
+  $("#mt-q").value = "";
+  $$("#mt-chips .mchip").forEach((b) => b.classList.toggle("on", b.dataset.filter === "all"));
+  $("#mt-list").innerHTML = '<p class="hintnote">กำลังโหลด...</p>';
+  $("#mt-head").innerHTML = "";
+  loadMenuTable();
+}
+
+async function loadMenuTable() {
+  // ทุกครั้งที่เปิดหน้าใหม่ ต้องทิ้งผลของรอบก่อนที่ยังวิ่งอยู่ ไม่งั้นแถวเก่าจะไหลมาปนกับรอบใหม่
+  const mine = ++mtToken;
+  mtLoading = true;
+  let after = "";
+  let guard = 0;
+
+  try {
+    for (;;) {
+      const r = await api("/api/admin/richmenu/people?after=" + encodeURIComponent(after));
+      if (mine !== mtToken) return;
+      mtRows = mtRows.concat(r.rows || []);
+      mtNames = { ...mtNames, ...(r.menuNames || {}) };
+      mtTotal = r.total || 0;
+      if (r.lineError) mtLineError = r.lineError;
+      renderMenuTable(true);
+      if (!r.next || ++guard > 60) break;
+      after = r.next;
+    }
+  } catch (e) {
+    if (mine !== mtToken) return;
+    $("#mt-list").innerHTML = `<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message || "")}</div>`;
+    mtLoading = false;
+    return;
+  }
+  mtLoading = false;
+  renderMenuTable(false);
+}
+
+/** ใบที่ผูกอยู่ตรงกับใบที่ควรได้ไหม — null = ยังไม่ได้ถาม LINE จึงยังตัดสินไม่ได้ */
+function mtMatches(row) {
+  if (!row.asked) return null;
+  return (row.now || null) === (row.want || null);
+}
+
+function mtVisible(row, q) {
+  if (q) {
+    const hay = [row.name, row.employeeName, row.code, row.lineUserId].join(" ").toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  if (mtFilter === "wrong") return mtMatches(row) === false;
+  if (mtFilter === "none") return row.asked && !row.now;
+  if (mtFilter === "unreg") return row.employeeId === null;
+  if (mtFilter === "off") return row.excluded || (row.status !== null && row.status !== "active");
+  return true;
+}
+
+function mtMenuTag(row) {
+  if (!row.asked) return '<span class="itag skip">กำลังตรวจ…</span>';
+  const same = mtMatches(row);
+  const name = row.now ? mtNames[row.now] || "ไม่ทราบชื่อเมนู" : "ไม่มีเมนู";
+  return `<span class="itag ${same ? "ok" : "bad"}">${esc(name)}</span>`;
+}
+
+/** เหตุผลว่าทำไมแถวนี้ถึงไม่ตรง — บอกใบที่ควรได้ ไม่ใช่บอกแค่ว่าผิด */
+function mtWhy(row) {
+  if (mtMatches(row) !== false) return "";
+  const want = row.want ? mtNames[row.want] || row.want : "ไม่มีเมนู";
+  return `<div class="msub">ควรได้ <b>${esc(want)}</b></div>`;
+}
+
+function mtWho(row) {
+  if (row.employeeId === null) {
+    return '<div class="msub">ยังไม่ได้ลงทะเบียน — ไม่มีในทะเบียนพนักงาน</div>';
+  }
+  const state = row.status === "active" ? "" : " · ถูกระงับหรือลาออก";
+  return `<div class="msub">${esc(row.code || "")} · ${esc(row.employeeName || "")}${state}</div>`;
+}
+
+function renderMenuTable(loading) {
+  const total = mtTotal, lineError = mtLineError;
+  const q = $("#mt-q").value.trim().toLowerCase();
+  const shown = mtRows.filter((r) => mtVisible(r, q));
+
+  const wrong = mtRows.filter((r) => mtMatches(r) === false).length;
+  $("#mt-head").innerHTML = `
+    <p class="pagenote">
+      ตรวจแล้ว <b>${mtRows.length}</b> จาก <b>${total}</b> บัญชีที่ระบบรู้จัก${loading ? " · กำลังโหลดต่อ..." : ""}<br>
+      ${wrong > 0
+        ? `พบ <b>${wrong}</b> บัญชีที่เมนูไม่ตรงกับที่ควรได้`
+        : mtRows.length > 0 && !loading ? "ทุกบัญชีที่ตรวจแล้วตรงกับที่ควรได้" : ""}
+    </p>
+    ${lineError ? `<p class="hintnote">ถาม LINE ไม่ได้: ${esc(lineError)}</p>` : ""}
+    <details class="fold">
+      <summary>ตารางนี้นับใครบ้าง<span class="fsum">คนที่ลงทะเบียนแล้ว + คนที่เคยทักแชท</span></summary>
+      <div class="fbody">
+        <p class="hintnote" style="margin:0">ตารางนี้คือ<b>ทุกคนที่ระบบรู้จัก</b> คือคนที่ลงทะเบียนแล้ว
+          รวมกับคนที่เคยทักแชทหรือแอดเพื่อนเข้ามา<br><br>
+          คนที่แอดไว้แต่<b>ไม่เคยทักเลยสักครั้ง</b> จะยังไม่โผล่ที่นี่ เพราะบัญชีไลน์ของบริษัท
+          ยังไม่ผ่านการยืนยัน จึงขอรายชื่อเพื่อนทั้งหมดจาก LINE ไม่ได้ · คนกลุ่มนี้ได้เมนูหลัก
+          ผ่านเมนูตั้งต้นของ OA อยู่แล้ว และจะโผล่มาเองทันทีที่ทักมาครั้งแรก</p>
+      </div>
+    </details>`;
+
+  if (shown.length === 0) {
+    $("#mt-list").innerHTML = loading
+      ? '<p class="hintnote">กำลังโหลด...</p>'
+      : '<div class="empty">ไม่มีบัญชีที่ตรงกับที่ค้น</div>';
+    return;
+  }
+
+  $("#mt-list").innerHTML = shown
+    .map((r) => {
+      const nameless = !r.name;
+      const label = r.name || (r.gone ? "ไม่ได้เป็นเพื่อนกับ OA แล้ว" : "ไม่มีชื่อในไลน์");
+      return `<div class="mrow${r.excluded ? " off" : ""}" data-uid="${esc(r.lineUserId)}">
+        <div class="mtop">
+          <div class="mnm${nameless ? " nameless" : ""}">${esc(label)}</div>
+          ${mtMenuTag(r)}
+        </div>
+        ${mtWho(r)}
+        ${r.excluded ? '<div class="msub">ถูกถอดเมนูไว้ — ปุ่มข้อ 1 จะข้ามบัญชีนี้</div>' : ""}
+        ${mtWhy(r)}
+        <div class="muid">
+          <span class="mono">${esc(r.lineUserId)}</span>
+          <button class="copybtn" data-copy="${esc(r.lineUserId)}">คัดลอก</button>
+        </div>
+        <div class="mact">
+          <button data-mt-apply="${esc(r.lineUserId)}">ตั้งเมนูหลัก</button>
+          <button class="warn" data-mt-unlink="${esc(r.lineUserId)}">ถอดเมนู</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+/**
+ * สั่งงานจากในตาราง — ไม่ถามยืนยันเพราะกดผิดแล้วกดอีกปุ่มกลับได้ทันทีในแถวเดียวกัน
+ * และอัปเดตเฉพาะแถวนั้น ไม่โหลดใหม่ทั้งตาราง เพราะโหลดใหม่ทีหนึ่งคือถาม LINE ใหม่ทุกคน
+ */
+async function mtAct(lineUserId, apply) {
+  const row = $(`.mrow[data-uid="${CSS.escape(lineUserId)}"]`);
+  if (row) $$("button", row).forEach((b) => (b.disabled = true));
+  try {
+    await api("/api/admin/richmenu", {
+      method: "POST",
+      body: { action: apply ? "apply_one" : "unlink", lineUserId },
+    });
+    const rec = mtRows.find((x) => x.lineUserId === lineUserId);
+    if (rec) {
+      // เดาผลไม่ได้ ต้องถามใหม่ว่าตอนนี้ผูกใบไหน — แต่ถามแค่แถวนี้แถวเดียว
+      rec.excluded = !apply;
+      const fresh = await api("/api/admin/richmenu/people?menus=1&after=" +
+        encodeURIComponent(prevOf(lineUserId)));
+      const got = (fresh.rows || []).find((x) => x.lineUserId === lineUserId);
+      if (got) Object.assign(rec, got);
+      mtNames = { ...mtNames, ...(fresh.menuNames || {}) };
+    }
+    toast(apply ? "ตั้งเมนูหลักให้แล้ว" : "ถอดเมนูแล้ว");
+  } catch (e) {
+    toast(e.message || "สั่งไม่สำเร็จ");
+  }
+  renderMenuTable(mtLoading);
+}
+
+/** รหัสก่อนหน้าตัวนี้ — ใช้เป็นจุดเริ่มขอข้อมูลเฉพาะแถวเดียวกลับมา */
+function prevOf(lineUserId) {
+  const i = mtRows.findIndex((x) => x.lineUserId === lineUserId);
+  return i > 0 ? mtRows[i - 1].lineUserId : "";
 }
 
 /**
@@ -2235,6 +2431,25 @@ function bind() {
     const row = e.target.closest("[data-follower]");
     if (row) linkFollower(row.dataset.follower);
   });
+  // ── ตารางเมนูรายคน ──
+  $("#mt-back").onclick = goMenuCheck;
+  $("#mt-q").oninput = debounce(() => renderMenuTable(mtLoading), 200);
+  $("#mt-chips").addEventListener("click", (e) => {
+    const chip = e.target.closest(".mchip");
+    if (!chip) return;
+    mtFilter = chip.dataset.filter;
+    $$("#mt-chips .mchip").forEach((b) => b.classList.toggle("on", b === chip));
+    renderMenuTable(mtLoading);
+  });
+  $("#mt-list").addEventListener("click", (e) => {
+    const copy = e.target.closest("[data-copy]");
+    if (copy) return copyText(copy.dataset.copy, copy);
+    const apply = e.target.closest("[data-mt-apply]");
+    if (apply) return mtAct(apply.dataset.mtApply, true);
+    const off = e.target.closest("[data-mt-unlink]");
+    if (off) return mtAct(off.dataset.mtUnlink, false);
+  });
+
   $("#roles-cancel").onclick = closeRolesFinder;
   $("#roles-q").oninput = (e) => {
     clearTimeout(rolesFindTimer);
@@ -2297,6 +2512,7 @@ function bind() {
     if (e.target.closest("#menu-apply")) applyRichMenus();
     if (e.target.closest("#menu-apply-one")) openMenuEmpFinder("apply");
     if (e.target.closest("#menu-unlink")) openMenuEmpFinder("unlink");
+    if (e.target.closest("#menu-table")) goMenuTable();
     if (e.target.closest("#menu-cleardef")) clearDefaultMenu();
     if (e.target.closest("#menu-blank")) makeBlankMenu();
     const kill = e.target.closest("[data-killmenu]");

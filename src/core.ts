@@ -29,6 +29,7 @@ import {
 } from "./api/admin-followers";
 import adminRichMenuPlan from "./api/admin-richmenu-plan";
 import { richMenuApply, richMenuStatus } from "./api/admin-richmenu";
+import { richMenuPeople } from "./api/admin-richmenu-people";
 import adminEmployeeCreate from "./api/admin-employee-create";
 import adminEmployeeSuspend from "./api/admin-employee-suspend";
 import adminEmployeeUnlink from "./api/admin-employee-unlink";
@@ -77,6 +78,10 @@ function route(pathname: string, method: string): Handler | null {
   }
   if (seg[1] === "admin" && seg[2] === "richmenu" && seg[3] === "plan" && seg.length === 4) {
     return method === "POST" ? adminRichMenuPlan : null;
+  }
+  // /api/admin/richmenu/people — ตารางรายคน ว่าใครผูกเมนูใบไหนอยู่ตอนนี้
+  if (seg[1] === "admin" && seg[2] === "richmenu" && seg[3] === "people" && seg.length === 4) {
+    return method === "GET" ? richMenuPeople : null;
   }
 
   // /api/admin/admins — ใครถือสิทธิ์อะไรอยู่บ้าง (อ่านอย่างเดียว การแก้ไปที่ employees/:id/departments)
