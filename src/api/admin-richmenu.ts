@@ -31,6 +31,8 @@ import {
   forgetBlankMenu,
   rememberBlankMenu,
   applyMenuForEmployee,
+  applyMenuForLineUser,
+  unlinkMenuForLineUser,
   configuredMenus,
   excludedList,
   excludedReady,
@@ -48,6 +50,9 @@ import {
  * ใช้หนึ่งครั้งต่อคน เผื่อไว้ให้เหลือสำหรับคำขอฐานข้อมูลด้วย หน้าจอเป็นคนวนเรียกซ้ำเอง
  */
 const BATCH = 25;
+
+/** userId ของไลน์ — ตัว U ตามด้วยเลขฐานสิบหก 32 ตัว · กันพิมพ์ผิดก่อนยิงไป LINE */
+const LINE_USER_ID_RE = /^U[0-9a-f]{32}$/i;
 
 /**
  * บันทึกว่าไล่ตั้งเมนูครั้งล่าสุดเมื่อไหร่ โดยใคร
@@ -179,7 +184,8 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
     }
 
     const body = await readJson<{
-      after?: string; action?: string; employeeId?: string; start?: string; richMenuId?: string;
+      after?: string; action?: string; employeeId?: string; start?: string;
+      richMenuId?: string; lineUserId?: string;
     }>(req);
     const after = typeof body.after === "string" ? body.after : "";
 
@@ -268,6 +274,15 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
 
     // ถอดเมนูของพนักงานคนหนึ่ง — ใช้ตอนอยากให้คนคนนั้นไม่มีเมนูเป็นการเฉพาะ
     if (body.action === "unlink") {
+      // สั่งด้วย userId ตรง ๆ ได้ สำหรับคนที่ยังไม่ได้ลงทะเบียน จึงค้นในทะเบียนพนักงานไม่เจอ
+      const uid = (body.lineUserId ?? "").trim();
+      if (uid) {
+        if (!LINE_USER_ID_RE.test(uid)) throw new HttpError(400, "รูปแบบ LINE userId ไม่ถูกต้อง", "bad_user_id");
+        const done = await unlinkMenuForLineUser(uid, s.employee!.id);
+        console.log("[richmenu] ถอดเมนูด้วย userId", uid, done ? "สำเร็จ" : "ไม่สำเร็จ", "โดย", s.employee!.employee_code);
+        if (!done) throw new HttpError(502, "สั่ง LINE ถอดเมนูไม่สำเร็จ", "line_down");
+        return json({ ok: true, unlinked: 1, excluded: await excludedReady() });
+      }
       const id = (body.employeeId ?? "").trim();
       if (!id) throw new HttpError(400, "ไม่ได้ระบุพนักงาน");
       const done = await unlinkRichMenuForEmployee(id, s.employee!.id);
@@ -280,6 +295,14 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
 
     // ตั้งเมนูหลักให้คนเดียว — และเอาชื่อออกจากรายชื่อที่ถูกถอด ถ้าเคยถูกถอดไว้
     if (body.action === "apply_one") {
+      const uid = (body.lineUserId ?? "").trim();
+      if (uid) {
+        if (!LINE_USER_ID_RE.test(uid)) throw new HttpError(400, "รูปแบบ LINE userId ไม่ถูกต้อง", "bad_user_id");
+        const done = await applyMenuForLineUser(uid);
+        console.log("[richmenu] ตั้งเมนูด้วย userId", uid, done ? "สำเร็จ" : "ไม่สำเร็จ", "โดย", s.employee!.employee_code);
+        if (!done) throw new HttpError(502, "สั่ง LINE ตั้งเมนูไม่สำเร็จ", "line_down");
+        return json({ ok: true, applied: 1 });
+      }
       const id = (body.employeeId ?? "").trim();
       if (!id) throw new HttpError(400, "ไม่ได้ระบุพนักงาน");
       const r = await applyMenuForEmployee(id);

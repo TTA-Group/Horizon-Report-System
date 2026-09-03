@@ -1378,11 +1378,32 @@ function openMenuEmpFinder(mode) {
   setTimeout(() => $("#menu-emp-q").focus(), 50);
 }
 
+/** userId ของไลน์ — ตัว U ตามด้วยเลขฐานสิบหก 32 ตัว ต้องตรงกับที่ฝั่งเซิร์ฟเวอร์ตรวจ */
+const LINE_UID_RE = /^U[0-9a-f]{32}$/i;
+
 async function searchMenuUnlinkTarget(q) {
-  if (q.trim().length < 2) {
-    $("#menu-emp-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
+  const t = q.trim();
+  if (t.length < 2) {
+    $("#menu-emp-hits").innerHTML = '<div class="empty">พิมพ์อย่างน้อย 2 ตัวอักษร หรือวาง LINE userId</div>';
     return;
   }
+
+  // วาง userId มาตรง ๆ ได้ — คนที่ยังไม่ได้ลงทะเบียนไม่มีชื่อในทะเบียนพนักงาน จึงค้นด้วยชื่อไม่เจอ
+  // แต่ผู้ดูแลมี userId อยู่แล้วจากหน้าผูกบัญชีและจากรายชื่อคนที่ถูกถอด (มีปุ่มคัดลอกให้)
+  if (t.startsWith("U") && t.length > 20) {
+    $("#menu-emp-hits").innerHTML = LINE_UID_RE.test(t)
+      ? `<div class="plist"><div class="prow" data-unlink-uid="${esc(t)}">
+           <div class="pw">
+             <div class="pnm">ใช้ LINE userId นี้เลย</div>
+             <div class="psub mono">${esc(t)}</div>
+           </div>
+         </div></div>
+         <p class="hintnote">สั่งไปที่บัญชีไลน์นี้ตรง ๆ ไม่ต้องมีชื่อในทะเบียนพนักงาน</p>`
+      : `<div class="empty">รูปแบบ userId ไม่ถูกต้อง<br>
+           ต้องเป็นตัว U ตามด้วยตัวเลขและตัวอักษร a-f รวม 32 ตัว</div>`;
+    return;
+  }
+
   try {
     // ไม่กรองเฉพาะคนที่ยังทำงานอยู่ เพราะเหตุผลที่ต้องถอดเมนูมักเป็นคนที่ลาออกไปแล้ว
     const r = await api("/api/admin/employees?q=" + encodeURIComponent(q.trim()));
@@ -1401,21 +1422,25 @@ async function searchMenuUnlinkTarget(q) {
             </div>`,
           )
           .join("")}</div>`
-      : '<div class="empty">ไม่พบพนักงานที่ตรงกับที่ค้น</div>';
+      : '<div class="empty">ไม่พบพนักงานที่ตรงกับที่ค้น<br>ถ้าคนนี้ยังไม่ได้ลงทะเบียน ให้วาง LINE userId แทน</div>';
   } catch (e) {
     $("#menu-emp-hits").innerHTML = `<div class="empty">${esc(e.message || "ค้นหาไม่สำเร็จ")}</div>`;
   }
 }
 
-async function menuActFor(employeeId, name) {
+async function menuActFor(target, name) {
   const apply = menuEmpMode === "apply";
+  // สั่งด้วย userId ชื่อที่โชว์จะเป็นรหัสยาว 33 ตัว ใส่ในหัวข้อแล้วอ่านไม่ออก
+  // ย้ายไปไว้บรรทัดแรกของเนื้อความแทน หัวข้อจึงสั้นและบอกว่ากำลังทำอะไร
+  const byUid = Boolean(target.lineUserId);
+  const head = byUid ? "บัญชีไลน์นี้" : name;
   const ok = await confirmDialog({
-    title: apply ? `ตั้งเมนูหลักให้ ${name}?` : `ถอดเมนูของ ${name}?`,
-    message: apply
+    title: apply ? `ตั้งเมนูหลักให้ ${head}?` : `ถอดเมนูของ ${head}?`,
+    message: (byUid ? `${target.lineUserId}\n\n` : "") + (apply
       ? "คนนี้จะได้เมนูหลักทันที และถ้าเคยถูกถอดไว้ จะถูกเอาออกจากรายการที่ถอดด้วย " +
         "ปุ่มเปลี่ยนให้ทุกคนจะนับคนนี้ตามปกติอีกครั้ง"
-      : "คนนี้จะไม่เห็นเมนูอะไรเลย จอด้านล่างห้องแชทว่างเปล่า และปุ่มข้อ 1 จะข้ามคนนี้ไปตลอด " +
-        "จนกว่าจะกดปุ่ม “เปลี่ยนให้เฉพาะคน” คืนให้ · เรื่องที่เคยแจ้งและคิวที่จองไว้ยังอยู่ครบ",
+      : "คนนี้จะถูกผูกเมนูว่างเปล่า กางออกมาแล้วไม่มีอะไรเลย และปุ่มข้อ 1 จะข้ามคนนี้ไปตลอด " +
+        "จนกว่าจะกดปุ่ม “เปลี่ยนให้เฉพาะคน” คืนให้ · เรื่องที่เคยแจ้งและคิวที่จองไว้ยังอยู่ครบ"),
     confirmLabel: apply ? "ตั้งเมนูให้" : "ถอดเมนู",
     cancelLabel: "ไม่ใช่",
   });
@@ -1423,7 +1448,7 @@ async function menuActFor(employeeId, name) {
   try {
     const r = await api("/api/admin/richmenu", {
       method: "POST",
-      body: { action: apply ? "apply_one" : "unlink", employeeId },
+      body: { action: apply ? "apply_one" : "unlink", ...target },
     });
     $("#menu-find-emp").style.display = "none";
     if (!apply && r && r.excluded === false) {
@@ -1436,7 +1461,7 @@ async function menuActFor(employeeId, name) {
         cancelLabel: "ปิด",
       });
     } else {
-      toast(apply ? `ตั้งเมนูให้ ${name} แล้ว` : `ถอดเมนูของ ${name} แล้ว`);
+      toast(apply ? `ตั้งเมนูให้ ${head} แล้ว` : `ถอดเมนูของ ${head} แล้ว`);
     }
     // โหลดผลตรวจใหม่ ไม่งั้นรายชื่อคนที่ถูกถอดกับตัวเลขบนปุ่มจะเป็นของเก่า
     goMenuCheck();
@@ -2291,7 +2316,10 @@ function bind() {
   $("#menu-emp-q").oninput = debounce(() => searchMenuUnlinkTarget($("#menu-emp-q").value), 300);
   $("#menu-emp-hits").addEventListener("click", (e) => {
     const row = e.target.closest("[data-unlink-emp]");
-    if (row) menuActFor(row.dataset.unlinkEmp, row.dataset.name);
+    if (row) return menuActFor({ employeeId: row.dataset.unlinkEmp }, row.dataset.name);
+    // แถวที่มาจากการวาง userId — ไม่มีชื่อให้แสดง ใช้ userId เป็นชื่อไปเลย
+    const uid = e.target.closest("[data-unlink-uid]");
+    if (uid) return menuActFor({ lineUserId: uid.dataset.unlinkUid }, uid.dataset.unlinkUid);
   });
   $("#n-cancel").onclick = closeEmpForm;
   $("#n-save").onclick = saveEmployee;

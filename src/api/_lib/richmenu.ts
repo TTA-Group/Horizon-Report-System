@@ -249,6 +249,48 @@ async function forgetExcluded(lineUserIds: string[]): Promise<void> {
 }
 
 /**
+ * ตั้งเมนูหลัก / ถอดเมนู ให้บัญชีไลน์ตรง ๆ ด้วย userId
+ *
+ * มีเพราะคนที่ยังไม่เคยลงทะเบียนไม่มีชื่ออยู่ในทะเบียนพนักงาน จึงค้นด้วยชื่อหรือรหัสไม่เจอ
+ * แต่ผู้ดูแลมี userId อยู่แล้ว (คัดลอกได้จากหน้าผูกบัญชีและจากรายชื่อคนที่ถูกถอด)
+ *
+ * ไม่ต้องมีแถวใน line_accounts ก็สั่งได้ — สั่งไปที่ LINE ตรง ๆ
+ */
+export async function applyMenuForLineUser(lineUserId: string): Promise<boolean> {
+  const m = menus();
+  if (!m) return false;
+  let ok = false;
+  try {
+    ok = await linkRichMenu(lineUserId, m.member);
+  } catch (e) {
+    console.error("[richmenu] ตั้งเมนูให้ userId ไม่สำเร็จ", lineUserId, e);
+  }
+  if (ok) await forgetExcluded([lineUserId]);
+  return ok;
+}
+
+export async function unlinkMenuForLineUser(
+  lineUserId: string,
+  byEmployeeId: string,
+): Promise<boolean> {
+  let ok = false;
+  try {
+    ok = await denyMenu(lineUserId);
+  } catch (e) {
+    console.error("[richmenu] ถอดเมนูของ userId ไม่สำเร็จ", lineUserId, e);
+  }
+  if (ok && (await excludedReady())) {
+    // ผูกกับพนักงานถ้ารู้ว่าเป็นใคร ไม่รู้ก็จดแค่ userId — คนกลุ่มนี้มักยังไม่ได้ลงทะเบียน
+    const rows = await db()<{ employee_id: string }[]>`
+      SELECT employee_id FROM line_accounts
+      WHERE line_user_id = ${lineUserId} AND channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
+    `;
+    await rememberExcluded([lineUserId], rows[0]?.employee_id ?? null, byEmployeeId);
+  }
+  return ok;
+}
+
+/**
  * ตั้งเมนูหลักให้พนักงานคนเดียว — ปุ่ม "เปลี่ยนเฉพาะบุคคล"
  *
  * เอาชื่อออกจากรายชื่อที่ถูกถอดด้วย เพราะการสั่งตั้งเมนูให้คนคนนี้โดยตรง
