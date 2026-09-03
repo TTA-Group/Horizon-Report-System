@@ -31,11 +31,24 @@ export default async (req: Request): Promise<Response> =>
 
     const sql = db();
 
-    const found = await sql<{ id: string }[]>`
-      SELECT id FROM employees WHERE employee_code = ${code} LIMIT 1
+    const found = await sql<{ id: string; status: string }[]>`
+      SELECT id, status FROM employees WHERE employee_code = ${code} LIMIT 1
     `;
     if (found.length === 0) throw new HttpError(404, NOT_IN_DIRECTORY);
     const employeeId = found[0].id;
+
+    // คนที่ลาออกหรือถูกระงับสิทธิ์ ผูกบัญชีใหม่ไม่ได้
+    //
+    // สำคัญขึ้นมากตั้งแต่ OA มีเมนูตั้งต้น เพราะคนกลุ่มนี้ถูกผูก "เมนูลงทะเบียน" ไว้เป็นรายคน
+    // (ถอดเมนูเฉย ๆ ไม่ได้แล้ว จะตกไปได้เมนูหลักแทน) ปุ่มลงทะเบียนจึงอยู่ตรงหน้าเขาตลอด
+    // ถ้าไม่กันตรงนี้ กดแล้วผูกสำเร็จ สถานะจะกลายเป็น "ผูกแล้ว" แล้วได้เมนูหลักกลับไปทันที
+    if (found[0].status === "suspended") {
+      throw new HttpError(
+        409,
+        "รหัสพนักงานนี้ถูกระงับสิทธิ์อยู่ กรุณาติดต่อฝ่ายทรัพยากรบุคคล",
+        "suspended",
+      );
+    }
 
     const already = await sql`
       SELECT 1 FROM line_accounts

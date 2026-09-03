@@ -3,10 +3,19 @@
 // กติกาที่ตกลงกันไว้
 //   ยังไม่ผูกรหัสพนักงาน  = เมนูที่มีปุ่มลงทะเบียน (RICHMENU_NEW_ID)
 //   ผูกแล้ว ยังทำงานอยู่   = เมนูใช้งานปกติ ไม่มีปุ่มลงทะเบียน (RICHMENU_MEMBER_ID)
-//   ลาออกหรือถูกระงับสิทธิ์ = ไม่มีเมนูเลย
+//   ลาออกหรือถูกระงับสิทธิ์ = เมนูที่มีปุ่มลงทะเบียน (ไม่ใช่ "ไม่มีเมนู" — ดูเหตุผลข้างล่าง)
 //
-// **ห้ามตั้ง default rich menu ที่ LINE** ไม่งั้นคนที่ถูกถอดเมนูจะตกกลับไปเห็นเมนูตั้งต้นทันที
-// ซึ่งเป็นเมนูที่มีปุ่มลงทะเบียน = คนที่ลาออกไปแล้วจะกดลงทะเบียนใหม่ได้
+// เมนูตั้งต้นของ OA ตั้งเป็น "เมนูหลัก" ไว้ เพื่อให้พนักงานเก่าที่เป็นเพื่อนอยู่แล้วแต่ระบบ
+// มองไม่เห็น (ไม่เคยทักแชท ไม่เคยลงทะเบียน) ได้เมนูหลักด้วย — เป็นทางเดียวที่ไปถึงคนกลุ่มนี้
+// เพราะการขอรายชื่อเพื่อนทั้งหมดต้องเป็นบัญชีที่ผ่านการยืนยันเท่านั้น
+//
+// ผลที่ตามมาซึ่งต้องรู้ให้ชัด: **"ไม่มีเมนูผูกไว้" = "ได้เมนูหลัก"** เมื่อมีเมนูตั้งต้น
+// การถอดเมนูออกเฉย ๆ จึงไม่ได้แปลว่าไม่มีเมนู แต่แปลว่าได้เมนูหลักแทน ซึ่งตรงข้ามกับที่ต้องการ
+// คนที่ไม่ควรได้เมนูหลักจึงต้อง **ผูกเมนูลงทะเบียนไว้เป็นรายคน** ไม่ใช่ถอดออก
+// เมนูรายคนชนะเมนูตั้งต้นเสมอ นี่คือกลไกเดียวที่กันได้จริง
+//
+// คนที่เพิ่งแอดเพื่อนเข้ามาใหม่ ตัวรับ webhook ผูกเมนูลงทะเบียนให้เป็นรายคนอยู่แล้ว
+// (handleFollow -> syncRichMenu) จึงได้เมนูลงทะเบียนถูกต้อง ไม่ตกไปใช้เมนูตั้งต้น
 //
 // ทุกฟังก์ชันในไฟล์นี้ "ห้ามโยน error ออกไป" — การสลับเมนูเป็นงานเสริมที่เกิดหลังจาก
 // งานหลักบันทึกลงฐานข้อมูลไปแล้ว ถ้าปล่อยให้ล้มตาม ผู้ใช้จะเห็นว่าลงทะเบียนไม่สำเร็จ
@@ -44,9 +53,13 @@ function decide(
   userId: string,
   status: string | null,
 ): MenuPlan {
-  if (status === null) return { userId, action: "link", richMenuId: m.fresh };
   if (status === "active") return { userId, action: "link", richMenuId: m.member };
-  return { userId, action: "unlink", richMenuId: null };
+  // ทั้งคนที่ยังไม่ผูกรหัส และคนที่ลาออก/ถูกระงับ ได้เมนูลงทะเบียนเหมือนกัน
+  //
+  // คนที่ถูกระงับเคยถูก "ถอดเมนู" ให้ไม่มีเมนูเลย แต่พอ OA มีเมนูตั้งต้นเป็นเมนูหลัก
+  // การถอดกลายเป็นการยกเมนูหลักให้ ซึ่งตรงข้ามกับเจตนา จึงต้องผูกเมนูลงทะเบียนทับไว้
+  // ฝั่งลงทะเบียนกันคนที่ถูกระงับไม่ให้ผูกบัญชีใหม่อยู่แล้ว เมนูนี้จึงกดไปก็ไม่ได้อะไร
+  return { userId, action: "link", richMenuId: m.fresh };
 }
 
 /** สถานะพนักงานของบัญชีไลน์เหล่านี้ — ไม่มีในผลลัพธ์ = ยังไม่ได้ผูกรหัสพนักงาน */
@@ -340,14 +353,16 @@ export async function applyMainMenu(lineUserIds: string[]): Promise<ApplyOutcome
   const found = await statusOf(lineUserIds);
   const out: ApplyOutcome[] = [];
   for (const id of lineUserIds) {
-    const suspended = found.get(id) === "suspended";
+    // คนที่ถูกระงับสิทธิ์ได้เมนูลงทะเบียน ไม่ใช่ถูกถอดเมนู — ถอดแล้วจะตกไปได้เมนูตั้งต้น
+    // ซึ่งคือเมนูหลัก เท่ากับยกสิทธิ์ให้คนที่เพิ่งถูกระงับ
+    const want = found.get(id) === "suspended" ? m.fresh : m.member;
     let ok = false;
     try {
-      ok = suspended ? await unlinkRichMenu(id) : await linkRichMenu(id, m.member);
+      ok = await linkRichMenu(id, want);
     } catch (e) {
       console.error("[richmenu] ตั้งเมนูหลักไม่สำเร็จ", id, e);
     }
-    out.push({ userId: id, action: suspended ? "unlink" : "link", richMenuId: suspended ? null : m.member, ok });
+    out.push({ userId: id, action: "link", richMenuId: want, ok });
   }
   return out;
 }
@@ -366,12 +381,17 @@ export async function unlinkRichMenuForEmployee(
     SELECT line_user_id FROM line_accounts
     WHERE employee_id = ${employeeId} AND channel_key = ANY(${CHANNEL_KEYS_READ})
   `;
+  // ผูก "เมนูลงทะเบียน" ทับไว้ ไม่ใช่ถอดเมนูออก
+  //
+  // ถอดออกแล้ว LINE จะเอาเมนูตั้งต้นของ OA (= เมนูหลัก) มาแสดงแทนทันที เท่ากับไม่ได้ถอดอะไรเลย
+  // นี่คือสาเหตุที่ผู้ใช้รายงานว่า "กดถอดแล้วเมนูไม่หาย" — คำสั่งถึง LINE ถูกแล้วแต่ผลตรงข้าม
+  const m = menus();
   const gone: string[] = [];
   for (const r of rows) {
     try {
-      if (await unlinkRichMenu(r.line_user_id)) gone.push(r.line_user_id);
+      if (m && (await linkRichMenu(r.line_user_id, m.fresh))) gone.push(r.line_user_id);
     } catch (e) {
-      console.error("[richmenu] ถอดเมนูไม่สำเร็จ", r.line_user_id, e);
+      console.error("[richmenu] ถอดเมนูหลักไม่สำเร็จ", r.line_user_id, e);
     }
   }
   // จดไว้ ไม่งั้นปุ่ม "เปลี่ยนเมนูให้ทุกคน" รอบหน้าจะคืนเมนูให้คนกลุ่มนี้ทันที

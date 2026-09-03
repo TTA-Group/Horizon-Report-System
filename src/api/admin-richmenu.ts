@@ -239,15 +239,7 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       if (done.unlinked === 0) {
         throw new HttpError(409, "คนนี้ยังไม่ได้ผูกบัญชีไลน์ จึงไม่มีเมนูให้ถอด", "no_line");
       }
-      // เมนูตั้งต้นของ OA ใช้กับทุกคนที่ไม่มีเมนูรายคน = คนที่เพิ่งถอดจะเห็นใบนั้นแทนทันที
-      // ต้องบอกกลับไปให้หน้าจอเตือน ไม่งั้นคนกดจะคิดว่าปุ่มเสีย ทั้งที่ถอดสำเร็จแล้วจริง ๆ
-      const defNow = await defaultRichMenuId();
-      return json({
-        ok: true,
-        unlinked: done.unlinked,
-        excluded: done.remembered,
-        defaultMenu: defNow.ok ? defNow.data : null,
-      });
+      return json({ ok: true, unlinked: done.unlinked, excluded: done.remembered });
     }
 
     // ตั้งเมนูหลักให้คนเดียว — และเอาชื่อออกจากรายชื่อที่ถูกถอด ถ้าเคยถูกถอดไว้
@@ -274,15 +266,14 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
     //
     // ส่วนคนที่มาแอดเพื่อนทีหลัง ตัวรับ webhook จะผูกเมนูลงทะเบียนให้เป็นรายคน
     // ซึ่งชนะเมนูตั้งต้นเสมอ ระบบลงทะเบียนจึงยังทำงานตามเดิมสำหรับคนใหม่
-    // เมนูตั้งต้นของ OA ใช้กับทุกคนที่ "ไม่มีเมนูผูกไว้เป็นรายคน" ซึ่งรวมคนที่เพิ่งถูกถอดด้วย
-    // ตั้งเมนูตั้งต้นเมื่อไหร่ คนที่ถูกถอดจะกลับมาเห็นเมนูทันที = ปุ่มถอดไม่มีผล
-    // สองอย่างนี้อยู่ด้วยกันไม่ได้ จึงตั้งเมนูตั้งต้นเฉพาะตอนไม่มีใครถูกถอดไว้เลย
-    // (หน้าจอบอกเรื่องนี้ไว้ในผลตรวจ พร้อมปุ่มถอดเมนูตั้งต้นให้กดเองถ้าจำเป็น)
-    const anyExcluded = (await excludedList()).length;
-    const asDefault =
-      after === "" && anyExcluded === 0
-        ? await setDefaultRichMenu(configuredMenus()!.member)
-        : null;
+    // ตั้งเมนูหลักเป็นเมนูตั้งต้นของ OA เสมอ
+    //
+    // เมนูตั้งต้นเป็นทางเดียวที่ไปถึง "พนักงานเก่าที่เป็นเพื่อนอยู่แล้วแต่ระบบมองไม่เห็น"
+    // คือคนที่ไม่เคยทักแชทและไม่เคยลงทะเบียน ซึ่งเป็นกลุ่มที่ต้องได้เมนูหลักตามที่ตกลงกันไว้
+    //
+    // ไม่ขัดกับปุ่มถอดอีกแล้ว เพราะคนที่ถูกถอดถูกผูก "เมนูลงทะเบียน" ไว้เป็นรายคน
+    // ซึ่งชนะเมนูตั้งต้นเสมอ (ดู unlinkRichMenuForEmployee ใน _lib/richmenu.ts)
+    const asDefault = after === "" ? await setDefaultRichMenu(configuredMenus()!.member) : null;
 
     const ids = await knownLineUserIds(after, BATCH);
     if (ids.length === 0) {
