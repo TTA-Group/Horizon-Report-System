@@ -304,10 +304,27 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
     // ซึ่งชนะเมนูตั้งต้นเสมอ ระบบลงทะเบียนจึงยังทำงานตามเดิมสำหรับคนใหม่
     // ตั้งเมนูหลักเป็นเมนูตั้งต้นของ OA — ทางเดียวที่ไปถึงพนักงานที่แอดไว้แล้วแต่ไม่เคยทักแชท
     //
-    // ปลอดภัยแล้วเพราะคนที่ไม่ควรเห็นเมนูถูกผูก "เมนูว่างเปล่า" ไว้เป็นรายคน ซึ่งชนะเมนูตั้งต้น
-    // แต่ถ้ายังไม่ได้สร้างเมนูว่าง ตั้งเมนูตั้งต้นไปจะทำให้คนกลุ่มนั้นกลับมาเห็นเมนูหลักทันที
-    // จึงตั้งให้เฉพาะตอนพร้อมจริง ๆ และหน้าตรวจบอกไว้ว่าติดตรงไหน
-    const canDefault = (await blankMenuId()) !== null || (await excludedList()).length === 0;
+    // ปลอดภัยได้เพราะคนที่ไม่ควรเห็นเมนูถูกผูก "เมนูว่างเปล่า" ไว้เป็นรายคน ซึ่งชนะเมนูตั้งต้น
+    // ถ้ายังไม่มีเมนูว่าง **สร้างให้เองตรงนี้เลย** ไม่ใช่เงียบแล้วไม่ตั้งเมนูตั้งต้น
+    //
+    // เดิมทำเป็นสองปุ่มที่ต้องกดตามลำดับ ถ้าข้ามปุ่มสร้างเมนูว่าง ปุ่มนี้จะไม่ตั้งเมนูตั้งต้นให้
+    // ผลคือคนที่ไม่เคยทักแชทไม่มีเมนูเลย โดยไม่มีอะไรบอกว่าทำไม — ต้องไม่มีกับดักแบบนี้
+    // ปุ่มเดียวต้องจบงานได้เอง
+    let blankMade = false;
+    let blankReady = (await blankMenuId()) !== null;
+    if (after === "" && !blankReady && (await excludedList()).length > 0) {
+      const made = await createRichMenu(BLANK_MENU_BODY, BLANK_MENU_PNG_BASE64);
+      if (made.ok) {
+        await rememberBlankMenu(made.data, s.employee!.id);
+        blankReady = true;
+        blankMade = true;
+        console.log("[richmenu] สร้างเมนูว่างให้อัตโนมัติ", made.data, "โดย", s.employee!.employee_code);
+      } else {
+        console.error("[richmenu] สร้างเมนูว่างอัตโนมัติไม่สำเร็จ", made.error);
+      }
+    }
+    // สร้างเมนูว่างไม่สำเร็จและมีคนถูกถอดอยู่ = ยังตั้งเมนูตั้งต้นไม่ได้ ไม่งั้นคนกลุ่มนั้นกลับมาเห็นเมนูหลัก
+    const canDefault = blankReady || (await excludedList()).length === 0;
     const asDefault =
       after === "" && canDefault ? await setDefaultRichMenu(configuredMenus()!.member) : null;
 
@@ -330,5 +347,8 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       unlinked: out.filter((o) => o.ok && o.action === "unlink").length,
       failed: failed.length,
       defaultSet: asDefault,
+      blankMade,
+      // ตั้งเมนูตั้งต้นไม่ได้เพราะอะไร — หน้าจอเอาไปบอกต่อ ไม่ใช่เงียบแล้วให้ไปเดาเอง
+      defaultBlocked: after === "" && !canDefault,
     });
   });
