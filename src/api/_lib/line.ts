@@ -8,6 +8,8 @@ import { HttpError } from "./http";
 import { envVar } from "./env";
 
 const LINE_API = "https://api.line.me";
+// การอัปโหลดรูปของ rich menu ต้องยิงไปที่โดเมนนี้เท่านั้น ยิงไป api.line.me จะได้ 404 เปล่า ๆ
+const LINE_DATA_API = "https://api-data.line.me";
 
 export interface LineProfile {
   sub: string; // = userId ที่เชื่อถือได้
@@ -245,6 +247,54 @@ export async function richMenuOf(userId: string): Promise<LineQuery<string | nul
  *
  * 404 = ใบนั้นไม่มีอยู่แล้ว ซึ่งคือผลลัพธ์ที่ต้องการพอดี นับว่าสำเร็จ (callRichMenu จัดการให้แล้ว)
  */
+/**
+ * สร้าง rich menu ใบใหม่แล้วอัปโหลดรูปให้ — คืนรหัสใบที่สร้าง หรือข้อความบอกสาเหตุที่ไม่สำเร็จ
+ *
+ * สองขั้นตอน และคนละโดเมนกัน: สร้างโครงที่ api.line.me ส่วนอัปโหลดรูปต้องยิงไปที่
+ * api-data.line.me เท่านั้น (ยิงผิดโดเมนจะได้ 404 ซึ่งอ่านแล้วไม่รู้เลยว่าผิดตรงไหน)
+ *
+ * ถ้าอัปโหลดรูปไม่สำเร็จ ต้องลบใบที่เพิ่งสร้างทิ้ง ไม่งั้นจะเหลือเมนูที่ไม่มีรูปค้างอยู่
+ * ซึ่งผูกให้ใครไม่ได้ และไปโผล่ในรายการเมนูให้สับสนต่อ
+ */
+export async function createRichMenu(
+  body: unknown,
+  pngBase64: string,
+): Promise<LineQuery<string>> {
+  const token = envVar("LINE_CHANNEL_ACCESS_TOKEN");
+  if (!token) return { ok: false, error: "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ที่ระบบนี้" };
+  try {
+    const made = await fetch(`${LINE_API}/v2/bot/richmenu`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    const madeText = await made.text();
+    if (!made.ok) {
+      console.error("[line] สร้างเมนูไม่สำเร็จ", made.status, madeText);
+      return { ok: false, error: `LINE ตอบกลับ ${made.status} · ${madeText.slice(0, 160)}` };
+    }
+    const id = (JSON.parse(madeText) as { richMenuId?: string }).richMenuId;
+    if (!id) return { ok: false, error: "LINE ไม่ได้ส่งรหัสเมนูกลับมา" };
+
+    const bin = Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0));
+    const up = await fetch(`${LINE_DATA_API}/v2/bot/richmenu/${encodeURIComponent(id)}/content`, {
+      method: "POST",
+      headers: { "content-type": "image/png", authorization: `Bearer ${token}` },
+      body: bin,
+    });
+    if (!up.ok) {
+      const why = await up.text().catch(() => "");
+      console.error("[line] อัปโหลดรูปเมนูไม่สำเร็จ", up.status, why);
+      await deleteRichMenu(id);   // อย่าทิ้งเมนูที่ไม่มีรูปไว้ให้รก
+      return { ok: false, error: `อัปโหลดรูปไม่สำเร็จ · LINE ตอบกลับ ${up.status} ${why.slice(0, 120)}` };
+    }
+    return { ok: true, data: id };
+  } catch (e) {
+    console.error("[line] สร้างเมนูไม่สำเร็จ", e);
+    return { ok: false, error: "ต่อกับ LINE ไม่ได้" };
+  }
+}
+
 export function deleteRichMenu(richMenuId: string): Promise<boolean> {
   return callRichMenu(`richmenu/${encodeURIComponent(richMenuId)}`, "DELETE");
 }

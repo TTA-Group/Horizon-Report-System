@@ -21,9 +21,15 @@ import {
   followerIds,
   listRichMenus,
   richMenuOf,
+  createRichMenu,
+  setDefaultRichMenu,
 } from "./_lib/line";
+import { BLANK_MENU_BODY, BLANK_MENU_PNG_BASE64 } from "./_lib/richmenu-blank";
 import {
   applyMainMenu,
+  blankMenuId,
+  forgetBlankMenu,
+  rememberBlankMenu,
   applyMenuForEmployee,
   configuredMenus,
   excludedList,
@@ -148,6 +154,12 @@ export const richMenuStatus = async (req: Request): Promise<Response> =>
       })(),
       lastApply: await lastApplied(),
       excludedReady: await excludedReady(),
+      // เมนูว่างมีอยู่จริงบน LINE ไหม — ใบที่ถูกลบทิ้งไปแล้วถือว่าไม่มี
+      blankMenu: await (async () => {
+        const id = await blankMenuId();
+        if (!id) return { id: null, exists: false };
+        return { id, exists: listed.ok && onLine.some((m) => m.richMenuId === id) };
+      })(),
       excluded: await excludedList(),
       mine,
     });
@@ -186,6 +198,9 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       const def = await defaultRichMenuId();
       const keep = new Set<string>([set!.fresh, set!.member]);
       if (def.ok && def.data) keep.add(def.data);
+      // เมนูว่างก็ห้ามลบ ลบไปแล้วคนที่ถูกถอดจะตกไปเห็นเมนูตั้งต้นซึ่งคือเมนูหลัก
+      const blank = await blankMenuId();
+      if (blank) keep.add(blank);
 
       if (body.action === "delete_menu") {
         const id = (body.richMenuId ?? "").trim();
@@ -212,7 +227,29 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
       return json({ ok: true, deleted, remaining: Math.max(0, left), kept: keep.size });
     }
 
-    // ถอดเมนูตั้งต้นของ OA ออก — ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น
+    /**
+     * สร้าง "เมนูว่างเปล่า" ให้ระบบใช้กับคนที่ไม่ควรเห็นเมนูอะไรเลย
+     *
+     * สร้างครั้งเดียวพอ · สร้างซ้ำจะได้เมนูใบใหม่กองไว้บนบัญชีโดยไม่ได้อะไรเพิ่ม
+     * จึงตรวจก่อนว่าใบเดิมยังอยู่บน LINE ไหม ถ้าอยู่ก็ใช้ใบเดิมต่อ
+     */
+    if (body.action === "make_blank") {
+      const have = await blankMenuId();
+      if (have) {
+        const listed = await listRichMenus();
+        if (listed.ok && listed.data.some((m) => m.richMenuId === have)) {
+          return json({ ok: true, blankMenuId: have, created: false });
+        }
+        await forgetBlankMenu();   // ใบเดิมถูกลบไปแล้ว สร้างใหม่
+      }
+      const made = await createRichMenu(BLANK_MENU_BODY, BLANK_MENU_PNG_BASE64);
+      if (!made.ok) throw new HttpError(502, made.error, "line_down");
+      await rememberBlankMenu(made.data, s.employee!.id);
+      console.log("[richmenu] สร้างเมนูว่าง", made.data, "โดย", s.employee!.employee_code);
+      return json({ ok: true, blankMenuId: made.data, created: true });
+    }
+
+    // ถอดเมนูตั้งต้นของ OA ออก — ใช้ตอนอยากกลับไปสภาพที่ไม่มีเมนูตั้งต้น
     if (body.action === "clear_default") {
       const ok = await clearDefaultRichMenu();
       console.log("[richmenu] ถอดเมนูตั้งต้น", ok ? "สำเร็จ" : "ไม่สำเร็จ", "โดย", s.employee!.employee_code);
@@ -265,10 +302,14 @@ export const richMenuApply = async (req: Request): Promise<Response> =>
     //
     // ส่วนคนที่มาแอดเพื่อนทีหลัง ตัวรับ webhook จะผูกเมนูลงทะเบียนให้เป็นรายคน
     // ซึ่งชนะเมนูตั้งต้นเสมอ ระบบลงทะเบียนจึงยังทำงานตามเดิมสำหรับคนใหม่
-    // **ไม่ตั้งเมนูตั้งต้นของ OA** — เมนูตั้งต้นใช้กับทุกคนที่ไม่มีเมนูรายคน ซึ่งรวมคนที่ถูกถอดด้วย
-    // ตั้งเมื่อไหร่ ปุ่มถอดจะไม่มีผลทันที เพราะคนที่ถอดไปจะตกไปเห็นเมนูตั้งต้นแทน
-    // กติกาที่ตกลงกันคือ "ถอดแล้วต้องไม่เห็นอะไรเลย" จึงต้องไม่มีเมนูตั้งต้น
-    const asDefault = null;
+    // ตั้งเมนูหลักเป็นเมนูตั้งต้นของ OA — ทางเดียวที่ไปถึงพนักงานที่แอดไว้แล้วแต่ไม่เคยทักแชท
+    //
+    // ปลอดภัยแล้วเพราะคนที่ไม่ควรเห็นเมนูถูกผูก "เมนูว่างเปล่า" ไว้เป็นรายคน ซึ่งชนะเมนูตั้งต้น
+    // แต่ถ้ายังไม่ได้สร้างเมนูว่าง ตั้งเมนูตั้งต้นไปจะทำให้คนกลุ่มนั้นกลับมาเห็นเมนูหลักทันที
+    // จึงตั้งให้เฉพาะตอนพร้อมจริง ๆ และหน้าตรวจบอกไว้ว่าติดตรงไหน
+    const canDefault = (await blankMenuId()) !== null || (await excludedList()).length === 0;
+    const asDefault =
+      after === "" && canDefault ? await setDefaultRichMenu(configuredMenus()!.member) : null;
 
     const ids = await knownLineUserIds(after, BATCH);
     if (ids.length === 0) {

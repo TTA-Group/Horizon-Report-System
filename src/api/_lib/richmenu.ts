@@ -3,16 +3,18 @@
 // กติกาที่ตกลงกันไว้
 //   ยังไม่ผูกรหัสพนักงาน  = เมนูที่มีปุ่มลงทะเบียน (RICHMENU_NEW_ID)
 //   ผูกแล้ว ยังทำงานอยู่   = เมนูใช้งานปกติ ไม่มีปุ่มลงทะเบียน (RICHMENU_MEMBER_ID)
-//   ลาออก ถูกระงับสิทธิ์ ถูกสั่งถอด = ไม่มีเมนูเลย (จอว่างเปล่า)
+//   ลาออก ถูกระงับสิทธิ์ ถูกสั่งถอด = เมนูว่างเปล่า (กางออกมาแล้วไม่มีอะไร)
 //
-// **ห้ามตั้ง default rich menu ที่ LINE** — เมนูตั้งต้นใช้กับทุกคนที่ไม่มีเมนูผูกไว้เป็นรายคน
-// ซึ่งรวมคนที่เพิ่งถูกถอดด้วย ตั้งเมื่อไหร่ "ถอดเมนู" จะกลายเป็น "ยกเมนูตั้งต้นให้" ทันที
-// เท่ากับปุ่มถอดไม่มีผลอะไรเลย · เรื่องนี้เคยเกิดจริงมาแล้ว
+// เมนูตั้งต้นของ OA ตั้งเป็น "เมนูหลัก" ไว้ เพราะเป็นทางเดียวที่ไปถึงพนักงานที่แอดเพื่อนไว้แล้ว
+// แต่ไม่เคยทักแชทและไม่เคยลงทะเบียน — ระบบไม่รู้ userId ของเขา จึงผูกเมนูรายคนให้ไม่ได้
+// (ขอรายชื่อเพื่อนทั้งหมดจาก LINE ก็ไม่ได้ ต้องเป็นบัญชีที่ผ่านการยืนยันเท่านั้น)
 //
-// แลกกับข้อจำกัดที่ต้องรู้: เมื่อไม่มีเมนูตั้งต้น ปุ่ม "เปลี่ยนเมนูหลักให้ทุกคน" ไปถึงได้เฉพาะ
-// คนที่ระบบรู้จัก คือคนที่ผูกรหัสแล้ว คนที่ฝ่ายบุคคลนำเข้า และคนที่เคยทักแชทเข้ามา
-// คนที่แอดเพื่อนไว้แล้วเงียบมาตลอดจะยังไม่มีเมนูจนกว่าจะทักเข้ามาครั้งแรก
-// (จะไปถึงคนกลุ่มนี้ได้ต้องขอรายชื่อเพื่อนทั้งหมดจาก LINE ซึ่งต้องเป็นบัญชีที่ผ่านการยืนยัน)
+// ผลที่ตามมา: **"ไม่มีเมนูผูกไว้" = "ได้เมนูตั้งต้น" = "ได้เมนูหลัก"**
+// การถอดเมนูออกเฉย ๆ จึงกลายเป็นการยกเมนูหลักให้ ตรงข้ามกับเจตนา
+// คนที่ไม่ควรเห็นอะไรเลยจึงต้องผูก **เมนูว่างเปล่า** ทับไว้เป็นรายคน — เมนูรายคนชนะเมนูตั้งต้นเสมอ
+// (สร้างเมนูว่างได้จากปุ่มในหน้าตรวจเมนู · ดู _lib/richmenu-blank.ts)
+//
+// ยังไม่ได้สร้างเมนูว่าง ระบบจะถอดเมนูออกเหมือนเดิม แล้วขึ้นเตือนบนหน้าตรวจว่ายังกันได้ไม่จริง
 //
 // ทุกฟังก์ชันในไฟล์นี้ "ห้ามโยน error ออกไป" — การสลับเมนูเป็นงานเสริมที่เกิดหลังจาก
 // งานหลักบันทึกลงฐานข้อมูลไปแล้ว ถ้าปล่อยให้ล้มตาม ผู้ใช้จะเห็นว่าลงทะเบียนไม่สำเร็จ
@@ -85,6 +87,47 @@ export async function planRichMenus(lineUserIds: string[]): Promise<MenuPlan[] |
 /** รหัสเมนูที่ตั้งไว้ตอนนี้ — ให้หน้าตรวจสอบเอาไปเทียบกับเมนูที่มีอยู่จริงบน LINE */
 export function configuredMenus(): { fresh: string; member: string } | null {
   return menus();
+}
+
+/** รหัสเมนูว่างที่สร้างไว้ — เก็บที่ app_settings เพราะเป็นค่าที่ระบบสร้างเอง ไม่ใช่ค่าตั้งค่า */
+const BLANK_KEY = "richmenu.blank_id";
+
+export async function blankMenuId(): Promise<string | null> {
+  try {
+    const rows = await db()<{ value: string }[]>`
+      SELECT value FROM app_settings WHERE key = ${BLANK_KEY}
+    `;
+    return rows[0]?.value?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function rememberBlankMenu(richMenuId: string, byEmployeeId: string): Promise<void> {
+  await db()`
+    INSERT INTO app_settings (key, value, updated_by) VALUES (${BLANK_KEY}, ${richMenuId}, ${byEmployeeId})
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by,
+      updated_at = now()
+  `;
+}
+
+export async function forgetBlankMenu(): Promise<void> {
+  try {
+    await db()`DELETE FROM app_settings WHERE key = ${BLANK_KEY}`;
+  } catch (e) {
+    console.error("[richmenu] ลบรหัสเมนูว่างไม่สำเร็จ", e);
+  }
+}
+
+/**
+ * เมนูของคนที่ไม่ควรเห็นอะไรเลย
+ *
+ * มีเมนูว่างก็ผูกเมนูว่าง · ยังไม่มีก็ถอดเมนูออกไปก่อน ซึ่งกันได้ไม่จริงเมื่อ OA มีเมนูตั้งต้น
+ * แต่ดีกว่าไม่ทำอะไรเลย และหน้าตรวจขึ้นเตือนไว้ให้ไปสร้างเมนูว่าง
+ */
+async function denyMenu(lineUserId: string): Promise<boolean> {
+  const blank = await blankMenuId();
+  return blank ? linkRichMenu(lineUserId, blank) : unlinkRichMenu(lineUserId);
 }
 
 /**
@@ -291,7 +334,7 @@ export async function applyRichMenus(lineUserIds: string[]): Promise<ApplyOutcom
     const plan = decide(m, id, found.has(id) ? found.get(id)! : null);
     let ok = false;
     try {
-      ok = plan.action === "unlink" ? await unlinkRichMenu(id) : await linkRichMenu(id, plan.richMenuId!);
+      ok = plan.action === "unlink" ? await denyMenu(id) : await linkRichMenu(id, plan.richMenuId!);
     } catch (e) {
       console.error("[richmenu] ตั้งเมนูไม่สำเร็จ", id, e);
     }
@@ -310,7 +353,7 @@ export async function syncRichMenu(lineUserId: string): Promise<void> {
     // ถ้าให้แต่ละที่ตัดสินเอง กติกาจะกระจายไปอยู่หลายที่แล้วเพี้ยนกันได้
     const found = await statusOf([lineUserId]);
     const plan = decide(m, lineUserId, found.has(lineUserId) ? found.get(lineUserId)! : null);
-    if (plan.action === "unlink") await unlinkRichMenu(lineUserId);
+    if (plan.action === "unlink") await denyMenu(lineUserId);
     else await linkRichMenu(lineUserId, plan.richMenuId!);
   } catch (e) {
     console.error("[richmenu] สลับเมนูไม่สำเร็จ", lineUserId, e);
@@ -348,11 +391,11 @@ export async function applyMainMenu(lineUserIds: string[]): Promise<ApplyOutcome
   const found = await statusOf(lineUserIds);
   const out: ApplyOutcome[] = [];
   for (const id of lineUserIds) {
-    // ลาออกหรือถูกระงับ = ถอดเมนูออก ให้จอว่างเปล่า ไม่ใช่ได้เมนูหลักไปด้วย
+    // ลาออกหรือถูกระงับ = เมนูว่างเปล่า ไม่ใช่ได้เมนูหลักไปด้วย
     const suspended = found.get(id) === "suspended";
     let ok = false;
     try {
-      ok = suspended ? await unlinkRichMenu(id) : await linkRichMenu(id, m.member);
+      ok = suspended ? await denyMenu(id) : await linkRichMenu(id, m.member);
     } catch (e) {
       console.error("[richmenu] ตั้งเมนูหลักไม่สำเร็จ", id, e);
     }
@@ -376,12 +419,11 @@ export async function unlinkRichMenuForEmployee(
     SELECT line_user_id FROM line_accounts
     WHERE employee_id = ${employeeId} AND channel_key = ANY(${CHANNEL_KEYS_READ})
   `;
-  // ถอดเมนูออกจริง ๆ ให้จอว่างเปล่า — ใช้ได้ก็ต่อเมื่อ OA ไม่มีเมนูตั้งต้น
-  // ถ้ามีเมนูตั้งต้น คนนี้จะตกไปเห็นใบนั้นแทน หน้าตรวจจึงเตือนไว้ให้ถอดเมนูตั้งต้นออกก่อน
+  // ผูกเมนูว่างทับไว้ ไม่ใช่ถอดเมนูออก — ถอดออกแล้วจะตกไปได้เมนูตั้งต้นซึ่งคือเมนูหลัก
   const gone: string[] = [];
   for (const r of rows) {
     try {
-      if (await unlinkRichMenu(r.line_user_id)) gone.push(r.line_user_id);
+      if (await denyMenu(r.line_user_id)) gone.push(r.line_user_id);
     } catch (e) {
       console.error("[richmenu] ถอดเมนูไม่สำเร็จ", r.line_user_id, e);
     }

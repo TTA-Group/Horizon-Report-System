@@ -984,22 +984,39 @@ function renderMenuStatus(r) {
       "ถอดเมนูรายคนได้ แต่ระบบยังจดไม่ได้ว่าใครถูกถอด · พอกดปุ่มข้อ 1 รอบหน้า คนที่ถอดไปจะได้เมนูกลับมา"));
   }
 
+  // 3.7 เมนูว่างเปล่า — ตัวที่ทำให้ "ถอดแล้วไม่เห็นอะไร" เป็นจริงได้ทั้งที่มีเมนูตั้งต้น
+  const blank = r.blankMenu || { id: null, exists: false };
+  if (blank.exists) {
+    note("good");
+    rows.push(checkRow("good", "มีเมนูว่างเปล่าไว้ใช้แล้ว",
+      `<span class="mono">${esc(blank.id)}</span><br>` +
+      "คนที่ถูกถอด ลาออก หรือถูกระงับ จะถูกผูกใบนี้ทับไว้ จึงกางออกมาแล้วไม่มีอะไรเลย"));
+  } else {
+    note("bad");
+    rows.push(checkRow("bad", blank.id ? "เมนูว่างเปล่าถูกลบไปจาก LINE แล้ว" : "ยังไม่ได้สร้างเมนูว่างเปล่า",
+      "คนที่ถูกถอดจะตกไปเห็นเมนูตั้งต้น (= เมนูหลัก) แทนที่จะไม่เห็นอะไรเลย · " +
+      "กดปุ่ม “สร้างเมนูว่างเปล่า” ท้ายหน้าหนึ่งครั้ง"));
+  }
+
   // 4. เมนูตั้งต้นของ OA — ใช้กับทุกคนที่ไม่มีเมนูผูกไว้เป็นรายคน ซึ่งรวมคนที่ถูกถอดด้วย
   //    จึงอยู่ร่วมกับปุ่มถอดไม่ได้ ต้องบอกให้ชัดว่าตอนนี้เลือกทางไหนอยู่
   const excluded = r.excluded || [];
   if (r.defaultMenu && r.defaultMenu.ok) {
-    // ระบบนี้ตั้งใจไม่ใช้เมนูตั้งต้น — มีเมื่อไหร่ ปุ่มถอดจะไม่มีผลทันที
-    if (r.defaultMenu.id) {
-      note("bad");
-      rows.push(checkRow("bad", `มีเมนูตั้งต้นของ OA อยู่ — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
-        `<span class="mono">${esc(r.defaultMenu.id)}</span><br>` +
-        "เมนูตั้งต้นใช้กับทุกคนที่ไม่มีเมนูรายคน ซึ่งรวมคนที่ถูกถอด ลาออก และถูกระงับด้วย " +
-        "คนกลุ่มนี้จึงกลับมาเห็นเมนูนี้แทนที่จะไม่เห็นอะไรเลย · " +
-        "กดปุ่ม “ถอดเมนูตั้งต้นของ OA” ท้ายหน้าเพื่อให้การถอดมีผลจริง"));
-    } else {
+    if (r.defaultMenu.correct) {
       note("good");
-      rows.push(checkRow("good", "ไม่มีเมนูตั้งต้นของ OA",
-        "ถูกต้องแล้ว · คนที่ถูกถอด ลาออก หรือถูกระงับ จึงไม่เห็นเมนูอะไรเลยตามที่ตั้งใจ"));
+      rows.push(checkRow("good", `พนักงานที่ไม่เคยทักแชทเลย ก็ได้เมนูหลัก — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
+        "ตั้งเป็นเมนูตั้งต้นของ OA ไว้ คนที่แอดเพื่อนไว้แล้วแต่ระบบไม่รู้จัก จึงได้เมนูหลักด้วย"));
+    } else if (r.defaultMenu.id) {
+      note("bad");
+      rows.push(checkRow("bad", `เมนูตั้งต้นของ OA ยังเป็นใบอื่นอยู่ — <b>${esc(r.defaultMenu.name || "ไม่ทราบชื่อ")}</b>`,
+        `<span class="mono">${esc(r.defaultMenu.id)}</span><br>ควรเป็นเมนูหลัก · กดปุ่มข้อ 1 แล้วระบบจะตั้งให้เอง`));
+    } else {
+      note("bad");
+      rows.push(checkRow("bad", "ยังไม่ได้ตั้งเมนูตั้งต้นของ OA",
+        "พนักงานที่แอดเพื่อนไว้แล้วแต่ไม่เคยทักแชทเลย จะไม่มีเมนูใช้ · " +
+        (blank.exists
+          ? "กดปุ่มข้อ 1 แล้วระบบจะตั้งให้เอง"
+          : "ต้องสร้างเมนูว่างเปล่าก่อน ระบบถึงจะตั้งให้ ไม่งั้นคนที่ถูกถอดจะกลับมาเห็นเมนูหลัก")));
     }
   }
 
@@ -1112,8 +1129,7 @@ function renderMenuStatus(r) {
         ? `ทุกคนได้<b>เมนูหลักเหมือนกันหมด</b> ไม่ว่าจะเคยทักแชทหรือลงทะเบียนแล้วหรือยัง` +
           `<br><b>ยกเว้น</b>คนที่ถูกถอด${excluded.length ? ` (${excluded.length} คน)` : ""} ลาออก และถูกระงับสิทธิ์ — กลุ่มนี้ไม่เห็นเมนูเลย` +
           `<br>คนที่<b>แอดเข้ามาใหม่หลังจากนี้</b>ได้เมนูลงทะเบียนเองตาม flow เดิม` +
-          `<br><span style="color:#B23A21">ไปถึงได้เฉพาะ ${r.people} คนที่ระบบรู้จัก</span> —
-             คนที่แอดไว้แล้วแต่ไม่เคยทักแชทเลย ต้องรอให้เขาทักมาก่อน`
+          `<br>คนที่<b>ไม่เคยทักแชทเลย</b> ระบบมองไม่เห็น แต่ได้เมนูหลักผ่านเมนูตั้งต้นที่ปุ่มนี้ตั้งให้`
         : "ตั้งค่าให้ครบก่อนถึงจะกดได้"}
     </p>
     <div id="menu-progress"></div>
@@ -1122,8 +1138,14 @@ function renderMenuStatus(r) {
     <p class="hintnote">ตั้งเมนูหลักให้คนเดียว · ถ้าคนนั้นเคยถูกถอดไว้ จะถูกเอาออกจากรายการที่ถอดด้วย</p>
 
     <button class="send" id="menu-unlink" style="margin-top:14px">3 · ถอดเมนูเฉพาะบางคน</button>
-    <p class="hintnote">คนที่ถูกถอดจะ<b>ไม่เห็นเมนูอะไรเลย</b> จอด้านล่างว่างเปล่า
+    <p class="hintnote">คนที่ถูกถอดจะถูกผูก<b>เมนูว่างเปล่า</b> กางออกมาแล้วไม่มีอะไรเลย
       และปุ่มข้อ 1 จะข้ามคนนี้ไปตลอดจนกว่าจะกดข้อ 2 คืนให้</p>
+
+    ${blank.exists
+      ? ""
+      : `<button class="send" id="menu-blank" style="margin-top:14px">สร้างเมนูว่างเปล่า</button>
+         <p class="hintnote">สร้างครั้งเดียวพอ · ระบบเอาไว้ผูกให้คนที่ไม่ควรเห็นเมนู
+           แทนการถอดเมนูออก (ถอดออกแล้วจะตกไปเห็นเมนูตั้งต้นซึ่งคือเมนูหลัก)</p>`}
 
     ${r.defaultMenu && r.defaultMenu.ok && r.defaultMenu.id
       ? `<button class="ghost" id="menu-cleardef" style="margin-top:14px">ถอดเมนูตั้งต้นของ OA</button>
@@ -1185,6 +1207,38 @@ async function purgeUnusedMenus() {
     toast(`ลบเมนูที่ไม่ได้ใช้ไป ${total} ใบ`);
   } catch (e) {
     toast(e.message || "ลบเมนูไม่สำเร็จ");
+  }
+  goMenuCheck();
+}
+
+/**
+ * สร้างเมนูว่างเปล่าบนบัญชี LINE — กดครั้งเดียวพอ
+ *
+ * ระบบเอาไว้ผูกให้คนที่ไม่ควรเห็นเมนู แทนการถอดเมนูออก เพราะถอดออกแล้วจะตกไปเห็น
+ * เมนูตั้งต้นของ OA ซึ่งคือเมนูหลัก — เท่ากับปุ่มถอดไม่มีผล
+ */
+async function makeBlankMenu() {
+  const btn = $("#menu-blank");
+  const ok = await confirmDialog({
+    title: "สร้างเมนูว่างเปล่า?",
+    message:
+      "ระบบจะสร้าง rich menu ใบใหม่บนบัญชี LINE ชื่อ “Horizon — เมนูว่าง” เป็นรูปเปล่าไม่มีปุ่ม\n\n" +
+      "ใช้ผูกให้คนที่ถูกถอด ลาออก หรือถูกระงับ เพื่อให้เขากางเมนูออกมาแล้วไม่เห็นอะไรเลย",
+    confirmLabel: "สร้างเลย",
+    cancelLabel: "ไม่ใช่",
+  });
+  if (!ok) return;
+  if (btn) { btn.disabled = true; btn.textContent = "กำลังสร้าง…"; }
+  try {
+    const r = await api("/api/admin/richmenu", { method: "POST", body: { action: "make_blank" } });
+    toast(r.created ? "สร้างเมนูว่างเรียบร้อย" : "มีเมนูว่างอยู่แล้ว");
+  } catch (e) {
+    await confirmDialog({
+      title: "สร้างเมนูว่างไม่สำเร็จ",
+      message: e.message || "",
+      confirmLabel: "เข้าใจแล้ว",
+      cancelLabel: "ปิด",
+    });
   }
   goMenuCheck();
 }
@@ -2203,6 +2257,7 @@ function bind() {
     if (e.target.closest("#menu-apply-one")) openMenuEmpFinder("apply");
     if (e.target.closest("#menu-unlink")) openMenuEmpFinder("unlink");
     if (e.target.closest("#menu-cleardef")) clearDefaultMenu();
+    if (e.target.closest("#menu-blank")) makeBlankMenu();
     const kill = e.target.closest("[data-killmenu]");
     if (kill) deleteOneMenu(kill.dataset.killmenu, kill.dataset.name);
     if (e.target.closest("#menu-purge")) purgeUnusedMenus();
