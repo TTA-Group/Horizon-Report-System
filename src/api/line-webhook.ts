@@ -16,6 +16,8 @@ import {
   type UrgencyCode,
 } from "./_lib/constants";
 import { db } from "./_lib/db";
+import { bindMassageGroup, massageGroupId, unbindMassageGroup } from "./_lib/massage-group";
+import { DEFAULT_STAFF_DEPT } from "./_lib/massage";
 import {
   assessmentAskCard,
   buildCompactFlex,
@@ -159,6 +161,9 @@ function isOwnEvent(ev: LineEvent): boolean {
       cmd === "groupid" ||
       BIND_RE.test(text) ||
       WHICH_RE.test(text) ||
+      MASSAGE_BIND_RE.test(text) ||
+      MASSAGE_UNBIND_RE.test(text) ||
+      MASSAGE_WHICH_RE.test(text) ||
       CANCEL_RE.test(text) ||
       NOTE_RE.test(text) ||
       PROGRESS_RE.test(text)
@@ -208,6 +213,11 @@ const PROGRESS_RE = /^อัปเดต\s+([A-Za-z]{2,4}-\d{4}-\d{3})\s*[:：]\
 const BIND_RE = /^(?:ผูกฝ่าย|ผูกกลุ่ม)\s+([A-Za-z]{2,6})$/i;
 // ขอดูว่ากลุ่มนี้เป็นของฝ่ายไหน และฝ่ายไหนยังไม่มีกลุ่ม
 const WHICH_RE = /^(?:ฝ่ายนี้|กลุ่มนี้|ตรวจกลุ่ม)$/;
+// ผูกกลุ่มนี้เป็นกลุ่มแจ้งเตือนของคิวนวด — คนละเรื่องกับกลุ่มของฝ่ายที่รับเรื่องแจ้งปัญหา
+// มีกลุ่มเดียวสำหรับทั้งระบบ เพราะทีมที่ดูแลคิวนวดมีทีมเดียว
+const MASSAGE_BIND_RE = /^ผูกกลุ่มนวด$/;
+const MASSAGE_UNBIND_RE = /^(?:เลิกผูกกลุ่มนวด|ยกเลิกกลุ่มนวด)$/;
+const MASSAGE_WHICH_RE = /^(?:กลุ่มนวด|ตรวจกลุ่มนวด)$/;
 
 /**
  * มีคนแอดเพื่อนกับ LINE OA — ให้เมนูที่ตรงกับสถานะของเขา
@@ -230,6 +240,9 @@ async function handleMessage(ev: LineEvent): Promise<void> {
   const bind = BIND_RE.exec(text);
   if (bind) return handleBindGroup(ev, bind[1].toUpperCase());
   if (WHICH_RE.test(text)) return handleWhichDept(ev);
+  if (MASSAGE_BIND_RE.test(text)) return handleMassageGroup(ev, "bind");
+  if (MASSAGE_UNBIND_RE.test(text)) return handleMassageGroup(ev, "unbind");
+  if (MASSAGE_WHICH_RE.test(text)) return handleMassageGroup(ev, "which");
   if (CANCEL_RE.test(text)) return handleCancelMessage(ev, text);
   if (NOTE_RE.test(text)) return handleNoteMessage(ev, text);
   if (PROGRESS_RE.test(text)) return handleProgressMessage(ev, text);
@@ -422,12 +435,89 @@ async function handleJoin(ev: LineEvent): Promise<void> {
   await replyTo(ev.replyToken, [
     textMessage(
       "เพิ่มบอทเข้ากลุ่มเรียบร้อย\n\n" +
-        "กลุ่มนี้ยังไม่ผูกกับฝ่ายไหน จึงยังไม่มีเรื่องแจ้งเข้ามา\n" +
-        "ให้ผู้ดูแลระบบพิมพ์คำสั่งนี้ในกลุ่ม เพื่อบอกว่ากลุ่มนี้เป็นของฝ่ายไหน\n\n" +
+        "กลุ่มนี้จะใช้ทำอะไร ให้ผู้ดูแลพิมพ์คำสั่งในกลุ่มนี้\n\n" +
+        "① กลุ่มรับเรื่องแจ้งปัญหาของฝ่าย\n" +
         `${BIND_HINT}\n\n` +
-        'พิมพ์ "ฝ่ายนี้" เพื่อดูว่าตอนนี้ฝ่ายไหนใช้กลุ่มไหนอยู่',
+        "② กลุ่มแจ้งเตือนคิวนวด\n" +
+        "ผูกกลุ่มนวด   (มีคนยกเลิกคิวจะแจ้งเข้ามาที่นี่)\n\n" +
+        'ดูสถานะได้ด้วย "ฝ่ายนี้" และ "กลุ่มนวด"',
     ),
   ]);
+}
+
+/**
+ * "ผูกกลุ่มนวด" · "เลิกผูกกลุ่มนวด" · "กลุ่มนวด" — ตั้งกลุ่มที่รับแจ้งเตือนคิวนวด
+ *
+ * แยกจากการผูกกลุ่มของฝ่ายรับเรื่อง เพราะเป็นคนละเรื่องกันและมีกลุ่มเดียวสำหรับทั้งระบบ
+ * ทีมที่ดูแลคิวนวดมีทีมเดียว ถ้าทำเป็นหลายกลุ่มจะต้องมานั่งไล่ว่ากลุ่มไหนได้อะไรบ้าง
+ *
+ * ให้ทั้งผู้ดูแลระบบและเจ้าหน้าที่คิวนวดสั่งได้ — คนที่ตั้งกลุ่มนี้จริง ๆ คือคนหน้างาน
+ * ไม่ใช่ฝ่ายบุคคล ถ้าจำกัดไว้ที่ฝ่ายบุคคลอย่างเดียวจะต้องรอเขาว่างทุกครั้งที่ย้ายกลุ่ม
+ */
+async function handleMassageGroup(
+  ev: LineEvent,
+  action: "bind" | "unbind" | "which",
+): Promise<void> {
+  const replyToken = ev.replyToken;
+  if (!replyToken) return;
+  const groupId = ev.source?.groupId ?? ev.source?.roomId;
+  if (!groupId) return say(replyToken, "คำสั่งนี้ใช้ได้เฉพาะในกลุ่มเท่านั้น");
+
+  const bound = await massageGroupId();
+  const here = bound === groupId;
+
+  if (action === "which") {
+    return say(
+      replyToken,
+      here
+        ? "กลุ่มนี้เป็นกลุ่มแจ้งเตือนคิวนวดอยู่แล้ว\nมีคนยกเลิกคิวเมื่อไหร่จะแจ้งเข้ามาที่นี่"
+        : bound
+          ? 'กลุ่มแจ้งเตือนคิวนวดตอนนี้เป็นกลุ่มอื่น\nถ้าจะย้ายมากลุ่มนี้ ให้พิมพ์ "ผูกกลุ่มนวด"'
+          : 'ยังไม่ได้ตั้งกลุ่มแจ้งเตือนคิวนวด\nพิมพ์ "ผูกกลุ่มนวด" ในกลุ่มที่ต้องการ',
+    );
+  }
+
+  const lineUserId = ev.source?.userId;
+  const actor = lineUserId ? await resolveActor(lineUserId) : null;
+  if (!actor || actor.status !== "active") {
+    return say(replyToken, "ต้องผูกบัญชีไลน์กับข้อมูลพนักงานก่อน จึงจะใช้คำสั่งนี้ได้");
+  }
+  if (!(await isAdminActor(actor)) && !(await isMassageStaffActor(actor))) {
+    return say(replyToken, "คำสั่งนี้ใช้ได้เฉพาะผู้ดูแลระบบและเจ้าหน้าที่คิวนวดเท่านั้น");
+  }
+
+  if (action === "unbind") {
+    if (!here) return say(replyToken, "กลุ่มนี้ไม่ได้เป็นกลุ่มแจ้งเตือนคิวนวดอยู่แล้ว");
+    await unbindMassageGroup(actor.id);
+    console.log("[massage] เลิกผูกกลุ่มแจ้งเตือน โดย", actor.employee_code);
+    return say(replyToken, "เลิกผูกแล้ว กลุ่มนี้จะไม่ได้รับแจ้งเตือนคิวนวดอีก");
+  }
+
+  if (here) return say(replyToken, "กลุ่มนี้เป็นกลุ่มแจ้งเตือนคิวนวดอยู่แล้ว");
+
+  await bindMassageGroup(groupId, actor.id);
+  console.log("[massage] ผูกกลุ่มแจ้งเตือน", groupId, "โดย", actor.employee_code);
+  await say(
+    replyToken,
+    "ผูกกลุ่มนี้เป็นกลุ่มแจ้งเตือนคิวนวดแล้ว\n\n" +
+      "มีคนยกเลิกคิวเมื่อไหร่ ระบบจะแจ้งเข้ามาที่นี่ พร้อมบอกว่าช่องไหนว่าง\n" +
+      (bound ? "(ย้ายมาจากกลุ่มเดิม กลุ่มนั้นจะไม่ได้รับแจ้งเตือนอีก)\n\n" : "\n") +
+      'เลิกรับแจ้งเตือนได้ด้วยการพิมพ์ "เลิกผูกกลุ่มนวด"',
+  );
+}
+
+/** คนนี้เป็นเจ้าหน้าที่ที่ดูแลคิวนวดไหม — เกณฑ์เดียวกับที่หน้าจัดการคิวนวดใช้ */
+async function isMassageStaffActor(actor: ActorRow): Promise<boolean> {
+  const rows = await db()<{ value: string }[]>`
+    SELECT value FROM app_settings WHERE key = 'massage.staff_dept'
+  `;
+  const code = (rows[0]?.value ?? "").trim() || DEFAULT_STAFF_DEPT;
+  const hit = await db()`
+    SELECT 1 FROM department_members dm
+    JOIN departments d ON d.id = dm.department_id
+    WHERE dm.employee_id = ${actor.id} AND d.code = ${code} LIMIT 1
+  `;
+  return hit.length > 0;
 }
 
 /** ตัวอย่างคำสั่งผูกกลุ่ม ใช้ซ้ำในหลายข้อความ จะได้ไม่เขียนต่างกันจนคนอ่านสับสน */

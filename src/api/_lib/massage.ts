@@ -788,6 +788,8 @@ export interface CancelledRow {
   day: string;
   slot: string;
   therapistName: string;
+  /** false = สิทธิ์ถูกคืนให้ · true = ยกเลิกหลังวันถูกล็อก สิทธิ์ยังถูกนับว่าใช้ไปแล้ว */
+  keptQuota: boolean;
 }
 
 /**
@@ -850,7 +852,14 @@ export async function cancel(
     SET status = 'cancelled', cancelled_at = ${now}, cancelled_by = ${employeeId}, updated_at = now()
     WHERE id = ${bookingId} AND status = 'booked'
   `;
-  return { day: b.day, slot: b.slot, therapistName: b.name };
+  return {
+    day: b.day,
+    slot: b.slot,
+    therapistName: b.name,
+    // บอกผู้เรียกว่าสิทธิ์ถูกคืนหรือไม่ ผู้เรียกจะได้เอาไปเขียนข้อความให้ตรงความจริง
+    // ตัดสินที่นี่ที่เดียว ไม่ให้ผู้เรียกไปคำนวณเองแล้วได้คนละคำตอบกับที่บันทึกไว้จริง
+    keptQuota: b.kind === "quota" && now >= flashOpensAt(b.day),
+  };
 }
 
 // ───────────────────────── ผู้ดูแลจัดการคิวแทนพนักงาน ─────────────────────────
