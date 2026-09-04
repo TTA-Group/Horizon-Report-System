@@ -461,15 +461,9 @@ export async function dayAvailability(
 
 // ───────────────────────── สิทธิ์รายเดือน ─────────────────────────
 
-/** ใช้สิทธิ์ไปกี่ครั้งแล้วในเดือนที่ day อยู่ (นับเฉพาะคิวที่ยังไม่ถูกยกเลิก) */
-/** สิทธิ์ที่ใช้ไปในเดือนนั้น — นับเฉพาะคิวสิทธิ์ คิวด่วนไม่นับ */
+/** สิทธิ์ที่ใช้ไปในเดือนที่ day อยู่ — นับตามกติกาเดียวใน usedQuotaRule */
 export async function monthlyUsage(employeeId: string, day: string): Promise<number> {
-  const rows = await db()<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM massage_bookings
-    WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
-      AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
-  `;
-  return rows[0]?.n ?? 0;
+  return await usedQuotaIn(db(), employeeId, day);
 }
 
 /**
@@ -482,6 +476,55 @@ export async function monthlyUsage(employeeId: string, day: string): Promise<num
  * จึงไม่ต้องแก้โครงตาราง — ฐานข้อมูลที่รัน db/massage-quota-extra.sql ไปแล้วใช้ได้ทันที
  */
 export const PERMANENT_MONTH = "0000-00";
+
+/**
+ * เงื่อนไข "คิวนี้นับว่าใช้สิทธิ์ไปแล้ว" — กติกาข้อเดียวที่ทุกที่ต้องใช้ร่วมกัน
+ *
+ * ไม่ใช่แค่ status = 'booked' เพราะมีรอยรั่วที่เกิดขึ้นจริง:
+ *   เช้าวันให้บริการ เจ้าหน้าที่ปริ้นใบเช็คชื่อไปแล้ว พนักงานกดยกเลิกคิวรอบบ่ายของตัวเอง
+ *   สิทธิ์เด้งกลับมาเต็ม แล้วไปจองวันอื่นต่อ — ได้นวดเกินสิทธิ์โดยที่ระบบนับว่ายังไม่ได้ใช้เลย
+ *
+ * เส้นแบ่งใช้เวลาเดียวกับที่วันนั้นเข้าโหมดคิวด่วน (15:00 ของวันก่อนหน้า) เพราะเป็นจังหวะ
+ * ที่ "วันนั้นถูกล็อก" อยู่แล้วในระบบ ไม่ต้องเพิ่มกติกาใหม่ให้ต้องจำอีกข้อ
+ *
+ * นับเฉพาะที่เจ้าตัวกดยกเลิกเอง (cancelled_by = employee_id) — ผู้ดูแลยกเลิกให้
+ * หรือปิดวันทั้งวัน ต้องคืนสิทธิ์ตามปกติ ไม่ใช่ลงโทษคนที่ไม่ได้ทำอะไรผิด
+ *
+ * ต้องใช้ชื่อตาราง b ในคิวรีที่เอาไปแปะ
+ */
+export function usedQuotaRule(sql: SqlLike) {
+  return sql`(
+    b.status = 'booked'
+    OR (
+      b.status = 'cancelled'
+      AND b.cancelled_by = b.employee_id
+      AND b.cancelled_at >= (
+        (b.day - make_interval(days => ${FLASH_LEAD_DAYS}) + make_interval(hours => ${FLASH_FROM_HOUR}))
+        AT TIME ZONE 'Asia/Bangkok'
+      )
+    )
+  )`;
+}
+
+/**
+ * นับสิทธิ์ที่ใช้ไปแล้วของเดือนที่ day อยู่
+ *
+ * ทุกที่ที่ต้องรู้ว่า "ใช้ไปกี่ครั้งแล้ว" ต้องเรียกอันนี้ ห้ามเขียนคิวรีเอง
+ * ไม่งั้นกติกาข้างบนจะมีสองชุดที่ไม่ตรงกัน แล้วเลขบนหน้าจอกับตอนกดจองจะคนละเลข
+ */
+export async function usedQuotaIn(
+  sql: SqlLike,
+  employeeId: string,
+  day: string,
+): Promise<number> {
+  const rows = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM massage_bookings b
+    WHERE b.employee_id = ${employeeId} AND b.kind = 'quota'
+      AND b.day >= ${monthStart(day)}::date AND b.day < ${nextMonthStart(day)}::date
+      AND ${usedQuotaRule(sql)}
+  `;
+  return rows[0]?.n ?? 0;
+}
 
 /** แปลงส่วนต่างที่ผู้ดูแลปรับไว้ ให้เป็นจำนวนสิทธิ์จริง — ไม่ติดลบ และไม่เกินเพดาน */
 export function quotaFromExtra(extra: number): number {
@@ -601,12 +644,7 @@ export async function adjustQuota(
         SET extra = EXCLUDED.extra, updated_by = EXCLUDED.updated_by, updated_at = now()
     `;
 
-    const used = await tx<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM massage_bookings
-      WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
-        AND day >= ${month + "-01"}::date
-        AND day <  (${month + "-01"}::date + INTERVAL '1 month')
-    `;
+    const used = await usedQuotaIn(tx, employeeId, `${month}-01`);
     const permanent = scope === "permanent" ? extra : cur.permanent;
     const monthly = scope === "permanent" ? cur.monthly : extra;
     return {
@@ -616,7 +654,7 @@ export async function adjustQuota(
       permanent,
       monthly,
       quota: quotaFromExtras(permanent, monthly),
-      used: used[0]?.n ?? 0,
+      used,
     };
   });
 }
@@ -699,11 +737,7 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
       // ต้องอ่านสิทธิ์ที่ใช้ไปเสมอ ไม่ใช่เฉพาะตอนจะห้าม เพราะเลขนี้เป็นตัวตัดสินด้วยว่า
       // คิวที่กำลังจะเขียนเป็นคิวสิทธิ์หรือคิวด่วน — สิทธิ์ยังไม่หมดก็นับสิทธิ์ตามปกติ
       // ต่อให้วันนั้นเข้าโหมดคิวด่วนไปแล้ว
-      const used = await sql<{ n: number }[]>`
-        SELECT count(*)::int AS n FROM massage_bookings
-        WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
-          AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
-      `;
+      const used = [{ n: await usedQuotaIn(sql, employeeId, day) }];
       // อ่านสิทธิ์ที่ผู้ดูแลปรับไว้ในธุรกรรมเดียวกัน — แถวพนักงานถูกล็อกไปแล้วข้างบน
       // ผู้ดูแลที่กำลังกดลดสิทธิ์คนเดียวกันอยู่จึงต้องรอ ไม่ใช่แทรกกลางคัน
       const ex = await quotaExtras(sql, employeeId, day.slice(0, 7));
@@ -808,9 +842,12 @@ export async function cancel(
     );
   }
 
+  // จดเวลาด้วยนาฬิกาตัวเดียวกับที่ใช้ตัดสินข้างบน ไม่ใช่ now() ของฐานข้อมูล
+  // เพราะกติกา "ยกเลิกหลังวันถูกล็อก = สิทธิ์ไม่คืน" อ่านจากค่านี้ ถ้าสองนาฬิกาไม่ตรงกัน
+  // การตัดสินตอนกดกับการนับตอนอ่านจะให้คนละคำตอบ (และทดสอบเวลาย้อนหลังไม่ได้เลย)
   await sql`
     UPDATE massage_bookings
-    SET status = 'cancelled', cancelled_at = now(), cancelled_by = ${employeeId}, updated_at = now()
+    SET status = 'cancelled', cancelled_at = ${now}, cancelled_by = ${employeeId}, updated_at = now()
     WHERE id = ${bookingId} AND status = 'booked'
   `;
   return { day: b.day, slot: b.slot, therapistName: b.name };
@@ -890,32 +927,32 @@ export async function adminReassign(
         return { ...b, toName: to[0].full_name, flash: false, hold: false };
       }
 
-      // ชนิดของคิวต้องคิดใหม่ตามคนที่รับไป ไม่ใช่ยกของเดิมมาทั้งดุ้น
+      // ชนิดของคิวคิดใหม่เฉพาะเมื่อจำเป็น ไม่ใช่คิดใหม่ทุกครั้ง
       //
-      // เคสที่ต้องระวังคือช่องที่ผู้ดูแลล็อกไว้ (hold) ซึ่งไม่นับสิทธิ์ใครเลย
-      // ถ้าโอนให้คนจริงแล้วยังเป็น hold อยู่ คนนั้นจะได้นวดฟรีโดยไม่เสียสิทธิ์
-      // กลายเป็นช่องทางเลี่ยงสิทธิ์ที่ผู้ดูแลเปิดให้เองโดยไม่รู้ตัว
+      // ต้องคิดใหม่: ช่องที่ผู้ดูแลล็อกไว้ (hold) ซึ่งไม่นับสิทธิ์ใครเลย ถ้าโอนให้คนจริง
+      // แล้วยังเป็น hold อยู่ คนนั้นจะได้นวดฟรี กลายเป็นช่องทางเลี่ยงสิทธิ์
+      //
+      // ต้องไม่คิดใหม่: คิวด่วนที่โอนต่อให้เพื่อน ซึ่งเป็นทางออกเดียวของกติกา
+      // "คิวด่วนยกเลิกเองไม่ได้ ให้หาคนมาแทน" ช่องนั้นเป็นช่องแถมมาตั้งแต่ต้น
+      // ถ้าไปหักสิทธิ์คนที่มารับช่วง เท่ากับลงโทษคนที่ช่วยแก้ปัญหาให้
       const hold = to[0].employee_code === STAFF_CODE;
-      const usedRows = hold
-        ? [{ n: 0 }]
-        : await sql<{ n: number }[]>`
-            SELECT count(*)::int AS n FROM massage_bookings
-            WHERE employee_id = ${toEmployeeId} AND status = 'booked' AND kind = 'quota'
-              AND day >= ${monthStart(b.day)}::date AND day < ${nextMonthStart(b.day)}::date
-          `;
-      const ex = hold
+      const recompute = hold || b.kind === "hold";
+      const used = hold || !recompute ? 0 : await usedQuotaIn(sql, toEmployeeId, b.day);
+      const ex = hold || !recompute
         ? { permanent: 0, monthly: 0 }
         : await quotaExtras(sql, toEmployeeId, b.day.slice(0, 7));
-      const flash = !hold && (usedRows[0]?.n ?? 0) >= quotaFromExtras(ex.permanent, ex.monthly);
+      const kind = hold
+        ? "hold"
+        : recompute
+          ? used >= quotaFromExtras(ex.permanent, ex.monthly) ? "flash" : "quota"
+          : b.kind;
 
       await sql`
         UPDATE massage_bookings
-        SET employee_id = ${toEmployeeId},
-            kind = ${hold ? "hold" : flash ? "flash" : "quota"},
-            updated_at = now()
+        SET employee_id = ${toEmployeeId}, kind = ${kind}, updated_at = now()
         WHERE id = ${bookingId} AND status = 'booked'
       `;
-      return { ...b, toName: to[0].full_name, flash, hold };
+      return { ...b, toName: to[0].full_name, flash: kind === "flash", hold };
     });
   } catch (e) {
     // ดัชนี uq_massage_person_day กันไว้ — คนใหม่มีคิวของวันนั้นอยู่แล้ว
@@ -995,6 +1032,10 @@ export interface MyBooking {
   flash: boolean;
   /** ยกเลิกได้อยู่ไหม ณ ตอนนี้ */
   cancellable: boolean;
+  /** true = ยกเลิกได้ แต่สิทธิ์ไม่คืน เพราะวันนั้นถูกล็อกไปแล้ว — ต้องเตือนก่อนกด */
+  keepsQuota: boolean;
+  /** true = คิวนี้ถูกยกเลิกไปหลังวันถูกล็อก สิทธิ์จึงยังถูกนับว่าใช้ไปแล้ว */
+  spentAnyway: boolean;
   past: boolean;
 }
 
@@ -1005,10 +1046,14 @@ export async function myBookings(
 ): Promise<MyBooking[]> {
   const today = bangkokDate(now);
   const rows = await db()<
-    { id: string; day: string; slot: string; status: string; kind: string; name: string }[]
+    { id: string; day: string; slot: string; status: string; kind: string; name: string;
+      spent: boolean }[]
   >`
     SELECT b.id, to_char(b.day, 'YYYY-MM-DD') AS day, to_char(b.slot_start, 'HH24:MI') AS slot,
-           b.status, b.kind, t.name
+           b.status, b.kind, t.name,
+           -- ยกเลิกไปแล้วแต่ยังถูกนับว่าใช้สิทธิ์ — ต้องบอกบนหน้าจอ ไม่งั้นเลขสิทธิ์
+           -- จะดูเหมือนหายไปเฉย ๆ แล้วพนักงานจะทักมาถามทุกครั้ง
+           (b.status = 'cancelled' AND b.kind = 'quota' AND ${usedQuotaRule(db())}) AS spent
     FROM massage_bookings b
     JOIN massage_therapists t ON t.id = b.therapist_id
     WHERE b.employee_id = ${employeeId}
@@ -1029,6 +1074,9 @@ export async function myBookings(
       flash: r.kind === "flash",
       cancellable:
         r.status === "booked" && r.kind !== "flash" && startsIn > CUTOFF_MINUTES * 60_000,
+      // วันถูกล็อกแล้ว = กดยกเลิกได้อยู่ แต่สิทธิ์ไม่คืน ต้องบอกก่อนกด ไม่ใช่ให้รู้ตอนกดไปแล้ว
+      keepsQuota: r.kind === "quota" && now >= flashOpensAt(r.day),
+      spentAnyway: r.spent === true,
       past: startsIn <= 0,
     };
   });
@@ -1086,11 +1134,7 @@ export async function adminBook(
       // ช่องที่ล็อกไว้ไม่มีเจ้าของจริง จึงไม่ต้องนับสิทธิ์ใครเลย และไม่กลายเป็นคิวด่วน
       const usedRows = hold
         ? [{ n: 0 }]
-        : await sql<{ n: number }[]>`
-            SELECT count(*)::int AS n FROM massage_bookings
-            WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
-              AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
-          `;
+        : [{ n: await usedQuotaIn(sql, employeeId, day) }];
       const used = usedRows[0]?.n ?? 0;
       const ex = hold
         ? { permanent: 0, monthly: 0 }

@@ -554,7 +554,7 @@ function goMine({ justBooked }) {
             // ส่วนเรื่องยกเลิกทันหรือไม่ทัน อยู่ในบรรทัดใต้การ์ดซึ่งบอกได้ละเอียดกว่าป้ายคำเดียว
             const tag =
               b.status === "cancelled"
-                ? { cls: "void", text: "ยกเลิกแล้ว" }
+                ? { cls: "void", text: b.spentAnyway ? "ยกเลิกแล้ว · สิทธิ์ถูกใช้ไป" : "ยกเลิกแล้ว" }
                 : b.past
                   ? { cls: "done", text: "ใช้แล้ว" }
                   : b.flash
@@ -569,7 +569,10 @@ function goMine({ justBooked }) {
             <div class="mywho">${escapeHtml(b.therapistName)}</div>
             ${
               b.cancellable
-                ? `<button class="btn-cancel" data-cancel="${escapeHtml(b.id)}">ยกเลิกคิวนี้</button>`
+                ? `<button class="btn-cancel" data-cancel="${escapeHtml(b.id)}">ยกเลิกคิวนี้</button>` +
+                  (b.keepsQuota
+                    ? `<div class="mynote">วันนี้ปิดรับจองไปแล้ว · ยกเลิกได้ แต่<b>สิทธิ์ครั้งนี้จะไม่คืน</b></div>`
+                    : "")
                 : b.past
                   ? ""
                   : b.flash
@@ -608,7 +611,11 @@ async function cancelBooking(id) {
     icon: "warn",
     title: "ยืนยันการยกเลิก",
     body: b
-      ? `${b.dayLabel}\nเวลา ${b.slotLabel}\n${b.therapistName}\n\nคิวนี้จะว่างให้เพื่อนจองแทนทันที`
+      ? `${b.dayLabel}\nเวลา ${b.slotLabel}\n${b.therapistName}\n\n` +
+        (b.keepsQuota
+          ? "วันนี้ปิดรับจองไปแล้วและเจ้าหน้าที่ปริ้นใบเช็คชื่อไปแล้ว\n" +
+            "ยกเลิกได้ แต่สิทธิ์ครั้งนี้จะไม่คืนให้ · ช่องจะว่างให้คนที่สิทธิ์หมดจองเป็นคิวด่วนแทน"
+          : "คิวนี้จะว่างให้เพื่อนจองแทนทันที")
       : "คิวนี้จะว่างให้เพื่อนจองแทนทันที",
     confirm: "ยกเลิกคิว",
     cancel: "เก็บไว้ก่อน",
@@ -719,9 +726,13 @@ function openCancel(id) {
     )}<br><br>เลยเวลายกเลิกแล้ว — ยกเลิกได้ถึงก่อนรอบเริ่ม 15 นาที`;
     $("#btn-cancel-confirm").style.display = "none";
   } else {
+    // เตือนตั้งแต่หน้านี้ ไม่ใช่รอให้กดแล้วค่อยเจอในกล่องยืนยัน — คนที่เข้ามาจากการ์ดในไลน์
+    // ตั้งใจมากดยกเลิกอยู่แล้ว ถ้าบอกช้าไปหนึ่งจังหวะก็กดผ่านไปโดยไม่ทันอ่าน
     box.innerHTML = `<b>${escapeHtml(b.dayLabel)}</b><br>เวลา ${escapeHtml(b.slotLabel)}<br>${escapeHtml(
       b.therapistName,
-    )}`;
+    )}${b.keepsQuota
+      ? "<br><br>วันนี้ปิดรับจองไปแล้ว · ยกเลิกได้ แต่<b>สิทธิ์ครั้งนี้จะไม่คืน</b>"
+      : ""}`;
     $("#btn-cancel-confirm").style.display = "";
     $("#btn-cancel-confirm").dataset.id = id;
   }

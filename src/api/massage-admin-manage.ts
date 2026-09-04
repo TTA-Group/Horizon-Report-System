@@ -11,7 +11,7 @@ import { getSession } from "./_lib/auth";
 import { HttpError, json, methodGuard, readJson, run } from "./_lib/http";
 import {
   MONTHLY_QUOTA, adjustQuota, adminBook, adminCancel, adminDayGrid, adminMove, adminReassign,
-  assertMassageStaff, bangkokDate, quotaFromExtra, PERMANENT_MONTH, STAFF_CODE,
+  assertMassageStaff, bangkokDate, quotaFromExtra, PERMANENT_MONTH, STAFF_CODE, usedQuotaRule,
   type QuotaScope,
 } from "./_lib/massage";
 import { bookingConfirmCard, massageNotice } from "./_lib/massage-flex";
@@ -111,11 +111,14 @@ export const massageAdminEmployees = async (req: Request): Promise<Response> =>
       }[]
     >`
       SELECT e.id, e.employee_code, e.full_name, COALESCE(d.name, e.department_name) AS dept,
+             -- ใช้กติกาเดียวกับที่ตอนกดจองใช้ตัดสิน (usedQuotaRule) ห้ามเขียนเงื่อนไขเอง
+             -- ไม่งั้นเลขบนหน้าผู้ดูแลกับเลขที่พนักงานโดนจริงจะไม่ตรงกัน
              (SELECT count(*)::int FROM massage_bookings b
-               WHERE b.employee_id = e.id AND b.status = 'booked' AND b.kind = 'quota'
+               WHERE b.employee_id = e.id AND b.kind = 'quota'
                  AND b.day >= date_trunc('month', (now() AT TIME ZONE 'Asia/Bangkok'))::date
                  AND b.day <  (date_trunc('month', (now() AT TIME ZONE 'Asia/Bangkok'))
-                               + INTERVAL '1 month')::date) AS used,
+                               + INTERVAL '1 month')::date
+                 AND ${usedQuotaRule(db())}) AS used,
              -- แยกสองชั้นมาให้หน้าจอ: สิทธิ์ที่ให้ถาวร กับสิทธิ์ที่ให้เฉพาะเดือนนี้
              -- ต้องแยก เพราะหน้าปรับสิทธิ์มีคันโยกสองอัน ถ้าส่งมาแต่ผลรวมจะเติมเลขคืนไม่ถูก
              COALESCE((SELECT x.extra FROM massage_quota_extra x
