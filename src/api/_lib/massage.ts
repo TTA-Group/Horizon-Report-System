@@ -9,6 +9,7 @@
 //   - การจองต้องอยู่ใน transaction เดียวกับการนับสิทธิ์เสมอ
 //   - เวลาทุกจุดเป็นเวลาไทย ส่วนที่เก็บลงฐานข้อมูลเป็น TIMESTAMPTZ ตามปกติ
 
+import type postgres from "postgres";
 import { requireActive, type Session } from "./auth";
 import { db } from "./db";
 import { HttpError } from "./http";
@@ -33,6 +34,18 @@ export const MONTHLY_QUOTA = 2;
  * แล้วเผลอ จะได้คนที่จองได้ทั้งเดือนโดยไม่มีใครสังเกต
  */
 export const QUOTA_MAX = 10;
+
+/**
+ * รหัสพนักงานเงาที่ผู้ดูแลใช้ล็อกช่องเก็บไว้ก่อน
+ *
+ * ผู้ดูแลบางครั้งต้องกันช่องไว้ล่วงหน้าโดยยังไม่รู้ว่าจะให้ใคร (เช่นกันไว้ให้ผู้บริหาร
+ * หรือกันไม่ให้คนจองระหว่างที่ยังตกลงกันไม่จบ) เดิมทำไม่ได้เลย ต้องยืมชื่อคนจริงไปก่อน
+ * แล้วสิทธิ์ของคนนั้นถูกหักทั้งที่ไม่ได้นวด
+ *
+ * ช่องที่ล็อกไว้บันทึกเป็น kind = 'hold' จึงไม่นับสิทธิ์ใคร และไม่ติดกติกาวันละคิวเดียว
+ * พอรู้ตัวคนจริงแล้วใช้ปุ่ม "เปลี่ยนคนจอง" โอนให้ ตอนนั้นถึงจะนับสิทธิ์ตามปกติ
+ */
+export const STAFF_CODE = "00000";
 
 /**
  * เส้นตัด 15 นาทีก่อนรอบเริ่ม ใช้ทั้งสองทาง
@@ -459,9 +472,47 @@ export async function monthlyUsage(employeeId: string, day: string): Promise<num
   return rows[0]?.n ?? 0;
 }
 
+/**
+ * ค่าที่ใช้แทน "ทุกเดือน" ในคอลัมน์ month ของ massage_quota_extra
+ *
+ * สิทธิ์ที่ให้ถาวรต้องอยู่ตารางเดียวกับสิทธิ์รายเดือน ไม่งั้นทุกที่ที่นับสิทธิ์ต้องอ่านสองตาราง
+ * แล้ววันหนึ่งจะมีที่ที่ลืมอ่านตารางที่สอง กลายเป็นตัวเลขบนหน้าจอกับตอนกดจองไม่ตรงกัน
+ *
+ * ใช้ '0000-00' เพราะยาว 7 ตัวพอดีกับคอลัมน์เดิม และไม่มีวันตรงกับเดือนจริง
+ * จึงไม่ต้องแก้โครงตาราง — ฐานข้อมูลที่รัน db/massage-quota-extra.sql ไปแล้วใช้ได้ทันที
+ */
+export const PERMANENT_MONTH = "0000-00";
+
 /** แปลงส่วนต่างที่ผู้ดูแลปรับไว้ ให้เป็นจำนวนสิทธิ์จริง — ไม่ติดลบ และไม่เกินเพดาน */
 export function quotaFromExtra(extra: number): number {
   return Math.max(0, Math.min(QUOTA_MAX, MONTHLY_QUOTA + extra));
+}
+
+/** สิทธิ์จริงจากสองชั้นรวมกัน — ชั้นถาวร กับ ชั้นเฉพาะเดือนนี้ */
+export function quotaFromExtras(permanent: number, monthly: number): number {
+  return quotaFromExtra(permanent + monthly);
+}
+
+/**
+ * ส่วนต่างทั้งสองชั้นของคนคนหนึ่งในเดือนหนึ่ง
+ *
+ * รับ sql เข้ามาเพราะบางที่เรียกจากใน transaction ที่ล็อกแถวพนักงานไว้แล้ว
+ * ถ้าเปิด connection ใหม่ในนั้นจะอ่านข้ามการล็อกไป แล้วนับสิทธิ์ผิดตอนมีคนกดพร้อมกัน
+ */
+// รับได้ทั้ง connection ปกติและตัวที่อยู่ใน transaction — ในไลบรารีเป็นคนละชนิดกัน
+// แต่สืบทอดจาก ISql ตัวเดียวกัน ซึ่งมีทุกอย่างที่ตรงนี้ใช้
+type SqlLike = postgres.ISql;
+export async function quotaExtras(
+  sql: SqlLike,
+  employeeId: string,
+  month: string,
+): Promise<{ permanent: number; monthly: number }> {
+  const rows = await sql<{ month: string; extra: number }[]>`
+    SELECT month, extra FROM massage_quota_extra
+    WHERE employee_id = ${employeeId} AND month = ANY(${[PERMANENT_MONTH, month]})
+  `;
+  const at = (m: string) => rows.find((r) => r.month.trim() === m)?.extra ?? 0;
+  return { permanent: at(PERMANENT_MONTH), monthly: at(month) };
 }
 
 /**
@@ -471,19 +522,23 @@ export function quotaFromExtra(extra: number): number {
  * ไม่งั้นคนที่ผู้ดูแลเพิ่มสิทธิ์ให้จะเห็นเลขหนึ่งบนหน้าจอ แต่ถูกปฏิเสธด้วยอีกเลขตอนกดจอง
  */
 export async function quotaOf(employeeId: string, day: string): Promise<number> {
-  const rows = await db()<{ extra: number }[]>`
-    SELECT extra FROM massage_quota_extra
-    WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
-  `;
-  return quotaFromExtra(rows[0]?.extra ?? 0);
+  const { permanent, monthly } = await quotaExtras(db(), employeeId, day.slice(0, 7));
+  return quotaFromExtras(permanent, monthly);
 }
+
+/** ปรับสิทธิ์ชั้นไหน — เฉพาะเดือนนี้ หรือถาวรติดตัวไปทุกเดือน */
+export type QuotaScope = "month" | "permanent";
 
 export interface QuotaLine {
   month: string;
   /** สิทธิ์ปกติของทุกคน ก่อนถูกปรับ */
   base: number;
-  /** ส่วนต่างที่ผู้ดูแลปรับไว้ (บวก/ลบ/ศูนย์) */
+  /** ส่วนต่างรวมทั้งสองชั้น (บวก/ลบ/ศูนย์) — ตัวที่หน้าจอเอาไปบอกว่า "เพิ่มให้กี่ครั้ง" */
   extra: number;
+  /** ส่วนต่างที่ให้ไว้ถาวร ติดตัวไปทุกเดือน */
+  permanent: number;
+  /** ส่วนต่างที่ให้เฉพาะเดือนนี้ หมดอายุพร้อมเดือน */
+  monthly: number;
   /** สิทธิ์จริงหลังปรับแล้ว */
   quota: number;
   used: number;
@@ -491,17 +546,15 @@ export interface QuotaLine {
 
 /** สิทธิ์กับการใช้งานของคนคนหนึ่งในเดือนหนึ่ง — ตัวเลขชุดที่หน้าจอผู้ดูแลต้องใช้ทั้งหมด */
 export async function quotaLine(employeeId: string, day: string): Promise<QuotaLine> {
-  const sql = db();
-  const [row] = await sql<{ extra: number }[]>`
-    SELECT extra FROM massage_quota_extra
-    WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
-  `;
-  const extra = row?.extra ?? 0;
+  const month = day.slice(0, 7);
+  const { permanent, monthly } = await quotaExtras(db(), employeeId, month);
   return {
-    month: day.slice(0, 7),
+    month,
     base: MONTHLY_QUOTA,
-    extra,
-    quota: quotaFromExtra(extra),
+    extra: permanent + monthly,
+    permanent,
+    monthly,
+    quota: quotaFromExtras(permanent, monthly),
     used: await monthlyUsage(employeeId, day),
   };
 }
@@ -520,6 +573,7 @@ export async function adjustQuota(
   month: string,
   step: number,
   byEmployeeId: string,
+  scope: QuotaScope = "month",
 ): Promise<QuotaLine> {
   const sql = db();
   return await sql.begin(async (tx) => {
@@ -528,19 +582,21 @@ export async function adjustQuota(
     `;
     if (emp.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้", "no_employee");
 
-    const [cur] = await tx<{ extra: number }[]>`
-      SELECT extra FROM massage_quota_extra
-      WHERE employee_id = ${employeeId} AND month = ${month}
-    `;
-    const now = cur?.extra ?? 0;
+    const cur = await quotaExtras(tx, employeeId, month);
+    // ชั้นที่ไม่ได้กด ต้องเอามาคิดด้วยตอนหนีบ ไม่งั้นคนที่มีสิทธิ์ถาวรเต็มเพดานอยู่แล้ว
+    // จะกดเพิ่มรายเดือนได้เรื่อย ๆ โดยตัวเลขบนหน้าจอไม่ขยับ
+    const other = scope === "permanent" ? cur.monthly : cur.permanent;
+    const mine = scope === "permanent" ? cur.permanent : cur.monthly;
 
     // หนีบที่ "สิทธิ์จริง" ไม่ใช่ที่ส่วนต่าง เพื่อไม่ให้เก็บส่วนต่างที่กดค้างไว้เกินเพดาน
     // แล้วต้องกดลบซ้ำหลายครั้งกว่าตัวเลขบนหน้าจอจะขยับ
-    const extra = quotaFromExtra(now + step) - MONTHLY_QUOTA;
+    const total = quotaFromExtra(other + mine + step);
+    const extra = total - MONTHLY_QUOTA - other;
+    const row = scope === "permanent" ? PERMANENT_MONTH : month;
 
     await tx`
       INSERT INTO massage_quota_extra (employee_id, month, extra, updated_by)
-      VALUES (${employeeId}, ${month}, ${extra}, ${byEmployeeId})
+      VALUES (${employeeId}, ${row}, ${extra}, ${byEmployeeId})
       ON CONFLICT (employee_id, month) DO UPDATE
         SET extra = EXCLUDED.extra, updated_by = EXCLUDED.updated_by, updated_at = now()
     `;
@@ -551,11 +607,15 @@ export async function adjustQuota(
         AND day >= ${month + "-01"}::date
         AND day <  (${month + "-01"}::date + INTERVAL '1 month')
     `;
+    const permanent = scope === "permanent" ? extra : cur.permanent;
+    const monthly = scope === "permanent" ? cur.monthly : extra;
     return {
       month,
       base: MONTHLY_QUOTA,
-      extra,
-      quota: quotaFromExtra(extra),
+      extra: permanent + monthly,
+      permanent,
+      monthly,
+      quota: quotaFromExtras(permanent, monthly),
       used: used[0]?.n ?? 0,
     };
   });
@@ -646,11 +706,8 @@ export async function book(input: BookInput, now = new Date()): Promise<BookedRo
       `;
       // อ่านสิทธิ์ที่ผู้ดูแลปรับไว้ในธุรกรรมเดียวกัน — แถวพนักงานถูกล็อกไปแล้วข้างบน
       // ผู้ดูแลที่กำลังกดลดสิทธิ์คนเดียวกันอยู่จึงต้องรอ ไม่ใช่แทรกกลางคัน
-      const extraRow = await sql<{ extra: number }[]>`
-        SELECT extra FROM massage_quota_extra
-        WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
-      `;
-      const quota = quotaFromExtra(extraRow[0]?.extra ?? 0);
+      const ex = await quotaExtras(sql, employeeId, day.slice(0, 7));
+      const quota = quotaFromExtras(ex.permanent, ex.monthly);
       const flash = isFlashFor(day, used[0]?.n ?? 0, quota, now);
       if (!flash && (used[0]?.n ?? 0) >= quota) {
         throw new HttpError(
@@ -775,15 +832,17 @@ export interface AdminBookingRow {
   therapistName: string;
   employeeId: string;
   name: string;
+  /** quota | flash | hold — ผู้เรียกต้องรู้ เพราะช่องที่ล็อกไว้ไม่มีเจ้าของให้แจ้ง */
+  kind: string;
 }
 
 async function loadBooking(bookingId: string): Promise<AdminBookingRow> {
   const rows = await db()<
     { id: string; day: string; slot: string; therapist_id: string; therapist_name: string;
-      employee_id: string; status: string; full_name: string }[]
+      employee_id: string; status: string; full_name: string; kind: string }[]
   >`
     SELECT b.id, to_char(b.day, 'YYYY-MM-DD') AS day, to_char(b.slot_start, 'HH24:MI') AS slot,
-           b.therapist_id, t.name AS therapist_name, b.employee_id, b.status, e.full_name
+           b.therapist_id, t.name AS therapist_name, b.employee_id, b.status, e.full_name, b.kind
     FROM massage_bookings b
     JOIN employees e ON e.id = b.employee_id
     JOIN massage_therapists t ON t.id = b.therapist_id
@@ -795,7 +854,7 @@ async function loadBooking(bookingId: string): Promise<AdminBookingRow> {
   return {
     id: b.id, day: b.day, slot: b.slot,
     therapistId: b.therapist_id, therapistName: b.therapist_name,
-    employeeId: b.employee_id, name: b.full_name,
+    employeeId: b.employee_id, name: b.full_name, kind: b.kind,
   };
 }
 
@@ -812,22 +871,52 @@ async function loadBooking(bookingId: string): Promise<AdminBookingRow> {
 export async function adminReassign(
   bookingId: string,
   toEmployeeId: string,
-): Promise<AdminBookingRow & { toName: string }> {
+): Promise<AdminBookingRow & { toName: string; flash: boolean; hold: boolean }> {
   const b = await loadBooking(bookingId);
-  const sql = db();
-
-  const to = await sql<{ id: string; full_name: string; status: string }[]>`
-    SELECT id, full_name, status FROM employees WHERE id = ${toEmployeeId}
-  `;
-  if (to.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้");
-  if (to[0].status === "suspended") throw new HttpError(409, "พนักงานคนนี้ถูกระงับสิทธิ์อยู่");
-  if (to[0].id === b.employeeId) return { ...b, toName: to[0].full_name };
 
   try {
-    await sql`
-      UPDATE massage_bookings SET employee_id = ${toEmployeeId}, updated_at = now()
-      WHERE id = ${bookingId} AND status = 'booked'
-    `;
+    return await db().begin(async (sql) => {
+      // ล็อกแถวคนที่จะรับคิว ด้วยเหตุผลเดียวกับ adminBook — ต้องนับสิทธิ์ของคนนี้ใหม่
+      // ถ้าไม่ล็อก คนที่กำลังกดจองเองอยู่พร้อมกันจะทำให้ทั้งสองฝั่งนับได้เลขเดียวกัน
+      const to = await sql<
+        { id: string; full_name: string; status: string; employee_code: string }[]
+      >`
+        SELECT id, full_name, status, employee_code FROM employees
+        WHERE id = ${toEmployeeId} FOR UPDATE
+      `;
+      if (to.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้");
+      if (to[0].status === "suspended") throw new HttpError(409, "พนักงานคนนี้ถูกระงับสิทธิ์อยู่");
+      if (to[0].id === b.employeeId) {
+        return { ...b, toName: to[0].full_name, flash: false, hold: false };
+      }
+
+      // ชนิดของคิวต้องคิดใหม่ตามคนที่รับไป ไม่ใช่ยกของเดิมมาทั้งดุ้น
+      //
+      // เคสที่ต้องระวังคือช่องที่ผู้ดูแลล็อกไว้ (hold) ซึ่งไม่นับสิทธิ์ใครเลย
+      // ถ้าโอนให้คนจริงแล้วยังเป็น hold อยู่ คนนั้นจะได้นวดฟรีโดยไม่เสียสิทธิ์
+      // กลายเป็นช่องทางเลี่ยงสิทธิ์ที่ผู้ดูแลเปิดให้เองโดยไม่รู้ตัว
+      const hold = to[0].employee_code === STAFF_CODE;
+      const usedRows = hold
+        ? [{ n: 0 }]
+        : await sql<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM massage_bookings
+            WHERE employee_id = ${toEmployeeId} AND status = 'booked' AND kind = 'quota'
+              AND day >= ${monthStart(b.day)}::date AND day < ${nextMonthStart(b.day)}::date
+          `;
+      const ex = hold
+        ? { permanent: 0, monthly: 0 }
+        : await quotaExtras(sql, toEmployeeId, b.day.slice(0, 7));
+      const flash = !hold && (usedRows[0]?.n ?? 0) >= quotaFromExtras(ex.permanent, ex.monthly);
+
+      await sql`
+        UPDATE massage_bookings
+        SET employee_id = ${toEmployeeId},
+            kind = ${hold ? "hold" : flash ? "flash" : "quota"},
+            updated_at = now()
+        WHERE id = ${bookingId} AND status = 'booked'
+      `;
+      return { ...b, toName: to[0].full_name, flash, hold };
+    });
   } catch (e) {
     // ดัชนี uq_massage_person_day กันไว้ — คนใหม่มีคิวของวันนั้นอยู่แล้ว
     if (isUniqueViolation(e)) {
@@ -835,7 +924,6 @@ export async function adminReassign(
     }
     throw e;
   }
-  return { ...b, toName: to[0].full_name };
 }
 
 /** ผู้ดูแลยกเลิกคิวของพนักงาน — ช่องนั้นกลับมาว่างให้คนอื่นจองได้ทันที */
@@ -965,7 +1053,7 @@ export async function myBookings(
  */
 export async function adminBook(
   input: BookInput,
-): Promise<AdminBookingRow & { flash: boolean; used: number; quota: number }> {
+): Promise<AdminBookingRow & { flash: boolean; hold: boolean; used: number; quota: number }> {
   const { employeeId, day, slot, therapistId } = input;
 
   if (!MASSAGE_SLOTS.includes(slot as (typeof MASSAGE_SLOTS)[number])) {
@@ -975,11 +1063,15 @@ export async function adminBook(
   try {
     return await db().begin(async (sql) => {
       // ล็อกแถวพนักงานด้วยเหตุผลเดียวกับ book() — การนับสิทธิ์เป็นการอ่านที่ไม่ล็อกอะไรเลย
-      const emp = await sql<{ id: string; full_name: string; status: string }[]>`
-        SELECT id, full_name, status FROM employees WHERE id = ${employeeId} FOR UPDATE
+      const emp = await sql<
+        { id: string; full_name: string; status: string; employee_code: string }[]
+      >`
+        SELECT id, full_name, status, employee_code FROM employees
+        WHERE id = ${employeeId} FOR UPDATE
       `;
       if (emp.length === 0) throw new HttpError(404, "ไม่พบพนักงานคนนี้");
       if (emp[0].status === "suspended") throw new HttpError(409, "พนักงานคนนี้ถูกระงับสิทธิ์อยู่");
+      const hold = emp[0].employee_code === STAFF_CODE;
 
       const dayRow = await sql<{ day: string }[]>`
         SELECT day FROM massage_days WHERE day = ${day}::date AND status = 'open'
@@ -991,30 +1083,33 @@ export async function adminBook(
       `;
       if (th.length === 0) throw new HttpError(409, "หมอนวดท่านนี้ไม่ได้เปิดรับคิว", "bad_therapist");
 
-      const usedRows = await sql<{ n: number }[]>`
-        SELECT count(*)::int AS n FROM massage_bookings
-        WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
-          AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
-      `;
+      // ช่องที่ล็อกไว้ไม่มีเจ้าของจริง จึงไม่ต้องนับสิทธิ์ใครเลย และไม่กลายเป็นคิวด่วน
+      const usedRows = hold
+        ? [{ n: 0 }]
+        : await sql<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM massage_bookings
+            WHERE employee_id = ${employeeId} AND status = 'booked' AND kind = 'quota'
+              AND day >= ${monthStart(day)}::date AND day < ${nextMonthStart(day)}::date
+          `;
       const used = usedRows[0]?.n ?? 0;
-      const extraRow = await sql<{ extra: number }[]>`
-        SELECT extra FROM massage_quota_extra
-        WHERE employee_id = ${employeeId} AND month = ${day.slice(0, 7)}
-      `;
-      const quota = quotaFromExtra(extraRow[0]?.extra ?? 0);
-      const flash = used >= quota;
+      const ex = hold
+        ? { permanent: 0, monthly: 0 }
+        : await quotaExtras(sql, employeeId, day.slice(0, 7));
+      const quota = quotaFromExtras(ex.permanent, ex.monthly);
+      const flash = !hold && used >= quota;
 
       const ins = await sql<{ id: string }[]>`
         INSERT INTO massage_bookings (day, slot_start, therapist_id, employee_id, kind)
         VALUES (${day}::date, ${slot}::time, ${therapistId}, ${employeeId},
-                ${flash ? "flash" : "quota"})
+                ${hold ? "hold" : flash ? "flash" : "quota"})
         RETURNING id
       `;
       return {
         id: ins[0].id, day, slot,
         therapistId, therapistName: th[0].name,
         employeeId, name: emp[0].full_name,
-        flash, used: flash ? used : used + 1, quota,
+        kind: hold ? "hold" : flash ? "flash" : "quota",
+        flash, hold, used: flash || hold ? used : used + 1, quota,
       };
     });
   } catch (e) {
@@ -1118,10 +1213,10 @@ export async function adminSetDay(
   const reason = (opts.reason ?? "").trim().slice(0, 120) || "ปิดให้บริการ";
   const active = await sql<
     { id: string; slot: string; therapist_id: string; therapist_name: string;
-      employee_id: string; full_name: string }[]
+      employee_id: string; full_name: string; kind: string }[]
   >`
     SELECT b.id, to_char(b.slot_start, 'HH24:MI') AS slot,
-           b.therapist_id, t.name AS therapist_name, b.employee_id, e.full_name
+           b.therapist_id, t.name AS therapist_name, b.employee_id, e.full_name, b.kind
     FROM massage_bookings b
     JOIN employees e ON e.id = b.employee_id
     JOIN massage_therapists t ON t.id = b.therapist_id
@@ -1153,7 +1248,7 @@ export async function adminSetDay(
     cancelled: active.map((b) => ({
       id: b.id, day, slot: b.slot,
       therapistId: b.therapist_id, therapistName: b.therapist_name,
-      employeeId: b.employee_id, name: b.full_name,
+      employeeId: b.employee_id, name: b.full_name, kind: b.kind,
     })),
   };
 }
@@ -1190,10 +1285,10 @@ export async function adminRemoveDay(
   // คิวที่ยังไม่ถูกยกเลิกต้องถูกยกเลิกไปพร้อมกัน ไม่ปล่อยให้ค้างเป็นคิวของวันที่ไม่มีอยู่แล้ว
   const active = await sql<
     { id: string; slot: string; therapist_id: string; therapist_name: string;
-      employee_id: string; full_name: string }[]
+      employee_id: string; full_name: string; kind: string }[]
   >`
     SELECT b.id, to_char(b.slot_start, 'HH24:MI') AS slot,
-           b.therapist_id, t.name AS therapist_name, b.employee_id, e.full_name
+           b.therapist_id, t.name AS therapist_name, b.employee_id, e.full_name, b.kind
     FROM massage_bookings b
     JOIN employees e ON e.id = b.employee_id
     JOIN massage_therapists t ON t.id = b.therapist_id
@@ -1225,7 +1320,7 @@ export async function adminRemoveDay(
     cancelled: active.map((b) => ({
       id: b.id, day, slot: b.slot,
       therapistId: b.therapist_id, therapistName: b.therapist_name,
-      employeeId: b.employee_id, name: b.full_name,
+      employeeId: b.employee_id, name: b.full_name, kind: b.kind,
     })),
   };
 }

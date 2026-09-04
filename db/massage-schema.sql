@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS massage_bookings (
   employee_id   UUID NOT NULL REFERENCES employees(id),
   status        VARCHAR(12) NOT NULL DEFAULT 'booked', -- booked | cancelled
   -- quota = ใช้สิทธิ์ 2 ครั้ง/เดือน · flash = คิวด่วน ไม่นับสิทธิ์ และพนักงานยกเลิกเองไม่ได้
-  kind          VARCHAR(8)  NOT NULL DEFAULT 'quota',   -- quota | flash
+  -- hold  = ช่องที่ผู้ดูแลล็อกไว้ในนาม STAFF ยังไม่มีเจ้าของจริง ไม่นับสิทธิ์ใคร
+  kind          VARCHAR(8)  NOT NULL DEFAULT 'quota',   -- quota | flash | hold
   -- การเช็คชื่อหน้างาน NULL = ยังไม่ได้เช็ค
   attended      VARCHAR(10),                          -- present | no_show
   checked_at    TIMESTAMPTZ,
@@ -149,9 +150,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_massage_slot
 -- แรงกว่าการห้ามเฉพาะรอบติดกัน เพราะคนที่จอง 10:00 กับ 14:00 วันเดียวกันก็ยังกินคิว
 -- ไปสองคิวของวันนั้น ทั้งที่คนอื่นยังไม่ได้เลยสักคิว สิทธิ์ 2 ครั้งต่อเดือนจึงกลายเป็น
 -- "สองวันคนละสัปดาห์" ซึ่งกระจายกว่า
+--
+-- ยกเว้น kind = 'hold' ซึ่งคือช่องที่ผู้ดูแลล็อกไว้ในนาม STAFF (รหัส 00000)
+-- การล็อกต้องกดได้หลายช่องในวันเดียว ไม่งั้นล็อกได้วันละช่องเดียวซึ่งไม่มีประโยชน์
 CREATE UNIQUE INDEX IF NOT EXISTS uq_massage_person_day
   ON massage_bookings (day, employee_id)
-  WHERE status = 'booked';
+  WHERE status = 'booked' AND kind <> 'hold';
 
 -- นับสิทธิ์รายเดือนและดึง "คิวของฉัน"
 CREATE INDEX IF NOT EXISTS idx_massage_employee_day

@@ -221,6 +221,21 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .qnum b{display:block;font-family:'IBM Plex Mono',monospace;font-size:38px;font-weight:600;
   line-height:1;color:var(--green-deep);font-variant-numeric:tabular-nums}
 .qnum span{display:block;font-size:12px;color:var(--slate);margin-top:6px}
+/* กล่องตัวเลขรวม — ไม่มีปุ่มแล้ว เพราะปุ่มย้ายไปอยู่ที่คันโยกสองแถวข้างล่าง */
+.qtotal{justify-content:center}
+/* คันโยกปรับสิทธิ์หนึ่งชั้น — ป้ายอยู่ซ้าย ปุ่มลบ/เลข/บวก อยู่ขวา */
+.qlever{display:flex;align-items:center;gap:10px;margin-top:12px;padding:11px 13px;
+  border:1px solid var(--hair);border-radius:14px;background:var(--sunk)}
+.qlever .qlab{flex:1;min-width:0}
+.qlever .qlab b{display:block;font-size:13px;font-weight:600}
+.qlever .qlab span{display:block;font-size:11px;color:var(--slate);margin-top:2px;line-height:1.5}
+.qlever button{flex:0 0 auto;width:38px;height:38px;border:1px solid var(--hair);
+  background:var(--surface);border-radius:11px;font-family:inherit;font-size:20px;
+  color:var(--ink);cursor:pointer;line-height:1}
+.qlever button:active{transform:scale(.94)}
+.qlever button:disabled{color:var(--dim);cursor:not-allowed}
+.qlever .qval{flex:0 0 auto;min-width:34px;text-align:center;
+  font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600}
 .qmeta{margin-top:10px;text-align:center;font-size:12.5px;color:var(--slate);line-height:1.7}
 .qmeta b{font-weight:600;color:var(--ink)}
 /* ป้ายบอกว่าคนนี้ถูกปรับสิทธิ์ไว้ ไม่ใช่สิทธิ์ปกติ — ผู้ดูแลคนอื่นที่มาเปิดทีหลังต้องเห็น */
@@ -501,6 +516,11 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
       <div class="finder" id="abook-finder" style="margin-top:0">
         <input id="abook-find" type="text" placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน" autocomplete="off" />
         <div class="hits" id="abook-hits"><div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div></div>
+        <!-- ทางลัดสำหรับกันช่องไว้ก่อนโดยยังไม่รู้ว่าจะให้ใคร — ซ่อนไว้จนกว่าจะมีพนักงานเงา
+             ในทะเบียน เพื่อไม่ให้กดแล้วเจอ error ตอนที่ยังไม่ได้รันไฟล์ SQL -->
+        <button class="btn-ghost" id="abook-staff" style="display:none;margin-top:10px">
+          ล็อกช่องไว้ก่อน (STAFF)
+        </button>
       </div>
 
       <div class="lab" style="margin-top:22px">เลือกช่องที่ว่าง</div>
@@ -561,11 +581,25 @@ h1{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
       </div>
 
       <div id="aq-panel" style="display:none">
-        <div class="qbox">
-          <button id="aq-minus" aria-label="ลดสิทธิ์ลงหนึ่งครั้ง">−</button>
+        <div class="qbox qtotal">
           <div class="qnum"><b id="aq-quota">—</b><span>ครั้งต่อเดือน</span></div>
-          <button id="aq-plus" aria-label="เพิ่มสิทธิ์อีกหนึ่งครั้ง">+</button>
         </div>
+
+        <!-- สองแถวนี้คือคันโยกสองอัน บวกกันแล้วได้ตัวเลขใหญ่ข้างบน
+             แยกกันเพราะ "ให้เดือนนี้" กับ "ให้ติดตัวไปตลอด" เป็นคนละการตัดสินใจ -->
+        <div class="qlever">
+          <div class="qlab"><b>เฉพาะเดือนนี้</b><span>หมดอายุเมื่อขึ้นเดือนใหม่</span></div>
+          <button id="aq-minus" aria-label="ลดสิทธิ์เดือนนี้ลงหนึ่งครั้ง">−</button>
+          <span class="qval" id="aq-mon">0</span>
+          <button id="aq-plus" aria-label="เพิ่มสิทธิ์เดือนนี้อีกหนึ่งครั้ง">+</button>
+        </div>
+        <div class="qlever">
+          <div class="qlab"><b>ถาวร</b><span>ติดตัวไปทุกเดือน จนกว่าจะกดลดคืน</span></div>
+          <button id="aq-pminus" aria-label="ลดสิทธิ์ถาวรลงหนึ่งครั้ง">−</button>
+          <span class="qval" id="aq-perm">0</span>
+          <button id="aq-pplus" aria-label="เพิ่มสิทธิ์ถาวรอีกหนึ่งครั้ง">+</button>
+        </div>
+
         <div class="qmeta" id="aq-meta"></div>
       </div>
 

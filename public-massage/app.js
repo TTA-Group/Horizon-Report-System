@@ -1047,11 +1047,22 @@ async function loadAdminDayOptions() {
   aDayOptions = [...(cur.days || []), ...(nxt.days || [])].filter((d) => d.status === "open" && !d.past);
 }
 
+// พนักงานเงา STAFF สำหรับล็อกช่อง — null = ยังไม่ได้รัน db/massage-staff-hold.sql
+let aStaff = null;
+
 async function goAbook(day) {
   show("s-loading");
   $("#loading-text").textContent = "กำลังโหลดตารางคิว...";
   try {
     if (!aDayOptions.length) await loadAdminDayOptions();
+    // ถามครั้งเดียวพอ รายชื่อนี้ไม่เปลี่ยนระหว่างที่เปิดแอปค้างไว้
+    if (aStaff === null) {
+      try {
+        aStaff = (await api("/api/massage/admin/employees")).staff ?? false;
+      } catch {
+        aStaff = false;   // ถามไม่ได้ก็แค่ไม่มีปุ่มลัด ไม่ใช่เรื่องที่ต้องทำให้เปิดหน้าไม่ได้
+      }
+    }
     const target = day || (aGrid && aGrid.day) || (aDayOptions[0] && aDayOptions[0].day);
     if (!target) {
       aGrid = null;
@@ -1075,14 +1086,21 @@ function renderAbook() {
     .join("");
 
   // คนที่เลือกไว้ต้องค้างอยู่บนจอระหว่างไล่หาช่องว่าง ไม่งั้นต้องเลื่อนขึ้นไปดูซ้ำ
+  //
+  // ช่องที่ล็อกไว้ไม่มีเจ้าของ จึงไม่มีสิทธิ์ให้นับ — โชว์ตัวเลขสิทธิ์ไปก็ไม่มีความหมาย
+  // และจะทำให้เข้าใจผิดว่าการล็อกกินสิทธิ์ใครอยู่
+  const staffPicked = aWho && aStaff && aWho.id === aStaff.id;
   $("#abook-picked").innerHTML = aWho
     ? `<div class="picked">
          <div><b>${escapeHtml(aWho.name)}</b>
-           <span>${escapeHtml(aWho.code)}${aWho.dept ? " · " + escapeHtml(aWho.dept) : ""} · ใช้สิทธิ์เดือนนี้ ${aWho.used}/${aWho.quota}</span></div>
+           <span>${staffPicked
+             ? "ล็อกช่องไว้ก่อน · ไม่หักสิทธิ์ใคร · โอนให้คนจริงทีหลังได้"
+             : `${escapeHtml(aWho.code)}${aWho.dept ? " · " + escapeHtml(aWho.dept) : ""} · ใช้สิทธิ์เดือนนี้ ${aWho.used}/${aWho.quota}`}</span></div>
          <button id="abook-change">เปลี่ยนคน</button>
        </div>`
     : "";
   $("#abook-finder").style.display = aWho ? "none" : "";
+  $("#abook-staff").style.display = aWho || !aStaff ? "none" : "";
 
   if (!aGrid) {
     $("#abook-grid").innerHTML = `<div class="empty">ยังไม่มีวันให้บริการที่เปิดอยู่<br>เปิดวันได้ที่แท็บ “วันให้บริการ”</div>`;
@@ -1124,7 +1142,12 @@ function updateAbookBar() {
   }
   $("#abook-clear").classList.toggle("on", Boolean(aPick));
   $("#abook-go").disabled = !(aPick && aWho && aGrid);
-  $("#abook-go").textContent = aWho ? `จองให้ ${aWho.name}` : "จองให้พนักงาน";
+  // ปุ่มต้องบอกสิ่งที่จะเกิดขึ้นจริง — "จองให้ STAFF" อ่านแล้วเหมือนมีพนักงานชื่อ STAFF อยู่จริง
+  $("#abook-go").textContent = !aWho
+    ? "จองให้พนักงาน"
+    : aStaff && aWho.id === aStaff.id
+      ? "ล็อกช่องนี้ไว้"
+      : `จองให้ ${aWho.name}`;
 }
 
 function clearAbookPick() {
@@ -1162,17 +1185,21 @@ async function searchAbookEmployee(q) {
 
 async function doAdminBook() {
   if (!(aPick && aWho && aGrid)) return;
-  const over = aWho.used >= aWho.quota;
+  const lock = aStaff && aWho.id === aStaff.id;
+  const over = !lock && aWho.used >= aWho.quota;
   const yes = await dialog({
-    icon: over ? "flash" : "warn",
-    title: over ? "จองแทน (เกินสิทธิ์)" : "จองแทนพนักงาน",
-    body: `${aWho.name}\n${aGrid.label}\n${aPick.label} (${aPick.therapistName})\n\n` +
-      (over
-        ? (aWho.quota === 0
-            ? "เดือนนี้ไม่มีสิทธิ์เหลือ คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้"
-            : `ใช้สิทธิ์ครบ ${aWho.quota} ครั้งแล้ว คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้`)
-        : `จะหักสิทธิ์เป็นครั้งที่ ${aWho.used + 1} จาก ${aWho.quota} และระบบจะแจ้งเจ้าตัวทางไลน์`),
-    confirm: "ยืนยันจองให้",
+    icon: lock ? "warn" : over ? "flash" : "warn",
+    title: lock ? "ล็อกช่องนี้ไว้" : over ? "จองแทน (เกินสิทธิ์)" : "จองแทนพนักงาน",
+    body: `${lock ? "STAFF" : aWho.name}\n${aGrid.label}\n${aPick.label} (${aPick.therapistName})\n\n` +
+      (lock
+        ? "ช่องนี้จะถูกกันไว้ในนาม STAFF คนอื่นจองไม่ได้ · ไม่หักสิทธิ์ใคร และไม่มีใครได้รับข้อความ\n" +
+          "พอรู้ตัวคนจริงแล้ว กดที่ช่องนี้แล้วเลือก “เปลี่ยนคนจอง” เพื่อโอนให้"
+        : over
+          ? (aWho.quota === 0
+              ? "เดือนนี้ไม่มีสิทธิ์เหลือ คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้"
+              : `ใช้สิทธิ์ครบ ${aWho.quota} ครั้งแล้ว คิวนี้จะบันทึกเป็นคิวด่วน ไม่หักสิทธิ์ และเจ้าตัวยกเลิกเองไม่ได้`)
+          : `จะหักสิทธิ์เป็นครั้งที่ ${aWho.used + 1} จาก ${aWho.quota} และระบบจะแจ้งเจ้าตัวทางไลน์`),
+    confirm: lock ? "ล็อกช่องนี้" : "ยืนยันจองให้",
     cancel: "ไม่ใช่ตอนนี้",
   });
   if (!yes) return;
@@ -1182,7 +1209,7 @@ async function doAdminBook() {
       method: "POST",
       body: { employeeId: aWho.id, day: aGrid.day, slot: aPick.slot, therapistId: aPick.therapistId },
     });
-    toast(`จองให้ ${r.name} แล้ว${r.flash ? " (คิวด่วน)" : ""}`);
+    toast(r.hold ? `ล็อกช่อง ${aPick.label} ไว้แล้ว` : `จองให้ ${r.name} แล้ว${r.flash ? " (คิวด่วน)" : ""}`);
     aWho = { ...aWho, used: r.used, quota: r.quota ?? aWho.quota };
     await goAbook(aGrid.day);
   } catch (e) {
@@ -1396,24 +1423,39 @@ function renderAquota() {
     return;
   }
 
+  const perm = aqWho.permanent ?? 0;
+  const mon = aqWho.monthly ?? 0;
   $("#aq-quota").textContent = aqWho.quota;
+  $("#aq-perm").textContent = perm > 0 ? `+${perm}` : String(perm);
+  $("#aq-mon").textContent = mon > 0 ? `+${mon}` : String(mon);
+
   // ปิดปุ่มที่กดไปก็ไม่มีอะไรเปลี่ยน แทนที่จะปล่อยให้กดแล้วเลขค้างอยู่ที่เดิมเงียบ ๆ
-  $("#aq-minus").disabled = aqBusy || aqWho.quota <= 0;
-  $("#aq-plus").disabled = aqBusy || aqWho.quota >= QUOTA_MAX;
+  // เพดานกับพื้นคิดจากสิทธิ์รวม ไม่ใช่จากชั้นใดชั้นหนึ่ง เพราะสองชั้นบวกกันแล้วถึงเป็นสิทธิ์จริง
+  const atFloor = aqBusy || aqWho.quota <= 0;
+  const atCap = aqBusy || aqWho.quota >= QUOTA_MAX;
+  $("#aq-minus").disabled = atFloor;
+  $("#aq-plus").disabled = atCap;
+  $("#aq-pminus").disabled = atFloor;
+  $("#aq-pplus").disabled = atCap;
 
   const tag =
     aqWho.extra > 0 ? `<span class="tag up">เพิ่มให้ ${aqWho.extra} ครั้ง</span>`
     : aqWho.extra < 0 ? `<span class="tag down">ลดไป ${-aqWho.extra} ครั้ง</span>`
     : "";
   $("#aq-meta").innerHTML =
-    `เดือนนี้จองไปแล้ว <b>${aqWho.used}</b> ครั้ง` +
+    `สิทธิ์ปกติ <b>${aqBase}</b>` +
+    (perm ? ` · ถาวร <b>${perm > 0 ? "+" : ""}${perm}</b>` : "") +
+    (mon ? ` · เดือนนี้ <b>${mon > 0 ? "+" : ""}${mon}</b>` : "") +
+    `<br>เดือนนี้จองไปแล้ว <b>${aqWho.used}</b> ครั้ง` +
     (aqWho.used >= aqWho.quota ? " · ใช้สิทธิ์ครบแล้ว" : ` · เหลืออีก <b>${aqWho.quota - aqWho.used}</b> ครั้ง`) +
     (tag ? `<br>${tag}` : "");
 
   $("#aq-tip").textContent =
-    aqWho.extra === 0
-      ? `สิทธิ์ปกติของทุกคนคือ ${aqBase} ครั้งต่อเดือน กดปุ่มเพื่อปรับเฉพาะคนนี้`
-      : "สิทธิ์ที่ปรับใช้ได้เฉพาะเดือนนี้ เดือนหน้ากลับไปเป็นสิทธิ์ปกติเอง";
+    perm !== 0
+      ? "สิทธิ์ถาวรติดตัวไปทุกเดือน เดือนหน้าก็ยังได้เท่านี้ จนกว่าจะกดลดคืน"
+      : mon !== 0
+        ? "สิทธิ์ที่เพิ่มให้เฉพาะเดือนนี้ พอขึ้นเดือนใหม่จะกลับไปเป็นสิทธิ์ปกติเอง"
+        : `สิทธิ์ปกติของทุกคนคือ ${aqBase} ครั้งต่อเดือน กดปุ่มเพื่อปรับเฉพาะคนนี้`;
 }
 
 async function searchAquotaEmployee(q) {
@@ -1432,7 +1474,8 @@ async function searchAquotaEmployee(q) {
             (e) => `<button class="hit" data-qemp="${escapeHtml(e.id)}"
               data-name="${escapeHtml(e.full_name)}" data-code="${escapeHtml(e.employee_code)}"
               data-dept="${escapeHtml(e.dept || "")}" data-used="${e.used ?? 0}"
-              data-quota="${e.quota}" data-extra="${e.extra ?? 0}" aria-pressed="false">
+              data-quota="${e.quota}" data-extra="${e.extra ?? 0}"
+              data-perm="${e.permanent ?? 0}" data-mon="${e.monthly ?? 0}" aria-pressed="false">
               <b>${escapeHtml(e.full_name)}</b>
               <span>${escapeHtml(e.employee_code)}${e.dept ? " · " + escapeHtml(e.dept) : ""} · สิทธิ์ ${e.quota} ครั้ง ใช้ไป ${e.used ?? 0}</span>
             </button>`,
@@ -1450,18 +1493,21 @@ async function searchAquotaEmployee(q) {
  * ส่งไป "ทิศทาง" ไม่ใช่ตัวเลขที่ต้องการ เพราะฝั่งเซิร์ฟเวอร์บวกจากค่าจริงในฐานข้อมูล
  * ผู้ดูแลสองคนที่เปิดหน้าเดียวกันจึงไม่เขียนทับกัน และตัวเลขที่ตอบกลับมาคือของจริงเสมอ
  */
-async function bumpQuota(step) {
+async function bumpQuota(step, scope = "month") {
   if (!aqWho || aqBusy) return;
   aqBusy = true;
   renderAquota();
   try {
     const r = await api("/api/massage/admin/quota", {
       method: "POST",
-      body: { employeeId: aqWho.id, step },
+      body: { employeeId: aqWho.id, step, scope },
     });
-    aqWho = { ...aqWho, quota: r.quota, extra: r.extra, used: r.used };
+    aqWho = { ...aqWho, quota: r.quota, extra: r.extra, used: r.used,
+      permanent: r.permanent ?? 0, monthly: r.monthly ?? 0 };
     if (r.month) aqMonth = r.month;
-    toast(`สิทธิ์ของ ${aqWho.name} เป็น ${r.quota} ครั้งแล้ว`);
+    toast(scope === "permanent"
+      ? `สิทธิ์ถาวรของ ${aqWho.name} เป็น ${r.quota} ครั้งต่อเดือนแล้ว`
+      : `สิทธิ์ของ ${aqWho.name} เป็น ${r.quota} ครั้งแล้ว`);
   } catch (e) {
     if (!(e && e.handled)) {
       await dialog({ icon: "err", title: "ปรับสิทธิ์ไม่สำเร็จ", body: e.message || "", confirm: "เข้าใจแล้ว" });
@@ -1553,13 +1599,19 @@ function bind() {
       renderAbook();
       setTimeout(() => $("#abook-find").focus(), 50);
     }
+    if (e.target.closest("#abook-staff") && aStaff) {
+      // ล็อกช่องไม่กินสิทธิ์ใคร ตัวเลขสองตัวนี้จึงเป็นศูนย์เสมอ และหน้าจอไม่เอาไปโชว์อยู่แล้ว
+      aWho = { id: aStaff.id, name: aStaff.name, code: aStaff.code, dept: "", used: 0, quota: 0 };
+      renderAbook();
+    }
 
     // เลือกพนักงานที่จะปรับสิทธิ์ให้
     const qe = e.target.closest("[data-qemp]");
     if (qe) {
       aqWho = { id: qe.dataset.qemp, name: qe.dataset.name, code: qe.dataset.code,
         dept: qe.dataset.dept, used: Number(qe.dataset.used) || 0,
-        quota: Number(qe.dataset.quota) || 0, extra: Number(qe.dataset.extra) || 0 };
+        quota: Number(qe.dataset.quota) || 0, extra: Number(qe.dataset.extra) || 0,
+        permanent: Number(qe.dataset.perm) || 0, monthly: Number(qe.dataset.mon) || 0 };
       $("#aq-find").value = "";
       $("#aq-hits").innerHTML = `<div class="none">พิมพ์อย่างน้อย 2 ตัวอักษร</div>`;
       renderAquota();
@@ -1603,8 +1655,10 @@ function bind() {
 
   // ── ผู้ดูแล: เพิ่ม/ลดสิทธิ์ ──
   $("#aquota-back").onclick = () => route();
-  $("#aq-minus").onclick = () => bumpQuota(-1);
-  $("#aq-plus").onclick = () => bumpQuota(1);
+  $("#aq-minus").onclick = () => bumpQuota(-1, "month");
+  $("#aq-plus").onclick = () => bumpQuota(1, "month");
+  $("#aq-pminus").onclick = () => bumpQuota(-1, "permanent");
+  $("#aq-pplus").onclick = () => bumpQuota(1, "permanent");
   $("#aq-find").oninput = (e) => {
     clearTimeout(aqFindTimer);
     const q = e.target.value;

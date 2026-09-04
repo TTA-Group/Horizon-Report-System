@@ -39,6 +39,7 @@ export const massageAdminSetDay = async (req: Request): Promise<Response> =>
       const r = await adminRemoveDay(day, { force: force === true, byEmployeeId: s.employee!.id });
       console.log("[massage] ลบวัน", day, `ยกเลิก ${r.cancelled.length} คิว โดย`, s.employee!.employee_code);
       for (const b of r.cancelled) {
+        if (b.kind === "hold") continue;   // ช่องที่ล็อกไว้ ไม่มีเจ้าของให้แจ้ง
         await notifyEmployee(
           b.employeeId,
           massageNotice(
@@ -63,6 +64,7 @@ export const massageAdminSetDay = async (req: Request): Promise<Response> =>
 
     // แจ้งทีละคน ไม่ multicast เพราะข้อความมีรอบเวลาของแต่ละคนอยู่ข้างใน
     for (const b of r.cancelled) {
+      if (b.kind === "hold") continue;   // ช่องที่ล็อกไว้ ไม่มีเจ้าของให้แจ้ง
       await notifyEmployee(
         b.employeeId,
         massageNotice(
