@@ -11,7 +11,7 @@ import { CHANNEL_KEYS_READ } from "./_lib/constants";
 import { db } from "./_lib/db";
 import { json, methodGuard, run } from "./_lib/http";
 import { listRichMenus, richMenuOf } from "./_lib/line";
-import { blankMenuId, configuredMenus, excludedReady } from "./_lib/richmenu";
+import { blankMenuId, configuredMenus, excludedReady, ignoredReady } from "./_lib/richmenu";
 
 /** ถาม LINE ได้ไม่เกินเท่านี้ต่อหนึ่งคำขอ — เผื่อโควตาคำขอย่อยไว้ให้ส่วนอื่นด้วย */
 const PAGE = 25;
@@ -25,6 +25,8 @@ interface Row {
   code: string | null;
   status: string | null;
   excluded: boolean;
+  /** ผู้ดูแลทำเครื่องหมายว่าไม่ใช่พนักงาน — ต้องไม่ได้เมนูของระบบ */
+  ignored: boolean;
   want: string | null;
   now: string | null;
   asked: boolean;
@@ -39,6 +41,7 @@ interface DbRow {
   code: string | null;
   status: string | null;
   excluded: boolean;
+  ignored: boolean;
 }
 
 /**
@@ -47,17 +50,24 @@ interface DbRow {
  * ต้องใช้ LATERAL ตรง line_accounts เพราะคนหนึ่งมีแถวได้หลาย channel การ JOIN ตรง ๆ
  * จะทำให้คนคนเดียวโผล่มาสองแถวในตาราง
  */
-async function page(after: string, limit: number, hasExcluded: boolean): Promise<DbRow[]> {
+async function page(
+  after: string,
+  limit: number,
+  hasExcluded: boolean,
+  hasIgnored: boolean,
+): Promise<DbRow[]> {
   const sql = db();
   const excluded = hasExcluded
     ? sql`EXISTS (SELECT 1 FROM richmenu_excluded x WHERE x.line_user_id = p.line_user_id)`
     : sql`false`;
+  const ignored = hasIgnored ? sql`(f.ignored_at IS NOT NULL)` : sql`false`;
   return await sql<DbRow[]>`
     SELECT p.line_user_id,
            COALESCE(NULLIF(f.display_name, ''), NULLIF(la.display_name, '')) AS name,
            COALESCE(f.display_name = '', false) AS gone,
            la.employee_id, e.full_name AS emp_name, e.employee_code AS code, e.status,
-           ${excluded} AS excluded
+           ${excluded} AS excluded,
+           ${ignored} AS ignored
     FROM (
       SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
       UNION
@@ -88,7 +98,8 @@ export const richMenuPeople = async (req: Request): Promise<Response> =>
     const askLine = url.searchParams.get("menus") !== "0";
 
     const ready = await excludedReady();
-    const rows = await page(after, PAGE, ready);
+    const hasIgnored = await ignoredReady();
+    const rows = await page(after, PAGE, ready, hasIgnored);
 
     const set = configuredMenus();
     const blank = await blankMenuId();
@@ -99,7 +110,8 @@ export const richMenuPeople = async (req: Request): Promise<Response> =>
     //   ใช้งานอยู่                  → เมนูหลัก
     const wantOf = (r: DbRow): string | null => {
       if (!set) return null;
-      if (r.excluded) return blank;
+      // ทำเครื่องหมายว่าไม่เกี่ยวข้องไว้ = ไม่ควรเห็นเมนูของระบบเลย เหมือนคนที่ถูกถอด
+      if (r.excluded || r.ignored) return blank;
       if (r.employee_id === null) return set.fresh;
       return r.status === "active" ? set.member : blank;
     };
@@ -132,6 +144,7 @@ export const richMenuPeople = async (req: Request): Promise<Response> =>
         code: r.code,
         status: r.status,
         excluded: r.excluded,
+        ignored: r.ignored,
         want: wantOf(r),
         now,
         asked,

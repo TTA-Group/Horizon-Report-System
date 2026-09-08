@@ -10,6 +10,7 @@
 // มากางให้ แล้วให้คนเป็นคนจับคู่ ระบบไม่เดาให้เอง เพราะเดาผิดแปลว่าคนหนึ่งได้คิวนวด
 // และเรื่องแจ้งของอีกคน ส่วนเจ้าตัวจริงจะเข้าระบบไม่ได้เลย
 
+import { restoreMenuForLineUser, unlinkMenuForLineUser } from "./_lib/richmenu";
 import { getSession, invalidateSessionByLineUserId, requireAdmin } from "./_lib/auth";
 import { CHANNEL_KEY, CHANNEL_KEYS_READ } from "./_lib/constants";
 import { requireCron } from "./_lib/cron";
@@ -183,11 +184,25 @@ export const followersIgnore = async (req: Request): Promise<Response> =>
         `;
     if (done.length === 0) throw new HttpError(404, "ไม่พบบัญชีไลน์นี้ในรายชื่อผู้ติดตาม");
 
+    // เก็บเมนูคืนไปด้วยในจังหวะเดียวกัน — "ไม่อนุญาตให้ผูก" แล้วยังเห็นเมนูหลักอยู่
+    // คือสภาพที่เจ้าของงานเจอมาแล้วจริง ผู้ดูแลต้องไปกดปุ่มถอดที่หน้าเมนูอีกรอบเองถึงจะหาย
+    // ซึ่งไม่มีใครเดาได้ว่าต้องทำสองที่
+    //
+    // ล้มก็ไม่เป็นไร การจัดกลุ่มสำเร็จไปแล้ว ปุ่มถอดที่หน้าตรวจเมนูยังใช้ซ้ำได้
+    let menu = false;
+    try {
+      menu = undo
+        ? await restoreMenuForLineUser(id)
+        : await unlinkMenuForLineUser(id, s.employee!.id);
+    } catch (e) {
+      console.error("[followers] จัดการเมนูให้บัญชีนี้ไม่สำเร็จ", id, e);
+    }
+
     console.log(
       "[followers]", undo ? "เอากลับไปรอผูก" : "ย้ายเข้ารายชื่อผู้ไม่เกี่ยวข้อง",
-      id, "โดย", s.employee!.employee_code,
+      id, "· เมนู", menu ? "จัดการแล้ว" : "ไม่สำเร็จ", "· โดย", s.employee!.employee_code,
     );
-    return json({ ok: true, lineUserId: id, ignored: !undo });
+    return json({ ok: true, lineUserId: id, ignored: !undo, menu });
   });
 
 /**

@@ -1231,7 +1231,9 @@ function mtVisible(row, q) {
   if (mtFilter === "wrong") return mtMatches(row) === false;
   if (mtFilter === "none") return row.asked && !row.now;
   if (mtFilter === "unreg") return row.employeeId === null;
-  if (mtFilter === "off") return row.excluded || (row.status !== null && row.status !== "active");
+  if (mtFilter === "off") {
+    return row.excluded || row.ignored || (row.status !== null && row.status !== "active");
+  }
   return true;
 }
 
@@ -1300,6 +1302,7 @@ function renderMenuTable(loading) {
         </div>
         ${mtWho(r)}
         ${r.excluded ? '<div class="msub">ถูกถอดเมนูไว้ — ปุ่มข้อ 1 จะข้ามบัญชีนี้</div>' : ""}
+        ${r.ignored ? '<div class="msub">อยู่ในรายชื่อผู้ไม่เกี่ยวข้อง — ปุ่มข้อ 1 จะข้ามบัญชีนี้</div>' : ""}
         ${mtWhy(r)}
         <div class="muid">
           <span class="mono">${esc(r.lineUserId)}</span>
@@ -2236,6 +2239,7 @@ async function setFollowerIgnored(lineUserId, undo) {
       message:
         `${label}\n\n` +
         "คนนี้จะหายจากรายการรอผูกรหัส ไปอยู่ในรายชื่อผู้ไม่เกี่ยวข้องแทน\n" +
+        "เมนูในไลน์ของเขาจะถูกเก็บคืนด้วย และปุ่มเปลี่ยนเมนูให้ทุกคนจะข้ามเขาไปตลอด\n\n" +
         "ระบบไม่ส่งข้อความบอกใครทั้งสิ้น · กดเอากลับได้ตลอดถ้ากดผิด",
       confirmLabel: "ย้ายไป",
       cancelLabel: "ไม่ใช่",

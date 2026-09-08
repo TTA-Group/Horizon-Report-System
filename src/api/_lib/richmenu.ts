@@ -138,21 +138,8 @@ async function denyMenu(lineUserId: string): Promise<boolean> {
  * คนที่ยังไม่ลงทะเบียนจะไม่มีทางได้เมนูเลย ซึ่งคือกลุ่มที่ต้องการเมนูมากที่สุด
  */
 export async function knownLineUserIds(after: string, limit: number): Promise<string[]> {
-  // ยังไม่ได้สร้างตาราง = ยังไม่มีใครถูกถอด ไล่ตั้งเมนูให้ทุกคนตามปกติไปก่อน
-  // ดีกว่าปล่อยให้ทั้งปุ่มพังเพราะยังไม่ได้รัน SQL
-  if (!(await excludedReady())) {
-    const all = await db()<{ line_user_id: string }[]>`
-      SELECT line_user_id FROM (
-        SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
-        UNION
-        SELECT line_user_id FROM line_followers
-      ) AS everyone
-      WHERE line_user_id > ${after}
-      ORDER BY line_user_id
-      LIMIT ${limit}
-    `;
-    return all.map((r) => r.line_user_id);
-  }
+  const skipExcluded = await excludedReady();
+  const skipIgnored = await ignoredReady();
   const rows = await db()<{ line_user_id: string }[]>`
     SELECT line_user_id FROM (
       SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
@@ -160,13 +147,35 @@ export async function knownLineUserIds(after: string, limit: number): Promise<st
       SELECT line_user_id FROM line_followers
     ) AS everyone
     WHERE line_user_id > ${after}
-      -- ข้ามคนที่ผู้ดูแลสั่งถอดเมนูไว้ ไม่งั้นปุ่มถอดจะไม่มีผลอะไรเลย
-      -- เพราะรอบถัดไปที่กดเปลี่ยนเมนูให้ทุกคน คนกลุ่มนี้จะได้เมนูกลับมาทันที
-      AND NOT EXISTS (SELECT 1 FROM richmenu_excluded x WHERE x.line_user_id = everyone.line_user_id)
+      ${menuSkips(skipExcluded, skipIgnored)}
     ORDER BY line_user_id
     LIMIT ${limit}
   `;
   return rows.map((r) => r.line_user_id);
+}
+
+/**
+ * คนที่ปุ่ม "เปลี่ยนเมนูหลักให้ทุกคน" ต้องข้าม — กติกาข้อเดียวใช้ทั้งตอนไล่ตั้งและตอนนับ
+ *
+ *   richmenu_excluded        ผู้ดูแลสั่งถอดเมนูไว้เอง
+ *   line_followers.ignored_at ผู้ดูแลทำเครื่องหมายว่าไม่ใช่พนักงาน (รายชื่อผู้ไม่เกี่ยวข้อง)
+ *
+ * กลุ่มหลังเคยตกหล่น: กดไม่อนุญาตให้ผูกไปแล้ว แต่รอบถัดไปที่กดปุ่มข้อ 1 เขาก็ได้เมนูหลัก
+ * กลับมาอยู่ดี ทั้งที่ผู้ดูแลเพิ่งบอกว่าคนนี้ไม่เกี่ยวข้องกับบริษัท
+ *
+ * ยังไม่ได้รัน SQL ของชุดไหน ก็ข้ามเงื่อนไขนั้นไป ดีกว่าทำให้ทั้งปุ่มพัง
+ */
+function menuSkips(skipExcluded: boolean, skipIgnored: boolean) {
+  const sql = db();
+  const ex = skipExcluded
+    ? sql`AND NOT EXISTS (SELECT 1 FROM richmenu_excluded x WHERE x.line_user_id = everyone.line_user_id)`
+    : sql``;
+  const ig = skipIgnored
+    ? sql`AND NOT EXISTS (
+        SELECT 1 FROM line_followers f
+        WHERE f.line_user_id = everyone.line_user_id AND f.ignored_at IS NOT NULL)`
+    : sql``;
+  return sql`${ex} ${ig}`;
 }
 
 /**
@@ -176,6 +185,26 @@ export async function knownLineUserIds(after: string, limit: number): Promise<st
  * ถ้าปล่อยให้คำสั่งที่อ้างถึงตารางนี้พังดิบ ๆ หน้าตรวจเมนูจะขึ้นข้อผิดพลาดยาวเหยียด
  * ที่อ่านไม่รู้เรื่อง แทนที่จะบอกตรง ๆ ว่า "ยังไม่ได้รันไฟล์ไหน"
  */
+/**
+ * ช่อง line_followers.ignored_at ถูกสร้างแล้วหรือยัง
+ *
+ * เหตุผลเดียวกับ excludedReady — เจ้าของงานรัน SQL เองที่ Supabase ระบบจึงเจอสภาพ
+ * "โค้ดใหม่ ตารางเก่า" ได้เสมอ ยังไม่ได้รันก็ถือว่ายังไม่มีใครถูกทำเครื่องหมายไว้
+ */
+// ไม่จำผลไว้ ถามใหม่ทุกครั้งเหมือน excludedReady — ถ้าจำไว้ พอเจ้าของงานรัน SQL เสร็จ
+// Worker ที่รันค้างอยู่จะยังจำว่า "ยังไม่มีช่องนี้" ไปจนกว่าจะถูกรีไซเคิล ซึ่งเดาไม่ได้ว่าเมื่อไหร่
+export async function ignoredReady(): Promise<boolean> {
+  try {
+    const rows = await db()<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM information_schema.columns
+      WHERE table_name = 'line_followers' AND column_name = 'ignored_at'
+    `;
+    return (rows[0]?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function excludedReady(): Promise<boolean> {
   try {
     const rows = await db()<{ n: number }[]>`
@@ -291,6 +320,24 @@ export async function unlinkMenuForLineUser(
 }
 
 /**
+ * คืนเมนูให้บัญชีไลน์ตามสถานะจริงของเขา — ใช้ตอนเอากลับจากรายชื่อผู้ไม่เกี่ยวข้อง
+ *
+ * ต่างจาก applyMenuForLineUser ตรงที่ไม่ยัดเมนูหลักให้ทุกกรณี — คนกลุ่มนี้ส่วนใหญ่
+ * ยังไม่ได้ลงทะเบียน ใบที่ถูกคือเมนูที่มีปุ่มลงทะเบียน ไม่ใช่เมนูสมาชิก
+ * ปล่อยให้ decide() ตัดสินเหมือนทุกที่ จะได้ไม่มีกติกาชุดที่สองให้เพี้ยนกันทีหลัง
+ */
+export async function restoreMenuForLineUser(lineUserId: string): Promise<boolean> {
+  try {
+    await forgetExcluded([lineUserId]);
+    await syncRichMenu(lineUserId);
+    return true;
+  } catch (e) {
+    console.error("[richmenu] คืนเมนูให้ userId ไม่สำเร็จ", lineUserId, e);
+    return false;
+  }
+}
+
+/**
  * ตั้งเมนูหลักให้พนักงานคนเดียว — ปุ่ม "เปลี่ยนเฉพาะบุคคล"
  *
  * เอาชื่อออกจากรายชื่อที่ถูกถอดด้วย เพราะการสั่งตั้งเมนูให้คนคนนี้โดยตรง
@@ -320,23 +367,15 @@ export async function applyMenuForEmployee(
 
 /** จำนวนบัญชีไลน์ทั้งหมดที่ระบบรู้จัก — ใช้บอกความคืบหน้าตอนไล่ตั้งเมนู */
 export async function knownLineUserCount(): Promise<number> {
-  if (!(await excludedReady())) {
-    const [n] = await db()<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM (
-        SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
-        UNION
-        SELECT line_user_id FROM line_followers
-      ) AS everyone
-    `;
-    return n?.n ?? 0;
-  }
+  const skipExcluded = await excludedReady();
+  const skipIgnored = await ignoredReady();
   const [row] = await db()<{ n: number }[]>`
     SELECT count(*)::int AS n FROM (
       SELECT line_user_id FROM line_accounts WHERE channel_key = ANY(${CHANNEL_KEYS_READ})
       UNION
       SELECT line_user_id FROM line_followers
     ) AS everyone
-    WHERE NOT EXISTS (SELECT 1 FROM richmenu_excluded x WHERE x.line_user_id = everyone.line_user_id)
+    WHERE true ${menuSkips(skipExcluded, skipIgnored)}
   `;
   return row?.n ?? 0;
 }
