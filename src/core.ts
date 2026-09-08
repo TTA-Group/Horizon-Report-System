@@ -25,7 +25,7 @@ import authLink from "./api/auth-link";
 import adminAdmins from "./api/admin-admins";
 import adminEmployees from "./api/admin-employees";
 import {
-  followersFillNames, followersImport, followersIngest, followersLink, followersList,
+  followersFillNames, followersIgnore, followersImport, followersIngest, followersLink, followersList,
 } from "./api/admin-followers";
 import adminRichMenuPlan from "./api/admin-richmenu-plan";
 import { richMenuApply, richMenuStatus } from "./api/admin-richmenu";
@@ -68,6 +68,8 @@ function route(pathname: string, method: string): Handler | null {
     if (seg.length === 4 && seg[3] === "import") return method === "POST" ? followersImport : null;
     // เติมชื่อไลน์ให้แถวที่เก็บมาจาก webhook ซึ่งมีแต่ userId
     if (seg.length === 4 && seg[3] === "names") return method === "POST" ? followersFillNames : null;
+    // ย้ายเข้า/ออกรายชื่อผู้ไม่เกี่ยวข้อง
+    if (seg.length === 4 && seg[3] === "ignore") return method === "POST" ? followersIgnore : null;
     return null;
   }
 

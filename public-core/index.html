@@ -335,6 +335,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
    ไม่งั้น "ไม่มีชื่อในไลน์" จะดูเหมือนเป็นชื่อของคนคนหนึ่งจริง ๆ */
 .frow .fnm.nameless{font-weight:500;font-style:italic;color:var(--slate)}
 .frow.gone{opacity:.55}
+/* บรรทัดบอกว่าใครตัดออกเมื่อไหร่ — เป็นคำอธิบาย ไม่ใช่รหัส ปล่อยให้ตกบรรทัดได้
+   ไม่งั้นชื่อคนที่กดถูกตัดหายไปทุกครั้งเพราะยาวกว่าความกว้างที่เหลือ */
+.frow .fmeta{font-size:10.5px;color:var(--slate);line-height:1.5;margin-top:2px}
 
 /* ── วางข้อมูลทีละหลายคน ── */
 /* บรรทัดผลตรวจของหน้า rich menu — ป้ายหน้าบรรทัดบอกผ่าน/ไม่ผ่านโดยไม่ต้องอ่านข้อความทั้งบรรทัด */
@@ -616,6 +619,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink)}
       เทียบกับรายชื่อแชทใน OA Manager แล้วจับคู่เองได้เลย ผูกผิดแก้ได้ที่ทะเบียนพนักงาน
     </p>
     <div class="rfall" id="link-tally">—</div>
+
+    <!-- สลับระหว่างคนที่ต้องจับคู่ กับคนที่ตัดออกไปแล้ว — ใช้แถบเดียวกับหน้าอื่นของผู้ดูแล
+         เพื่อไม่ให้รายชื่อผู้ไม่เกี่ยวข้องไปกินที่ในรายการที่ต้องทำงานจริง -->
+    <div class="mchips" id="link-tabs">
+      <button class="mchip on" data-linktab="waiting">รอผูกรหัส</button>
+      <button class="mchip" data-linktab="ignored">ผู้ไม่เกี่ยวข้อง</button>
+    </div>
 
     <!-- วางข้อมูลทีละหลายคน — ฝ่ายบุคคลรวบรวมมาเองในไฟล์ตาราง ก๊อปมาวางได้เลย -->
     <!-- คนที่ทักเข้ามาเอง ระบบเก็บได้แค่ userId ปุ่มนี้ไปถามชื่อกับรูปจาก LINE มาเติมให้ -->

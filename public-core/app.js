@@ -2048,6 +2048,10 @@ async function editRole(employeeId) {
 let linkWaiting = [];
 let fillLeft = 0;      // เหลือกี่คนที่ยังไม่รู้ชื่อ — ปุ่มดึงชื่อขึ้นเมื่อมีมากกว่าศูนย์
 
+// แท็บที่เปิดอยู่ของหน้าผูกบัญชี · รายชื่อผู้ไม่เกี่ยวข้องที่โหลดมาแล้ว
+let linkTab = "waiting";
+let linkIgnored = [];
+
 async function goLinkAccounts() {
   show("s-link");
   $("#linkList").innerHTML = '<div class="empty">กำลังโหลดข้อมูล…</div>';
@@ -2058,9 +2062,11 @@ async function goLinkAccounts() {
   try {
     const r = await api("/api/admin/followers");
     linkWaiting = r.waiting || [];
+    linkIgnored = r.ignored || [];
     $("#link-tally").innerHTML =
       `เป็นเพื่อนกับ LINE OA ทั้งหมด <b>${r.total}</b> คน · ผูกรหัสพนักงานแล้ว <b>${r.linked}</b> คน`;
     renderFillBox(r.nameless || 0);
+    renderLinkTabs();
     renderLinkList();
   } catch (e) {
     $("#linkList").innerHTML = `<div class="empty">${esc(e.message || "โหลดข้อมูลไม่สำเร็จ")}</div>`;
@@ -2130,7 +2136,29 @@ async function fillFollowerNames() {
   await goLinkAccounts();
 }
 
+/** ตัวเลขบนแท็บ — บอกตั้งแต่เปิดหน้าว่าแต่ละกองมีกี่คน จะได้รู้ว่าต้องไปดูฝั่งไหน */
+function renderLinkTabs() {
+  const box = $("#link-tabs");
+  if (!box) return;
+  // ไม่มีใครถูกตัดออกเลย ก็ไม่ต้องมีแท็บให้กด — หน้าจะได้ไม่รกด้วยของที่ยังไม่ได้ใช้
+  box.style.display = linkIgnored.length ? "" : "none";
+  $$("#link-tabs .mchip").forEach((b) => {
+    const key = b.dataset.linktab;
+    b.classList.toggle("on", key === linkTab);
+    b.textContent = key === "waiting"
+      ? `รอผูกรหัส (${linkWaiting.length})`
+      : `ผู้ไม่เกี่ยวข้อง (${linkIgnored.length})`;
+  });
+  // กล่องนำเข้ากับปุ่มดึงชื่อเป็นของฝั่งรอผูก ไม่เกี่ยวกับรายชื่อที่ตัดออกไปแล้ว
+  $("#imp-open").style.display = linkTab === "waiting" && $("#imp-box").style.display === "none" ? "" : "none";
+  if (linkTab !== "waiting") {
+    $("#imp-box").style.display = "none";
+    $("#fill-box").style.display = "none";
+  }
+}
+
 function renderLinkList() {
+  if (linkTab === "ignored") return renderIgnoredList();
   if (!linkWaiting.length) {
     $("#linkList").innerHTML =
       `<div class="empty">ไม่มีใครรอผูกรหัส<br>ถ้ารายชื่อยังไม่ครบ ให้ดึงรายชื่อผู้ติดตามเข้ามาใหม่อีกรอบ</div>`;
@@ -2152,9 +2180,76 @@ function renderLinkList() {
             <div class="fid">${esc(f.line_user_id)}</div>
           </div>
           <button class="copybtn" data-copy="${esc(f.line_user_id)}">คัดลอก</button>
+          <button class="copybtn kill" data-ignore="${esc(f.line_user_id)}">ไม่เกี่ยวข้อง</button>
         </div>`,
       )
       .join("")}</div>`;
+}
+
+/**
+ * รายชื่อผู้ไม่เกี่ยวข้อง — คนที่ฝ่ายบุคคลตัดสินแล้วว่าไม่ใช่พนักงาน
+ *
+ * เก็บไว้ให้ดูย้อนหลังได้ ไม่ได้ลบทิ้ง เพราะกดผิดแถวเป็นเรื่องที่เกิดขึ้นแน่นอนเมื่อรายการยาว
+ * และบอกด้วยว่าใครเป็นคนกดเมื่อไหร่ จะได้ตามถามได้ถ้าสงสัยทีหลัง
+ */
+function renderIgnoredList() {
+  if (!linkIgnored.length) {
+    $("#linkList").innerHTML = '<div class="empty">ยังไม่มีใครในรายชื่อนี้</div>';
+    return;
+  }
+  $("#linkList").innerHTML = `<div class="section">ผู้ไม่เกี่ยวข้อง ${linkIgnored.length} คน</div>
+    <p class="hintnote">คนกลุ่มนี้จะไม่ขึ้นในรายการรอผูกอีก · ระบบไม่ได้ส่งข้อความบอกเจ้าตัว
+      และเจ้าตัวยังใช้ไลน์คุยกับ OA ได้ตามปกติ</p>
+    <div class="plist">${linkIgnored
+      .map(
+        (f) => `<div class="frow${f.gone ? " gone" : ""}">
+          ${
+            f.picture_url
+              ? `<img class="fav" src="${esc(f.picture_url)}" alt="" referrerpolicy="no-referrer" />`
+              : `<div class="fav none">?</div>`
+          }
+          <div class="fw">
+            <div class="fnm${f.display_name ? "" : " nameless"}">${esc(
+              f.display_name || (f.gone ? "ไม่ได้เป็นเพื่อนกับ OA แล้ว" : "ยังไม่ได้ดึงชื่อ"),
+            )}</div>
+            <div class="fid">${esc(f.line_user_id)}</div>
+            <div class="fmeta">ตัดออกเมื่อ ${esc(f.ignored_at || "-")}${
+              f.by_name ? " · โดย " + esc(f.by_name) : ""
+            }</div>
+          </div>
+          <button class="copybtn" data-unignore="${esc(f.line_user_id)}">เอากลับ</button>
+        </div>`,
+      )
+      .join("")}</div>`;
+}
+
+/** ย้ายเข้า/ออกรายชื่อผู้ไม่เกี่ยวข้อง */
+async function setFollowerIgnored(lineUserId, undo) {
+  const from = undo ? linkIgnored : linkWaiting;
+  const f = from.find((x) => x.line_user_id === lineUserId);
+  const label = f && f.display_name ? f.display_name : lineUserId;
+
+  if (!undo) {
+    // ถามก่อน เพราะกดแล้วแถวหายไปจากรายการที่กำลังไล่ทำอยู่ ถ้าไม่ถามจะไม่รู้ว่าเพิ่งกดอะไรไป
+    const ok = await confirmDialog({
+      title: "ย้ายไปรายชื่อผู้ไม่เกี่ยวข้อง?",
+      message:
+        `${label}\n\n` +
+        "คนนี้จะหายจากรายการรอผูกรหัส ไปอยู่ในรายชื่อผู้ไม่เกี่ยวข้องแทน\n" +
+        "ระบบไม่ส่งข้อความบอกใครทั้งสิ้น · กดเอากลับได้ตลอดถ้ากดผิด",
+      confirmLabel: "ย้ายไป",
+      cancelLabel: "ไม่ใช่",
+    });
+    if (!ok) return;
+  }
+
+  try {
+    await api("/api/admin/followers/ignore", { method: "POST", body: { lineUserId, undo: !!undo } });
+    toast(undo ? `เอา ${label} กลับไปรอผูกแล้ว` : `ย้าย ${label} ไปรายชื่อผู้ไม่เกี่ยวข้องแล้ว`);
+    await goLinkAccounts();
+  } catch (e) {
+    toast(e.message || "ทำรายการไม่สำเร็จ");
+  }
 }
 
 /** เลือกพนักงานให้บัญชีไลน์นี้ แล้วผูกให้เลย */
@@ -2403,7 +2498,17 @@ function bind() {
 
   // ── หน้าผู้ดูแลระบบ ──
   $("#mg-role").onclick = () => goRoles({ add: true });
-  $("#mg-link").onclick = goLinkAccounts;
+  $("#mg-link").onclick = () => {
+    linkTab = "waiting";
+    goLinkAccounts();
+  };
+  $("#link-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-linktab]");
+    if (!b || b.dataset.linktab === linkTab) return;
+    linkTab = b.dataset.linktab;
+    renderLinkTabs();
+    renderLinkList();
+  });
   $("#link-back").onclick = goMe;
   $("#fill-go").onclick = fillFollowerNames;
   $("#imp-open").onclick = () => {
@@ -2426,6 +2531,19 @@ function bind() {
     if (cp) {
       e.stopPropagation();
       copyText(cp.dataset.copy, cp);
+      return;
+    }
+    // ปุ่มตัดออก/เอากลับ อยู่ในแถวเดียวกับพื้นที่กดจับคู่ ต้องหยุดไว้ก่อนด้วยเหตุผลเดียวกับปุ่มคัดลอก
+    const ig = e.target.closest("[data-ignore]");
+    if (ig) {
+      e.stopPropagation();
+      setFollowerIgnored(ig.dataset.ignore, false);
+      return;
+    }
+    const un = e.target.closest("[data-unignore]");
+    if (un) {
+      e.stopPropagation();
+      setFollowerIgnored(un.dataset.unignore, true);
       return;
     }
     const row = e.target.closest("[data-follower]");

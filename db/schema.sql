@@ -71,7 +71,11 @@ CREATE TABLE line_followers (
   line_user_id  VARCHAR(60) PRIMARY KEY,
   display_name  VARCHAR(150),   -- ชื่อที่เจ้าตัวตั้งไว้ในไลน์ ไม่ใช่ชื่อที่เปลี่ยนไว้ใน OA Manager
   picture_url   TEXT,
-  fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ฝ่ายบุคคลกด "ไม่เกี่ยวข้อง" ไว้ = ไม่ใช่พนักงาน ไม่ต้องผูกรหัส
+  -- อยู่บนแถวเดิมไม่แยกตาราง เพราะเป็นสถานะของคนคนเดียวกัน แยกแล้วจะมีที่ที่ลืม join
+  ignored_at    TIMESTAMPTZ,
+  ignored_by    UUID REFERENCES employees(id)
 );
 
 -- เจ้าหน้าที่ประจำฝ่าย (คนหนึ่งอยู่ได้หลายฝ่าย)

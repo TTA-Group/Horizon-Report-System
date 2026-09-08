@@ -98,8 +98,27 @@ export const followersList = async (req: Request): Promise<Response> =>
         SELECT 1 FROM line_accounts la
         WHERE la.line_user_id = f.line_user_id AND la.channel_key = ANY(${CHANNEL_KEYS_READ})
       )
+        AND f.ignored_at IS NULL
       ORDER BY CASE WHEN f.display_name = '' THEN 2 WHEN f.display_name IS NULL THEN 1 ELSE 0 END,
                f.display_name, f.line_user_id
+    `;
+
+    // รายชื่อผู้ไม่เกี่ยวข้อง — ส่งมาพร้อมกันในคำขอเดียว หน้าจอจะได้สลับแท็บโดยไม่ต้องโหลดใหม่
+    // และตัวเลขบนแท็บถูกต้องตั้งแต่เปิดหน้า ไม่ใช่ขึ้นมาเป็นขีดแล้วค่อยเปลี่ยนทีหลัง
+    const ignored = await db()<
+      {
+        line_user_id: string; display_name: string | null; picture_url: string | null;
+        gone: boolean; ignored_at: string; by_name: string | null;
+      }[]
+    >`
+      SELECT f.line_user_id, NULLIF(f.display_name, '') AS display_name, f.picture_url,
+             COALESCE(f.display_name = '', false) AS gone,
+             to_char(f.ignored_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI') AS ignored_at,
+             e.full_name AS by_name
+      FROM line_followers f
+      LEFT JOIN employees e ON e.id = f.ignored_by
+      WHERE f.ignored_at IS NOT NULL
+      ORDER BY f.ignored_at DESC
     `;
     const [tally] = await db()<{ total: number; linked: number; nameless: number }[]>`
       SELECT count(*)::int AS total,
@@ -112,10 +131,63 @@ export const followersList = async (req: Request): Promise<Response> =>
     `;
     return json({
       waiting: [...rows],
+      ignored: [...ignored],
       total: tally?.total ?? 0,
       linked: tally?.linked ?? 0,
       nameless: tally?.nameless ?? 0,
     });
+  });
+
+/**
+ * POST /api/admin/followers/ignore — ย้ายเข้า/ออกรายชื่อผู้ไม่เกี่ยวข้อง
+ *
+ * มีเพราะรายการรอผูกปนคนที่ไม่ใช่พนักงานอยู่เสมอ (ลูกค้า คนส่งของ คนที่กดผิด)
+ * เดิมลบทิ้งไม่ได้ ต้องเลื่อนผ่านทุกครั้งที่เปิดหน้า จนคนที่ต้องผูกจริงหาไม่เจอ
+ *
+ * ไม่ส่งข้อความหาใครทั้งสิ้น — เจ้าตัวไม่ได้ทำอะไรผิด และไม่ควรรู้ด้วยซ้ำว่าถูกจัดกลุ่ม
+ * เป็นเรื่องภายในของฝ่ายบุคคลล้วน ๆ
+ *
+ * กดกลับได้ตลอด เพราะกดผิดแถวเป็นเรื่องที่เกิดขึ้นแน่นอนเมื่อรายการยาว
+ */
+export const followersIgnore = async (req: Request): Promise<Response> =>
+  run(async () => {
+    methodGuard(req, "POST");
+    const s = await getSession(req);
+    requireAdmin(s);
+
+    const { lineUserId, undo } = await readJson<{ lineUserId?: string; undo?: boolean }>(req);
+    const id = (lineUserId ?? "").trim();
+    if (!id) throw new HttpError(400, "ไม่ได้ระบุบัญชีไลน์");
+
+    // ผูกรหัสพนักงานไปแล้ว ย้ายเข้ารายชื่อผู้ไม่เกี่ยวข้องไม่ได้ — ขัดกันเอง
+    // ต้องปลดการผูกที่ทะเบียนพนักงานก่อน จะได้ไม่มีคนที่ทั้ง "เป็นพนักงาน" และ "ไม่เกี่ยวข้อง"
+    if (!undo) {
+      const linked = await db()`
+        SELECT 1 FROM line_accounts
+        WHERE line_user_id = ${id} AND channel_key = ANY(${CHANNEL_KEYS_READ}) LIMIT 1
+      `;
+      if (linked.length > 0) {
+        throw new HttpError(409, "บัญชีนี้ผูกรหัสพนักงานไว้แล้ว ปลดการผูกที่ทะเบียนพนักงานก่อน", "linked");
+      }
+    }
+
+    // แยกสองคำสั่งชัด ๆ ไม่ยัดเงื่อนไขลงในค่าที่ส่งเข้าไป — อ่านแล้วรู้ทันทีว่าแต่ละทางเขียนอะไรลงไป
+    const done = undo
+      ? await db()`
+          UPDATE line_followers SET ignored_at = NULL, ignored_by = NULL
+          WHERE line_user_id = ${id} RETURNING line_user_id
+        `
+      : await db()`
+          UPDATE line_followers SET ignored_at = now(), ignored_by = ${s.employee!.id}
+          WHERE line_user_id = ${id} RETURNING line_user_id
+        `;
+    if (done.length === 0) throw new HttpError(404, "ไม่พบบัญชีไลน์นี้ในรายชื่อผู้ติดตาม");
+
+    console.log(
+      "[followers]", undo ? "เอากลับไปรอผูก" : "ย้ายเข้ารายชื่อผู้ไม่เกี่ยวข้อง",
+      id, "โดย", s.employee!.employee_code,
+    );
+    return json({ ok: true, lineUserId: id, ignored: !undo });
   });
 
 /**
